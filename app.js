@@ -174,6 +174,7 @@ let moviesLoadedFromServer = false;
 let moviesLoading = false;
 let moviesError = "";
 const movieDemoModeMessage = "目前為 GitHub Pages 展示模式，電影資料會暫存在這台瀏覽器，不會永久同步到 Supabase。";
+const movieSupabaseErrorMessage = "電影資料尚未連上 Supabase。請到 Render Environment Variables 檢查 SUPABASE_URL 與 SUPABASE_SERVICE_ROLE_KEY；目前暫用瀏覽器資料顯示。";
 let isMovieModalOpen = false;
 let editingMovieId = null;
 let movieReleaseStatusOverrides = {};
@@ -352,6 +353,17 @@ function loadMoviesFromLocalStorage() {
   ensureSelectedMovies();
 }
 
+function loadMoviesFallback(message) {
+  mockData.movies = readStorage(storageKeys.movies, mockData.movies).map((movie) => ({
+    ...movie,
+    releaseStatus: movieReleaseStatusOverrides[movie.id] || movie.releaseStatus || "未上映",
+  }));
+  moviesLoadedFromServer = true;
+  moviesLoading = false;
+  moviesError = message;
+  ensureSelectedMovies();
+}
+
 function friendlyCopyError(error) {
   const message = error?.message || "";
   if (message.includes("quota") || message.includes("429") || message.includes("Billing") || message.includes("額度")) {
@@ -383,7 +395,7 @@ async function loadMoviesFromServer(force = false) {
     moviesLoadedFromServer = true;
     ensureSelectedMovies();
   } catch (error) {
-    loadMoviesFromLocalStorage();
+    loadMoviesFallback(error?.message ? `${movieSupabaseErrorMessage}（${error.message}）` : movieSupabaseErrorMessage);
   } finally {
     moviesLoading = false;
     render();
@@ -460,6 +472,7 @@ async function saveMovieToServer(movieData) {
     await loadMoviesFromServer(true);
   } catch (error) {
     saveMovieLocally(movieData, editingMovie);
+    moviesError = error?.message ? `${movieSupabaseErrorMessage}（${error.message}）` : movieSupabaseErrorMessage;
   }
 }
 
@@ -475,6 +488,7 @@ async function deleteMovieFromServer(movieId) {
     await loadMoviesFromServer(true);
   } catch (error) {
     deleteMovieLocally(movieId);
+    moviesError = error?.message ? `${movieSupabaseErrorMessage}（${error.message}）` : movieSupabaseErrorMessage;
   }
 }
 
