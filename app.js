@@ -270,7 +270,9 @@ function status(text) {
 }
 
 function parseLocalDate(value) {
-  const [year, month, day] = String(value || "").replaceAll("/", "-").split("-").map(Number);
+  const match = String(value || "").match(/(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+  const [, yearValue, monthValue, dayValue] = match || [];
+  const [year, month, day] = [yearValue, monthValue, dayValue].map(Number);
   return year && month && day ? new Date(year, month - 1, day) : null;
 }
 
@@ -532,22 +534,47 @@ function dashboardMovieCount() {
 }
 
 function dashboardPendingPostCount() {
-  const pendingStatuses = ["待發布", "已排程", "草稿完成", "草稿"];
+  const pendingStatuses = ["待發布", "已排程", "草稿完成", "草稿", "已通過"];
   return mockData.schedules.filter((schedule) => pendingStatuses.includes(schedule.status)).length;
 }
 
 function dashboardPendingReviewCount() {
   const pendingReviewStatuses = ["內部審核", "片方審核", "待修改", "待確認", "修改中", "待審核"];
-  const assetCount = mockData.assets.filter((asset) => pendingReviewStatuses.includes(asset.reviewStatus)).length;
-  const scheduleCount = mockData.schedules.filter((schedule) => pendingReviewStatuses.includes(schedule.status)).length;
-  const reviewCount = mockData.reviewItems.filter((item) => pendingReviewStatuses.includes(item.status)).length;
-  return assetCount + scheduleCount + reviewCount;
+  return mockData.schedules.filter((schedule) => pendingReviewStatuses.includes(schedule.status)).length;
+}
+
+function isCurrentWeekDate(value) {
+  const date = parseLocalDate(value);
+  if (!date) return false;
+  const today = startOfDay(new Date());
+  const day = today.getDay() || 7;
+  const weekStart = new Date(today);
+  weekStart.setDate(today.getDate() - day + 1);
+  const weekEnd = new Date(weekStart);
+  weekEnd.setDate(weekStart.getDate() + 6);
+  return startOfDay(date) >= weekStart && startOfDay(date) <= weekEnd;
+}
+
+function isHighPerformingAnalysis(analysis) {
+  const metrics = analysis?.metrics || {};
+  return metrics.engagementRate >= 0.06 ||
+    metrics.shareRate >= 0.01 ||
+    metrics.commentRate >= 0.005 ||
+    metrics.saveRate >= 0.01 ||
+    metrics.followerConversionRate >= 0.01 ||
+    metrics.clickRate >= 0.01 ||
+    (analysis?.labels || []).includes("高價值轉換型內容");
 }
 
 function dashboardHighPerformingPostCount() {
-  const strongMetrics = mockData.socialMetrics.filter((metric) => engagementRate(metric) >= 6 || metricRate(metric, "shares") >= 0.4 || metricRate(metric, "comments") >= 0.25).length;
-  const strongQuestions = mockData.questions.filter((question) => question.performance === "高" || question.status === "高效題").length;
-  return strongMetrics + strongQuestions || 2;
+  const analyses = [...savedPostAnalyses];
+  if (postAnalysisResult && !analyses.some((analysis) => analysis.savedAt === postAnalysisResult.savedAt)) {
+    analyses.unshift(postAnalysisResult);
+  }
+  return analyses.filter((analysis) => {
+    const dateValue = analysis?.data?.postDate || analysis?.savedAt;
+    return isCurrentWeekDate(dateValue) && isHighPerformingAnalysis(analysis);
+  }).length;
 }
 
 function parseActivityDateTime(value) {
