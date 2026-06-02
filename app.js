@@ -335,6 +335,21 @@ async function requestJson(url, options = {}) {
   return payload;
 }
 
+function isGitHubPagesMode() {
+  return location.hostname.endsWith("github.io");
+}
+
+function loadMoviesFromLocalStorage() {
+  mockData.movies = readStorage(storageKeys.movies, mockData.movies).map((movie) => ({
+    ...movie,
+    releaseStatus: movieReleaseStatusOverrides[movie.id] || movie.releaseStatus || "未上映",
+  }));
+  moviesLoadedFromServer = true;
+  moviesLoading = false;
+  moviesError = movieDemoModeMessage;
+  ensureSelectedMovies();
+}
+
 function friendlyCopyError(error) {
   const message = error?.message || "";
   if (message.includes("quota") || message.includes("429") || message.includes("Billing") || message.includes("額度")) {
@@ -348,6 +363,11 @@ function friendlyCopyError(error) {
 
 async function loadMoviesFromServer(force = false) {
   if (moviesLoading || (moviesLoadedFromServer && !force)) return;
+  if (isGitHubPagesMode()) {
+    loadMoviesFromLocalStorage();
+    render();
+    return;
+  }
   moviesLoading = true;
   moviesError = "";
   render();
@@ -361,13 +381,7 @@ async function loadMoviesFromServer(force = false) {
     moviesLoadedFromServer = true;
     ensureSelectedMovies();
   } catch (error) {
-    mockData.movies = readStorage(storageKeys.movies, mockData.movies).map((movie) => ({
-      ...movie,
-      releaseStatus: movieReleaseStatusOverrides[movie.id] || movie.releaseStatus || "未上映",
-    }));
-    moviesLoadedFromServer = true;
-    moviesError = movieDemoModeMessage;
-    ensureSelectedMovies();
+    loadMoviesFromLocalStorage();
   } finally {
     moviesLoading = false;
     render();
@@ -429,6 +443,10 @@ function moviePayloadFromForm(formData) {
 
 async function saveMovieToServer(movieData) {
   const editingMovie = mockData.movies.find((movie) => movie.id === editingMovieId);
+  if (isGitHubPagesMode()) {
+    saveMovieLocally(movieData, editingMovie);
+    return;
+  }
   const url = editingMovie ? `/api/movies/${encodeURIComponent(editingMovie.id)}` : "/api/movies";
   try {
     const payload = await requestJson(url, { method: editingMovie ? "PATCH" : "POST", body: JSON.stringify(movieData) });
@@ -439,43 +457,55 @@ async function saveMovieToServer(movieData) {
     }
     await loadMoviesFromServer(true);
   } catch (error) {
-    const localMovie = {
-      ...(editingMovie || {}),
-      id: editingMovie?.id || `mov-${Date.now()}`,
-      ...movieData,
-      phase: editingMovie?.phase || "策略規劃",
-      owner: editingMovie?.owner || "未指派",
-      progress: editingMovie?.progress ?? 10,
-      color: editingMovie?.color || "#234a8f",
-    };
-    if (editingMovie) Object.assign(editingMovie, localMovie);
-    else mockData.movies.push(localMovie);
-    movieReleaseStatusOverrides[localMovie.id] = movieData.releaseStatus || "未上映";
-    writeStorage(storageKeys.movieReleaseStatuses, movieReleaseStatusOverrides);
-    writeStorage(storageKeys.movies, mockData.movies);
-    moviesLoadedFromServer = true;
-    moviesError = movieDemoModeMessage;
-    ensureSelectedMovies();
+    saveMovieLocally(movieData, editingMovie);
   }
 }
 
 async function deleteMovieFromServer(movieId) {
+  if (isGitHubPagesMode()) {
+    deleteMovieLocally(movieId);
+    return;
+  }
   try {
     await requestJson(`/api/movies/${encodeURIComponent(movieId)}`, { method: "DELETE" });
     delete movieCoverPreviews[movieId];
     writeStorage(storageKeys.covers, movieCoverPreviews);
     await loadMoviesFromServer(true);
   } catch (error) {
-    mockData.movies = mockData.movies.filter((movie) => movie.id !== movieId);
-    delete movieReleaseStatusOverrides[movieId];
-    delete movieCoverPreviews[movieId];
-    writeStorage(storageKeys.movies, mockData.movies);
-    writeStorage(storageKeys.movieReleaseStatuses, movieReleaseStatusOverrides);
-    writeStorage(storageKeys.covers, movieCoverPreviews);
-    moviesLoadedFromServer = true;
-    moviesError = movieDemoModeMessage;
-    ensureSelectedMovies();
+    deleteMovieLocally(movieId);
   }
+}
+
+function saveMovieLocally(movieData, editingMovie) {
+  const localMovie = {
+    ...(editingMovie || {}),
+    id: editingMovie?.id || `mov-${Date.now()}`,
+    ...movieData,
+    phase: editingMovie?.phase || "策略規劃",
+    owner: editingMovie?.owner || "未指派",
+    progress: editingMovie?.progress ?? 10,
+    color: editingMovie?.color || "#234a8f",
+  };
+  if (editingMovie) Object.assign(editingMovie, localMovie);
+  else mockData.movies.push(localMovie);
+  movieReleaseStatusOverrides[localMovie.id] = movieData.releaseStatus || "未上映";
+  writeStorage(storageKeys.movieReleaseStatuses, movieReleaseStatusOverrides);
+  writeStorage(storageKeys.movies, mockData.movies);
+  moviesLoadedFromServer = true;
+  moviesError = movieDemoModeMessage;
+  ensureSelectedMovies();
+}
+
+function deleteMovieLocally(movieId) {
+  mockData.movies = mockData.movies.filter((movie) => movie.id !== movieId);
+  delete movieReleaseStatusOverrides[movieId];
+  delete movieCoverPreviews[movieId];
+  writeStorage(storageKeys.movies, mockData.movies);
+  writeStorage(storageKeys.movieReleaseStatuses, movieReleaseStatusOverrides);
+  writeStorage(storageKeys.covers, movieCoverPreviews);
+  moviesLoadedFromServer = true;
+  moviesError = movieDemoModeMessage;
+  ensureSelectedMovies();
 }
 
 function renderNav(activeId) {
