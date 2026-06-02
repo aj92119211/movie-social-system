@@ -3,3 +3,4 @@
 .env.*.local
 OPENAI_API_KEY*.txt
 node_modules/
+dist/
