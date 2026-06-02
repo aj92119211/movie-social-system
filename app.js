@@ -370,7 +370,7 @@ function friendlyCopyError(error) {
     return "OpenAI API 額度不足或付款方案尚未啟用，請到 OpenAI 後台檢查用量與 Billing。";
   }
   if (message.includes("API Key") || message.includes("401") || message.includes("invalid_api_key")) {
-    return "OpenAI API Key 無效或尚未設定。若在 Render 上使用，請到 Environment Variables 檢查 OPENAI_API_KEY；若在本機使用，請檢查 .env.local。";
+    return message;
   }
   return message || "文案生成失敗，請稍後再試。";
 }

@@ -303,7 +303,8 @@ function normalizeCopyPayload(value) {
 
 function openAiErrorMessage(statusCode, data) {
   if (statusCode === 401) {
-    return "OpenAI API Key 無效，請檢查 Render Environment Variables 的 OPENAI_API_KEY；本機開發時請檢查 .env.local。";
+    const code = data?.error?.code || data?.error?.type || "unauthorized";
+    return `OpenAI 拒絕這把 API Key（${code}）。請重新產生一把新的 OpenAI API key，填到 Render 的 OPENAI_API_KEY 後重新部署。`;
   }
   if (statusCode === 429) {
     return "OpenAI API 額度不足或付款方案尚未啟用，請到 OpenAI 後台檢查用量與 Billing。";
@@ -425,6 +426,42 @@ function configStatus(request, response) {
     openaiKeyLength: openaiApiKey.length,
     openaiModel: envValue("OPENAI_MODEL") || "gpt-4.1-mini",
   });
+}
+
+async function openaiStatus(request, response) {
+  const openaiApiKey = envValue("OPENAI_API_KEY");
+  if (!openaiApiKey) {
+    sendJson(response, 200, {
+      openaiKeySet: false,
+      ok: false,
+      status: 0,
+      message: "Render 沒有讀到 OPENAI_API_KEY。",
+    });
+    return;
+  }
+
+  try {
+    const openaiResponse = await fetch("https://api.openai.com/v1/models", {
+      headers: { Authorization: `Bearer ${openaiApiKey}` },
+    });
+    const data = await openaiResponse.json().catch(() => ({}));
+    sendJson(response, 200, {
+      openaiKeySet: true,
+      ok: openaiResponse.ok,
+      status: openaiResponse.status,
+      errorCode: data?.error?.code || "",
+      errorType: data?.error?.type || "",
+      errorMessage: data?.error?.message || "",
+      openaiModel: envValue("OPENAI_MODEL") || "gpt-4.1-mini",
+    });
+  } catch (error) {
+    sendJson(response, 500, {
+      openaiKeySet: true,
+      ok: false,
+      status: 0,
+      message: error.message || "無法連線到 OpenAI。",
+    });
+  }
 }
 
 function detectSocialPlatform(linkUrl) {
@@ -558,6 +595,11 @@ const server = http.createServer((request, response) => {
 
   if (request.method === "GET" && url.pathname === "/api/config-status") {
     configStatus(request, response);
+    return;
+  }
+
+  if (request.method === "GET" && url.pathname === "/api/openai-status") {
+    openaiStatus(request, response);
     return;
   }
 
