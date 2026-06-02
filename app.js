@@ -1,5 +1,6 @@
 ﻿const storageKeys = {
   covers: "movieSocialOps.movieCovers",
+  movies: "movieSocialOps.movies",
   movieReleaseStatuses: "movieSocialOps.movieReleaseStatuses",
   activities: "movieSocialOps.activities",
   assets: "movieSocialOps.assets",
@@ -355,10 +356,17 @@ async function loadMoviesFromServer(force = false) {
       ...movie,
       releaseStatus: movieReleaseStatusOverrides[movie.id] || movie.releaseStatus || "未上映",
     }));
+    writeStorage(storageKeys.movies, mockData.movies);
     moviesLoadedFromServer = true;
     ensureSelectedMovies();
   } catch (error) {
-    moviesError = error.message;
+    mockData.movies = readStorage(storageKeys.movies, mockData.movies).map((movie) => ({
+      ...movie,
+      releaseStatus: movieReleaseStatusOverrides[movie.id] || movie.releaseStatus || "未上映",
+    }));
+    moviesLoadedFromServer = true;
+    moviesError = `${error.message}。目前改用瀏覽器暫存資料，GitHub Pages 不支援後端 API。`;
+    ensureSelectedMovies();
   } finally {
     moviesLoading = false;
     render();
@@ -421,20 +429,52 @@ function moviePayloadFromForm(formData) {
 async function saveMovieToServer(movieData) {
   const editingMovie = mockData.movies.find((movie) => movie.id === editingMovieId);
   const url = editingMovie ? `/api/movies/${encodeURIComponent(editingMovie.id)}` : "/api/movies";
-  const payload = await requestJson(url, { method: editingMovie ? "PATCH" : "POST", body: JSON.stringify(movieData) });
-  const movieId = editingMovie?.id || payload.movie?.id;
-  if (movieId) {
-    movieReleaseStatusOverrides[movieId] = movieData.releaseStatus || "未上映";
+  try {
+    const payload = await requestJson(url, { method: editingMovie ? "PATCH" : "POST", body: JSON.stringify(movieData) });
+    const movieId = editingMovie?.id || payload.movie?.id;
+    if (movieId) {
+      movieReleaseStatusOverrides[movieId] = movieData.releaseStatus || "未上映";
+      writeStorage(storageKeys.movieReleaseStatuses, movieReleaseStatusOverrides);
+    }
+    await loadMoviesFromServer(true);
+  } catch (error) {
+    const localMovie = {
+      ...(editingMovie || {}),
+      id: editingMovie?.id || `mov-${Date.now()}`,
+      ...movieData,
+      phase: editingMovie?.phase || "策略規劃",
+      owner: editingMovie?.owner || "未指派",
+      progress: editingMovie?.progress ?? 10,
+      color: editingMovie?.color || "#234a8f",
+    };
+    if (editingMovie) Object.assign(editingMovie, localMovie);
+    else mockData.movies.push(localMovie);
+    movieReleaseStatusOverrides[localMovie.id] = movieData.releaseStatus || "未上映";
     writeStorage(storageKeys.movieReleaseStatuses, movieReleaseStatusOverrides);
+    writeStorage(storageKeys.movies, mockData.movies);
+    moviesLoadedFromServer = true;
+    moviesError = `${error.message}。目前改用瀏覽器暫存資料，GitHub Pages 不支援後端 API。`;
+    ensureSelectedMovies();
   }
-  await loadMoviesFromServer(true);
 }
 
 async function deleteMovieFromServer(movieId) {
-  await requestJson(`/api/movies/${encodeURIComponent(movieId)}`, { method: "DELETE" });
-  delete movieCoverPreviews[movieId];
-  writeStorage(storageKeys.covers, movieCoverPreviews);
-  await loadMoviesFromServer(true);
+  try {
+    await requestJson(`/api/movies/${encodeURIComponent(movieId)}`, { method: "DELETE" });
+    delete movieCoverPreviews[movieId];
+    writeStorage(storageKeys.covers, movieCoverPreviews);
+    await loadMoviesFromServer(true);
+  } catch (error) {
+    mockData.movies = mockData.movies.filter((movie) => movie.id !== movieId);
+    delete movieReleaseStatusOverrides[movieId];
+    delete movieCoverPreviews[movieId];
+    writeStorage(storageKeys.movies, mockData.movies);
+    writeStorage(storageKeys.movieReleaseStatuses, movieReleaseStatusOverrides);
+    writeStorage(storageKeys.covers, movieCoverPreviews);
+    moviesLoadedFromServer = true;
+    moviesError = `${error.message}。目前改用瀏覽器暫存資料，GitHub Pages 不支援後端 API。`;
+    ensureSelectedMovies();
+  }
 }
 
 function renderNav(activeId) {
@@ -1908,6 +1948,7 @@ document.addEventListener("submit", async (event) => {
   }
 });
 
+mockData.movies = readStorage(storageKeys.movies, mockData.movies);
 mockData.assets = readStorage(storageKeys.assets, mockData.assets);
 mockData.schedules = readStorage(storageKeys.schedules, mockData.schedules);
 mockData.activities = readStorage(storageKeys.activities, mockData.activities);
