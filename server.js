@@ -299,7 +299,7 @@ function normalizeCopyPayload(value) {
 
 function openAiErrorMessage(statusCode, data) {
   if (statusCode === 401) {
-    return "OpenAI API Key 無效，請檢查 .env.local 的 OPENAI_API_KEY。";
+    return "OpenAI API Key 無效，請檢查 Render Environment Variables 的 OPENAI_API_KEY；本機開發時請檢查 .env.local。";
   }
   if (statusCode === 429) {
     return "OpenAI API 額度不足或付款方案尚未啟用，請到 OpenAI 後台檢查用量與 Billing。";
