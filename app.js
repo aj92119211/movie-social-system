@@ -173,6 +173,7 @@ const statusClass = { 已通過: "green", 已排程: "green", 已發布: "green"
 let moviesLoadedFromServer = false;
 let moviesLoading = false;
 let moviesError = "";
+const movieDemoModeMessage = "目前為 GitHub Pages 展示模式，電影資料會暫存在這台瀏覽器，不會永久同步到 Supabase。";
 let isMovieModalOpen = false;
 let editingMovieId = null;
 let movieReleaseStatusOverrides = {};
@@ -365,7 +366,7 @@ async function loadMoviesFromServer(force = false) {
       releaseStatus: movieReleaseStatusOverrides[movie.id] || movie.releaseStatus || "未上映",
     }));
     moviesLoadedFromServer = true;
-    moviesError = `${error.message}。目前改用瀏覽器暫存資料，GitHub Pages 不支援後端 API。`;
+    moviesError = movieDemoModeMessage;
     ensureSelectedMovies();
   } finally {
     moviesLoading = false;
@@ -453,7 +454,7 @@ async function saveMovieToServer(movieData) {
     writeStorage(storageKeys.movieReleaseStatuses, movieReleaseStatusOverrides);
     writeStorage(storageKeys.movies, mockData.movies);
     moviesLoadedFromServer = true;
-    moviesError = `${error.message}。目前改用瀏覽器暫存資料，GitHub Pages 不支援後端 API。`;
+    moviesError = movieDemoModeMessage;
     ensureSelectedMovies();
   }
 }
@@ -472,7 +473,7 @@ async function deleteMovieFromServer(movieId) {
     writeStorage(storageKeys.movieReleaseStatuses, movieReleaseStatusOverrides);
     writeStorage(storageKeys.covers, movieCoverPreviews);
     moviesLoadedFromServer = true;
-    moviesError = `${error.message}。目前改用瀏覽器暫存資料，GitHub Pages 不支援後端 API。`;
+    moviesError = movieDemoModeMessage;
     ensureSelectedMovies();
   }
 }
@@ -585,7 +586,7 @@ function dashboard() {
 
 function moviesPage() {
   return `
-    ${moviesError ? `<div class="task-item" style="margin-bottom:16px"><strong>電影資料尚未連上 Supabase</strong><span class="muted">${escapeHtml(moviesError)}</span></div>` : ""}
+    ${moviesError ? `<div class="task-item" style="margin-bottom:16px"><strong>電影資料展示模式</strong><span class="muted">${escapeHtml(moviesError)}</span></div>` : ""}
     ${moviesLoading ? `<div class="task-item" style="margin-bottom:16px"><strong>讀取電影資料中...</strong><span class="muted">正在從 Supabase 載入 movies 資料表</span></div>` : ""}
     <div class="toolbar">
       <button class="primary-button" type="button" data-action="open-movie-modal">新增電影</button>
