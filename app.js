@@ -190,6 +190,7 @@ let editingQuestionId = null;
 let isQuestionScheduleModalOpen = false;
 let schedulingQuestionId = null;
 let questionAiResult = null;
+let isQuestionAiGenerating = false;
 let isMetricModalOpen = false;
 let editingMetricPlatform = null;
 let analyticsReport = null;
@@ -849,6 +850,60 @@ function buildMockCopyResult(movie, focus) {
   };
 }
 
+function fallbackQuestionAiResult(question, mode) {
+  if (mode === "rewrite") {
+    return {
+      title: "AI 改寫結果",
+      note: "展示結果，可複製後新增到題庫。",
+      items: [
+        { title: "IG 限動版", text: `${question.content} 用投票貼紙選出你的答案！` },
+        { title: "Threads 版", text: `${question.content} 想聽大家的直覺答案。` },
+        { title: "Facebook 版", text: `${question.content} 歡迎留言分享你的看法。` },
+        { title: "Reels 字卡版", text: `${question.content} 3 秒內回答，留言見。` },
+      ],
+    };
+  }
+  return {
+    title: "AI 相似題",
+    note: "展示結果，可複製後新增到題庫。",
+    items: Array.from({ length: 5 }, (_, index) => ({
+      title: `相似題 ${index + 1}`,
+      text: `${question.content.replace("你", "大家")} 如果換一種角度，你會怎麼回答？`,
+    })),
+  };
+}
+
+async function generateQuestionAiResult(question, mode) {
+  isQuestionAiGenerating = true;
+  questionAiResult = {
+    title: mode === "rewrite" ? "AI 改寫中" : "AI 產生相似題中",
+    note: "請稍候，正在產生內容。",
+    items: [{ title: "處理中", text: "OpenAI 正在依題目內容產生結果。" }],
+  };
+  render();
+  try {
+    if (isGitHubPagesMode()) {
+      questionAiResult = fallbackQuestionAiResult(question, mode);
+    } else {
+      const payload = await requestJson("/api/generate-question-tool", {
+        method: "POST",
+        body: JSON.stringify({ mode, question }),
+      });
+      questionAiResult = {
+        title: mode === "rewrite" ? "AI 改寫結果" : "AI 相似題",
+        note: "OpenAI 產生結果，可複製後新增到題庫。",
+        items: payload.items || [],
+      };
+    }
+  } catch (error) {
+    questionAiResult = fallbackQuestionAiResult(question, mode);
+    questionAiResult.note = `${friendlyCopyError(error)} 目前先顯示展示結果。`;
+  } finally {
+    isQuestionAiGenerating = false;
+    render();
+  }
+}
+
 function copyPage() {
   const selectedMovie = getSelectedCopyMovie();
   const generatedHtml = generatedCopyResult
@@ -961,6 +1016,7 @@ function questionSelect(name, value, options, label) {
 
 function questionCard(question) {
   const highClass = question.performance === "高" ? " question-card-high" : "";
+  const usedButtonText = question.status === "已使用" ? "取消已使用" : "標記已使用";
   return `
     <article class="card question-card${highClass}">
       <div class="card-body">
@@ -990,7 +1046,7 @@ function questionCard(question) {
           <button class="secondary-button" type="button" data-action="rewrite-question" data-question-id="${question.id}">AI 改寫</button>
           <button class="secondary-button" type="button" data-action="similar-question" data-question-id="${question.id}">產生相似題</button>
           <button class="primary-button" type="button" data-action="schedule-question" data-question-id="${question.id}">加入排程</button>
-          <button class="secondary-button" type="button" data-action="mark-question-used" data-question-id="${question.id}">標記已使用</button>
+          <button class="secondary-button" type="button" data-action="mark-question-used" data-question-id="${question.id}">${usedButtonText}</button>
           <button class="secondary-button" type="button" data-action="mark-question-high" data-question-id="${question.id}">標記高效題</button>
           <button class="secondary-button" type="button" data-action="edit-question" data-question-id="${question.id}">編輯</button>
           <button class="secondary-button" type="button" data-action="delete-question" data-question-id="${question.id}">刪除</button>
@@ -1039,7 +1095,7 @@ function questionScheduleModal() {
 
 function questionAiPanel() {
   if (!questionAiResult) return "";
-  return `<section class="card question-ai-panel"><div class="card-header"><div><h2>${escapeHtml(questionAiResult.title)}</h2><p>展示模式結果，可複製後新增到題庫。</p></div></div><div class="card-body list">${questionAiResult.items.map((item) => `<div class="copy-card"><strong>${escapeHtml(item.title)}</strong><p>${escapeHtml(item.text)}</p></div>`).join("")}</div></section>`;
+  return `<section class="card question-ai-panel"><div class="card-header"><div><h2>${escapeHtml(questionAiResult.title)}</h2><p>${escapeHtml(questionAiResult.note || "AI 產生結果，可複製後新增到題庫。")}</p></div></div><div class="card-body list">${questionAiResult.items.map((item) => `<div class="copy-card"><strong>${escapeHtml(item.title)}</strong><p>${escapeHtml(item.text)}</p></div>`).join("")}</div></section>`;
 }
 
 function reviewPage() {
@@ -1051,7 +1107,7 @@ function reviewPage() {
         <h2>互動問答題庫</h2>
         <p>管理 IG 限動、Threads、Facebook、Reels 等社群互動題</p>
       </div>
-      <div class="meta-row"><button class="primary-button" type="button" data-action="open-question-modal">新增題目</button><button class="secondary-button" type="button" data-action="ai-generate-questions">AI 生成題目</button></div>
+      <div class="meta-row"><button class="primary-button" type="button" data-action="open-question-modal">新增題目</button><button class="secondary-button" type="button" data-action="ai-generate-questions" ${isQuestionAiGenerating ? "disabled" : ""}>${isQuestionAiGenerating ? "生成中..." : "AI 生成題目"}</button></div>
     </section>
     <div class="grid stats-grid question-stats">${questionStats().map(([label, value, note]) => `<article class="card stat-card"><span>${label}</span><strong>${value}</strong><small>${note}</small></article>`).join("")}</div>
     <section class="card question-filter-card"><div class="card-body">
@@ -1760,9 +1816,15 @@ document.addEventListener("click", async (event) => {
   if (action === "mark-question-used") {
     const question = mockData.questions.find((item) => item.id === actionElement.dataset.questionId);
     if (question) {
-      question.uses += 1;
-      question.lastUsed = formatWeekDate(new Date());
-      question.status = "已使用";
+      if (question.status === "已使用") {
+        question.uses = Math.max(0, Number(question.uses || 0) - 1);
+        question.lastUsed = "";
+        question.status = "可使用";
+      } else {
+        question.uses = Number(question.uses || 0) + 1;
+        question.lastUsed = formatWeekDate(new Date());
+        question.status = "已使用";
+      }
       writeStorage(storageKeys.questions, mockData.questions);
       render();
     }
@@ -1815,26 +1877,7 @@ document.addEventListener("click", async (event) => {
   if (action === "rewrite-question" || action === "similar-question") {
     const question = mockData.questions.find((item) => item.id === actionElement.dataset.questionId);
     if (!question) return;
-    if (action === "rewrite-question") {
-      questionAiResult = {
-        title: "AI 改寫結果",
-        items: [
-          { title: "IG 限動版", text: `${question.content} 用投票貼紙選出你的答案！` },
-          { title: "Threads 版", text: `${question.content} 想聽大家的直覺答案。` },
-          { title: "Facebook 版", text: `${question.content} 歡迎留言分享你的看法。` },
-          { title: "Reels 字卡版", text: `${question.content} 3 秒內回答，留言見。` },
-        ],
-      };
-    } else {
-      questionAiResult = {
-        title: "AI 相似題",
-        items: Array.from({ length: 5 }, (_, index) => ({
-          title: `相似題 ${index + 1}`,
-          text: `${question.content.replace("你", "大家")} 如果換一種角度，你會怎麼回答？`,
-        })),
-      };
-    }
-    render();
+    generateQuestionAiResult(question, action === "rewrite-question" ? "rewrite" : "similar");
   }
   if (action === "open-metric-modal") {
     isMetricModalOpen = true;

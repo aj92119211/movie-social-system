@@ -301,6 +301,17 @@ function normalizeCopyPayload(value) {
   };
 }
 
+function normalizeQuestionToolPayload(value) {
+  return {
+    items: Array.isArray(value?.items)
+      ? value.items.map((item, index) => ({
+          title: String(item?.title || `結果 ${index + 1}`),
+          text: String(item?.text || ""),
+        })).filter((item) => item.text)
+      : [],
+  };
+}
+
 function openAiErrorMessage(statusCode, data) {
   if (statusCode === 401) {
     const code = data?.error?.code || data?.error?.type || "unauthorized";
@@ -410,6 +421,96 @@ async function generateCopy(request, response) {
   } catch (error) {
     sendJson(response, error.statusCode || 500, {
       error: error.message || "文案生成失敗，請稍後再試。",
+    });
+  }
+}
+
+async function generateQuestionTool(request, response) {
+  const openaiApiKey = envValue("OPENAI_API_KEY");
+  if (!openaiApiKey) {
+    sendJson(response, 500, { error: "尚未設定 OpenAI API Key" });
+    return;
+  }
+
+  let body;
+  try {
+    body = await readJsonBody(request);
+  } catch (error) {
+    sendJson(response, 400, { error: error.message });
+    return;
+  }
+
+  const mode = body.mode === "similar" ? "similar" : "rewrite";
+  const question = body.question || {};
+  const prompt = [
+    `任務：${mode === "rewrite" ? "將互動題改寫成不同平台版本" : "根據原題產生 5 題相似互動題"}`,
+    `原題：${question.content || "未提供"}`,
+    `電影專案：${question.movieTitle || question.movieName || "未指定"}`,
+    `題型：${question.type || "未提供"}`,
+    `平台：${question.platform || "未提供"}`,
+    `語氣：${question.tone || "未提供"}`,
+    `宣傳階段：${question.phase || "未提供"}`,
+    `建議 CTA：${question.cta || "未提供"}`,
+    `備註：${question.note || "無"}`,
+  ].join("\n");
+
+  try {
+    const openaiResponse = await fetch("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${openaiApiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: envValue("OPENAI_MODEL") || "gpt-4.1-mini",
+        instructions:
+          mode === "rewrite"
+            ? "你是影視社群互動題企劃。請用繁體中文，把原互動題改寫成 IG 限動版、Threads 版、Facebook 版、Reels 字卡版。保持不劇透、自然、適合小編直接使用。只回傳符合 schema 的 JSON。"
+            : "你是影視社群互動題企劃。請用繁體中文，根據原互動題產生 5 題相似題。每題角度要不同、適合社群互動、不劇透。只回傳符合 schema 的 JSON。",
+        input: prompt,
+        text: {
+          format: {
+            type: "json_schema",
+            name: "movie_question_tool",
+            strict: true,
+            schema: {
+              type: "object",
+              additionalProperties: false,
+              properties: {
+                items: {
+                  type: "array",
+                  minItems: mode === "rewrite" ? 4 : 5,
+                  maxItems: mode === "rewrite" ? 4 : 5,
+                  items: {
+                    type: "object",
+                    additionalProperties: false,
+                    properties: {
+                      title: { type: "string" },
+                      text: { type: "string" },
+                    },
+                    required: ["title", "text"],
+                  },
+                },
+              },
+              required: ["items"],
+            },
+          },
+        },
+      }),
+    });
+
+    const data = await openaiResponse.json();
+    if (!openaiResponse.ok) {
+      sendJson(response, openaiResponse.status, { error: openAiErrorMessage(openaiResponse.status, data) });
+      return;
+    }
+
+    const outputText = data.output_text || data.output?.flatMap((item) => item.content || []).find((item) => item.text)?.text;
+    const parsed = JSON.parse(outputText);
+    sendJson(response, 200, normalizeQuestionToolPayload(parsed));
+  } catch (error) {
+    sendJson(response, error.statusCode || 500, {
+      error: error.message || "互動題 AI 產生失敗，請稍後再試。",
     });
   }
 }
@@ -605,6 +706,11 @@ const server = http.createServer((request, response) => {
 
   if (request.method === "POST" && url.pathname === "/api/generate-copy") {
     generateCopy(request, response);
+    return;
+  }
+
+  if (request.method === "POST" && url.pathname === "/api/generate-question-tool") {
+    generateQuestionTool(request, response);
     return;
   }
 
