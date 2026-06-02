@@ -545,6 +545,30 @@ async function deleteMovieFromServer(movieId) {
   }
 }
 
+async function saveMovieCoverToServer(movieId, coverUrl) {
+  const movie = mockData.movies.find((item) => item.id === movieId);
+  if (!movie) return;
+  movie.coverUrl = coverUrl;
+  movieCoverPreviews[movieId] = coverUrl;
+  writeStorage(storageKeys.covers, movieCoverPreviews);
+  if (isGitHubPagesMode()) {
+    writeStorage(storageKeys.movies, mockData.movies);
+    return;
+  }
+  try {
+    await requestJson(`/api/movies/${encodeURIComponent(movieId)}`, {
+      method: "PATCH",
+      body: JSON.stringify({
+        ...movie,
+        coverUrl,
+      }),
+    });
+    await loadMoviesFromServer(true);
+  } catch (error) {
+    moviesError = error?.message ? `${movieSupabaseErrorMessage}（${error.message}）` : movieSupabaseErrorMessage;
+  }
+}
+
 function saveMovieLocally(movieData, editingMovie) {
   const localMovie = {
     ...(editingMovie || {}),
@@ -1688,8 +1712,7 @@ document.addEventListener("click", async (event) => {
     input.addEventListener("change", async () => {
       const file = input.files?.[0];
       if (!file) return;
-      movieCoverPreviews[actionElement.dataset.movieId] = await fileToDataUrl(file);
-      writeStorage(storageKeys.covers, movieCoverPreviews);
+      await saveMovieCoverToServer(actionElement.dataset.movieId, await fileToDataUrl(file));
       render();
     });
     input.click();

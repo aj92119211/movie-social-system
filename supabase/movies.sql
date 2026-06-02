@@ -40,3 +40,6 @@ create trigger movies_set_updated_at
 before update on public.movies
 for each row
 execute function public.set_updated_at();
+
+alter table public.movies
+add column if not exists cover_url text not null default '';

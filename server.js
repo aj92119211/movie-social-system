@@ -138,6 +138,7 @@ function mapMovieFromDb(row) {
     owner: row.owner || "未指派",
     progress: row.progress ?? 10,
     color: row.color || "#234a8f",
+    coverUrl: row.cover_url || "",
   };
 }
 
@@ -153,6 +154,7 @@ function mapMovieToDb(movie) {
     owner: movie.owner || "未指派",
     progress: movie.progress ?? 10,
     color: movie.color || "#234a8f",
+    cover_url: movie.coverUrl || "",
   };
 }
 
