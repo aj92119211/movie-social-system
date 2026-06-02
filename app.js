@@ -13,6 +13,15 @@
   copyFocus: "movieSocialOps.copyFocus",
 };
 
+const workflowStorageKinds = {
+  [storageKeys.assets]: "assets",
+  [storageKeys.schedules]: "schedules",
+  [storageKeys.activities]: "activities",
+  [storageKeys.questions]: "questions",
+  [storageKeys.metrics]: "socialMetrics",
+  [storageKeys.postAnalyses]: "postAnalyses",
+};
+
 const mockData = {
   movies: [],
   assets: [
@@ -227,6 +236,21 @@ function readStorage(key, fallback) {
 
 function writeStorage(key, value) {
   localStorage.setItem(key, JSON.stringify(value));
+  syncWorkflowStorage(key, value);
+}
+
+function writeLocalStorageOnly(key, value) {
+  localStorage.setItem(key, JSON.stringify(value));
+}
+
+function syncWorkflowStorage(key, value) {
+  const kind = workflowStorageKinds[key];
+  if (!kind || isGitHubPagesMode()) return;
+  fetch(`/api/workflow-data/${encodeURIComponent(kind)}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ data: value }),
+  }).catch(() => {});
 }
 
 function escapeHtml(value) {
@@ -337,6 +361,34 @@ async function requestJson(url, options = {}) {
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(payload.error || "請求失敗，請稍後再試。");
   return payload;
+}
+
+async function loadWorkflowDataFromServer() {
+  if (isGitHubPagesMode()) return;
+  try {
+    const payload = await requestJson("/api/workflow-data");
+    const collections = payload.collections || {};
+    mockData.assets = applyWorkflowCollection(storageKeys.assets, collections.assets, mockData.assets);
+    mockData.schedules = applyWorkflowCollection(storageKeys.schedules, collections.schedules, mockData.schedules);
+    mockData.activities = applyWorkflowCollection(storageKeys.activities, collections.activities, mockData.activities);
+    mockData.questions = applyWorkflowCollection(storageKeys.questions, collections.questions, mockData.questions);
+    mockData.socialMetrics = applyWorkflowCollection(storageKeys.metrics, collections.socialMetrics, mockData.socialMetrics);
+    savedPostAnalyses = applyWorkflowCollection(storageKeys.postAnalyses, collections.postAnalyses, savedPostAnalyses);
+    render();
+  } catch (error) {
+    console.warn("Workflow data sync failed", error);
+  }
+}
+
+function applyWorkflowCollection(storageKey, serverValue, currentValue) {
+  if (!Array.isArray(serverValue)) return currentValue;
+  const localValue = readStorage(storageKey, []);
+  if (!serverValue.length && localStorage.getItem(storageKey) && Array.isArray(localValue) && localValue.length) {
+    syncWorkflowStorage(storageKey, localValue);
+    return localValue;
+  }
+  writeLocalStorageOnly(storageKey, serverValue);
+  return serverValue;
 }
 
 function isGitHubPagesMode() {
@@ -2125,6 +2177,7 @@ mockData.socialMetrics = readStorage(storageKeys.metrics, mockData.socialMetrics
 savedPostAnalyses = readStorage(storageKeys.postAnalyses, savedPostAnalyses);
 movieReleaseStatusOverrides = readStorage(storageKeys.movieReleaseStatuses, movieReleaseStatusOverrides);
 render();
+loadWorkflowDataFromServer();
 
 
 

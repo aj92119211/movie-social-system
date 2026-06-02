@@ -291,6 +291,38 @@ async function handleMoviesApi(request, response, movieId) {
   }
 }
 
+const workflowCollectionKinds = new Set(["assets", "schedules", "activities", "questions", "socialMetrics", "postAnalyses"]);
+
+async function handleWorkflowDataApi(request, response, kind) {
+  try {
+    if (request.method === "GET" && !kind) {
+      const rows = await supabaseRequest("/workflow_collections?select=kind,data");
+      const collections = Object.fromEntries(workflowCollectionKinds.keys().map((item) => [item, []]));
+      for (const row of rows || []) {
+        if (workflowCollectionKinds.has(row.kind)) collections[row.kind] = Array.isArray(row.data) ? row.data : [];
+      }
+      sendJson(response, 200, { collections });
+      return;
+    }
+
+    if (request.method === "PUT" && kind && workflowCollectionKinds.has(kind)) {
+      const body = await readJsonBody(request);
+      const data = Array.isArray(body.data) ? body.data : [];
+      await supabaseRequest("/workflow_collections?on_conflict=kind", {
+        method: "POST",
+        headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
+        body: JSON.stringify({ kind, data }),
+      });
+      sendJson(response, 200, { ok: true });
+      return;
+    }
+
+    sendJson(response, 405, { error: "Method not allowed" });
+  } catch (error) {
+    sendJson(response, error.statusCode || 500, { error: error.message || "Workflow data API failed" });
+  }
+}
+
 function normalizeCopyPayload(value) {
   return {
     facebookPosts: Array.isArray(value?.facebookPosts) ? value.facebookPosts : [],
@@ -722,6 +754,17 @@ const server = http.createServer((request, response) => {
   if (url.pathname.startsWith("/api/movies/")) {
     const movieId = decodeURIComponent(url.pathname.replace("/api/movies/", ""));
     handleMoviesApi(request, response, movieId);
+    return;
+  }
+
+  if (url.pathname === "/api/workflow-data") {
+    handleWorkflowDataApi(request, response);
+    return;
+  }
+
+  if (url.pathname.startsWith("/api/workflow-data/")) {
+    const kind = decodeURIComponent(url.pathname.replace("/api/workflow-data/", ""));
+    handleWorkflowDataApi(request, response, kind);
     return;
   }
 

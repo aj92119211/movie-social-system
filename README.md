@@ -103,3 +103,13 @@ SOCIAL_ANALYTICS_API_KEY
 - `.env.local.example` 可以上傳，裡面只能放範例值。
 - 不要提交 `node_modules/`。
 - 不要提交任何含有真實 OpenAI、Supabase key 的文字檔。
+
+## Supabase 團隊共用資料
+
+除了電影資料的 `supabase/movies.sql`，如果要讓其他電腦也能共同編輯素材庫、社群排程、互動問答題庫、貼文數據分析與近期活動，請在 Supabase SQL Editor 另外執行：
+
+```text
+supabase/workflow_collections.sql
+```
+
+這會建立 `public.workflow_collections` 資料表。Render 正式網址會透過後端 API 讀寫這張表，讓不同電腦看到同一份資料。
