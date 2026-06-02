@@ -131,6 +131,24 @@ function handleAuthStatus(request, response) {
   });
 }
 
+async function syncStatus(request, response) {
+  try {
+    const movies = await supabaseRequest("/movies?select=id&limit=1000");
+    const collections = await supabaseRequest("/workflow_collections?select=kind,data");
+    const counts = Object.fromEntries((collections || []).map((row) => [row.kind, Array.isArray(row.data) ? row.data.length : 0]));
+    sendJson(response, 200, {
+      movies: Array.isArray(movies) ? movies.length : 0,
+      assets: counts.assets || 0,
+      schedules: counts.schedules || 0,
+      questions: counts.questions || 0,
+      activities: counts.activities || 0,
+      postAnalyses: counts.postAnalyses || 0,
+    });
+  } catch (error) {
+    sendJson(response, error.statusCode || 500, { error: error.message || "同步狀態讀取失敗。" });
+  }
+}
+
 function readJsonBody(request) {
   return new Promise((resolve, reject) => {
     let body = "";
@@ -840,6 +858,11 @@ const server = http.createServer((request, response) => {
 
   if (request.method === "GET" && url.pathname === "/api/openai-status") {
     openaiStatus(request, response);
+    return;
+  }
+
+  if (request.method === "GET" && url.pathname === "/api/sync-status") {
+    syncStatus(request, response);
     return;
   }
 

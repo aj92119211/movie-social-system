@@ -228,6 +228,8 @@ let authRequired = false;
 let isAuthenticated = false;
 let authError = "";
 let isAuthSubmitting = false;
+let workflowLastLoadedAt = 0;
+let moviesLastLoadedAt = 0;
 const movieCoverPreviews = readStorage(storageKeys.covers, {});
 
 function readStorage(key, fallback) {
@@ -404,6 +406,7 @@ async function checkAuthStatus() {
 
 async function loadWorkflowDataFromServer() {
   if (isGitHubPagesMode()) return;
+  workflowLastLoadedAt = Date.now();
   try {
     const payload = await requestJson("/api/workflow-data");
     const collections = payload.collections || {};
@@ -486,6 +489,7 @@ async function loadMoviesFromServer(force = false) {
     }));
     writeStorage(storageKeys.movies, mockData.movies);
     moviesLoadedFromServer = true;
+    moviesLastLoadedAt = Date.now();
     ensureSelectedMovies();
   } catch (error) {
     loadMoviesFallback(error?.message ? `${movieSupabaseErrorMessage}（${error.message}）` : movieSupabaseErrorMessage);
@@ -1671,7 +1675,8 @@ function render() {
   document.querySelector("#pageTitle").textContent = page.title;
   document.querySelector("#pageContent").innerHTML = renderers[page.id]();
   renderNav(page.id);
-  if (["movies", "assets", "copy", "review"].includes(page.id)) loadMoviesFromServer();
+  if (["movies", "assets", "copy", "review"].includes(page.id) && Date.now() - moviesLastLoadedAt > 5000) loadMoviesFromServer(true);
+  if (["assets", "schedule", "review", "analytics", "dashboard"].includes(page.id) && Date.now() - workflowLastLoadedAt > 5000) loadWorkflowDataFromServer();
 }
 
 window.addEventListener("hashchange", render);
