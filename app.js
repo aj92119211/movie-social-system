@@ -223,6 +223,10 @@ let copyFocusValue = localStorage.getItem(storageKeys.copyFocus) || "正式預�
 let isCopyGenerating = false;
 let copyGeneratorError = "";
 let generatedCopyResult = null;
+let authChecked = false;
+let authRequired = false;
+let isAuthenticated = false;
+let authError = "";
 const movieCoverPreviews = readStorage(storageKeys.covers, {});
 
 function readStorage(key, fallback) {
@@ -361,6 +365,40 @@ async function requestJson(url, options = {}) {
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(payload.error || "請求失敗，請稍後再試。");
   return payload;
+}
+
+function authPage() {
+  return `
+    <section class="auth-shell">
+      <form id="authForm" class="card auth-card">
+        <div class="card-body form-stack">
+          <div>
+            <p class="eyebrow">權限驗證</p>
+            <h2>請先登入</h2>
+            <p class="muted">輸入帳號密碼後才能檢視與編輯系統資料。</p>
+          </div>
+          <div class="field"><label>帳號</label><input class="input" name="username" autocomplete="username" required /></div>
+          <div class="field"><label>密碼</label><input class="input" name="password" type="password" autocomplete="current-password" required /></div>
+          <button class="primary-button" type="submit">登入</button>
+          ${authError ? `<p class="status red">${escapeHtml(authError)}</p>` : ""}
+        </div>
+      </form>
+    </section>`;
+}
+
+async function checkAuthStatus() {
+  try {
+    const payload = await requestJson("/api/auth-status");
+    authRequired = Boolean(payload.enabled);
+    isAuthenticated = !authRequired || Boolean(payload.authenticated);
+  } catch {
+    authRequired = false;
+    isAuthenticated = true;
+  } finally {
+    authChecked = true;
+    if (isAuthenticated && !isGitHubPagesMode()) loadWorkflowDataFromServer();
+    else render();
+  }
 }
 
 async function loadWorkflowDataFromServer() {
@@ -1588,6 +1626,18 @@ function analyticsPage() {
 const renderers = { dashboard, movies: moviesPage, assets: assetsPage, schedule: schedulePage, copy: copyPage, review: reviewPage, analytics: analyticsPage };
 
 function render() {
+  if (!authChecked) {
+    document.querySelector("#pageTitle").textContent = "系統登入";
+    document.querySelector("#pageContent").innerHTML = `<section class="card"><div class="card-body"><p class="muted">正在檢查登入狀態...</p></div></section>`;
+    renderNav("");
+    return;
+  }
+  if (authRequired && !isAuthenticated) {
+    document.querySelector("#pageTitle").textContent = "系統登入";
+    document.querySelector("#pageContent").innerHTML = authPage();
+    renderNav("");
+    return;
+  }
   const id = location.hash.replace("#", "") || "dashboard";
   const page = pages.find((item) => item.id === id) || pages[0];
   if (page.id !== "movies") {
@@ -1982,9 +2032,28 @@ document.addEventListener("click", async (event) => {
 });
 
 document.addEventListener("submit", async (event) => {
-  if (!["movieForm", "assetForm", "scheduleForm", "activityForm", "questionForm", "questionScheduleForm", "metricForm", "analyticsLinkForm", "manualAnalyticsForm", "postAnalysisForm"].includes(event.target.id)) return;
+  if (!["authForm", "movieForm", "assetForm", "scheduleForm", "activityForm", "questionForm", "questionScheduleForm", "metricForm", "analyticsLinkForm", "manualAnalyticsForm", "postAnalysisForm"].includes(event.target.id)) return;
   event.preventDefault();
   const formData = new FormData(event.target);
+
+  if (event.target.id === "authForm") {
+    authError = "";
+    try {
+      await requestJson("/api/login", {
+        method: "POST",
+        body: JSON.stringify({
+          username: formData.get("username"),
+          password: formData.get("password"),
+        }),
+      });
+      isAuthenticated = true;
+      await loadWorkflowDataFromServer();
+    } catch (error) {
+      authError = error.message || "登入失敗，請確認帳號密碼。";
+      render();
+    }
+    return;
+  }
 
   if (event.target.id === "postAnalysisForm") {
     postAnalysisResult = calculatePostAnalysis(formData);
@@ -2200,7 +2269,7 @@ mockData.socialMetrics = readStorage(storageKeys.metrics, mockData.socialMetrics
 savedPostAnalyses = readStorage(storageKeys.postAnalyses, savedPostAnalyses);
 movieReleaseStatusOverrides = readStorage(storageKeys.movieReleaseStatuses, movieReleaseStatusOverrides);
 render();
-loadWorkflowDataFromServer();
+checkAuthStatus();
 
 
 

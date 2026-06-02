@@ -1,10 +1,12 @@
 ﻿const http = require("node:http");
 const fs = require("node:fs");
 const path = require("node:path");
+const crypto = require("node:crypto");
 
 const rootDir = __dirname;
 const port = Number(process.env.PORT || 5173);
 const host = process.env.HOST || "0.0.0.0";
+const authSessions = new Set();
 
 loadEnvFile(path.join(rootDir, ".env.local"));
 
@@ -44,6 +46,89 @@ function sendJson(response, statusCode, payload) {
 
 function envValue(key) {
   return String(process.env[key] || "").trim();
+}
+
+function authConfig() {
+  return {
+    username: envValue("APP_AUTH_USERNAME"),
+    password: envValue("APP_AUTH_PASSWORD"),
+  };
+}
+
+function isAuthEnabled() {
+  const config = authConfig();
+  return Boolean(config.username && config.password);
+}
+
+function parseCookies(request) {
+  return Object.fromEntries(
+    String(request.headers.cookie || "")
+      .split(";")
+      .map((item) => item.trim())
+      .filter(Boolean)
+      .map((item) => {
+        const separatorIndex = item.indexOf("=");
+        return separatorIndex === -1 ? [item, ""] : [item.slice(0, separatorIndex), decodeURIComponent(item.slice(separatorIndex + 1))];
+      })
+  );
+}
+
+function isAuthenticated(request) {
+  if (!isAuthEnabled()) return true;
+  const token = parseCookies(request).wve_session;
+  return Boolean(token && authSessions.has(token));
+}
+
+function sendUnauthorized(response) {
+  sendJson(response, 401, { error: "請先登入後再使用系統。" });
+}
+
+async function handleAuthLogin(request, response) {
+  if (!isAuthEnabled()) {
+    sendJson(response, 200, { ok: true, enabled: false });
+    return;
+  }
+
+  let body;
+  try {
+    body = await readJsonBody(request);
+  } catch (error) {
+    sendJson(response, 400, { error: error.message });
+    return;
+  }
+
+  const config = authConfig();
+  if (String(body.username || "").trim() !== config.username || String(body.password || "") !== config.password) {
+    sendJson(response, 401, { error: "帳號或密碼錯誤。" });
+    return;
+  }
+
+  const token = crypto.randomUUID();
+  authSessions.add(token);
+  response.writeHead(200, {
+    "Content-Type": "application/json; charset=utf-8",
+    "Cache-Control": "no-store",
+    "Set-Cookie": `wve_session=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000`,
+  });
+  response.end(JSON.stringify({ ok: true, enabled: true }));
+}
+
+function handleAuthLogout(request, response) {
+  const token = parseCookies(request).wve_session;
+  if (token) authSessions.delete(token);
+  response.writeHead(200, {
+    "Content-Type": "application/json; charset=utf-8",
+    "Cache-Control": "no-store",
+    "Set-Cookie": "wve_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0",
+  });
+  response.end(JSON.stringify({ ok: true }));
+}
+
+function handleAuthStatus(request, response) {
+  sendJson(response, 200, {
+    enabled: isAuthEnabled(),
+    authenticated: isAuthenticated(request),
+  });
 }
 
 function readJsonBody(request) {
@@ -722,6 +807,26 @@ async function analyzeSocialLink(request, response) {
 }
 const server = http.createServer((request, response) => {
   const url = new URL(request.url, `http://${request.headers.host}`);
+
+  if (request.method === "GET" && url.pathname === "/api/auth-status") {
+    handleAuthStatus(request, response);
+    return;
+  }
+
+  if (request.method === "POST" && url.pathname === "/api/login") {
+    handleAuthLogin(request, response);
+    return;
+  }
+
+  if (request.method === "POST" && url.pathname === "/api/logout") {
+    handleAuthLogout(request, response);
+    return;
+  }
+
+  if (url.pathname.startsWith("/api/") && !isAuthenticated(request)) {
+    sendUnauthorized(response);
+    return;
+  }
 
   if (request.method === "POST" && url.pathname === "/api/analyze-social-link") {
     analyzeSocialLink(request, response);

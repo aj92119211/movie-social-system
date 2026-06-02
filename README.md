@@ -113,3 +113,16 @@ supabase/workflow_collections.sql
 ```
 
 這會建立 `public.workflow_collections` 資料表。Render 正式網址會透過後端 API 讀寫這張表，讓不同電腦看到同一份資料。
+
+## Render 登入保護
+
+如果要讓正式網站進入頁面前先輸入帳密，請在 Render 的 Environment Variables 新增：
+
+```text
+APP_AUTH_USERNAME
+APP_AUTH_PASSWORD
+```
+
+設定完成後按 Save，接著 Manual Deploy -> Deploy latest commit。之後使用 Render 網址時，系統會先顯示登入框，登入成功才會看到資料。
+
+注意：GitHub Pages 是純前端展示頁，無法做安全的後端登入保護；正式保護請使用 Render 網址。

@@ -249,6 +249,16 @@ textarea {
   padding: 26px 28px 36px;
 }
 
+.auth-shell {
+  min-height: min(620px, calc(100vh - 160px));
+  display: grid;
+  place-items: center;
+}
+
+.auth-card {
+  width: min(440px, 100%);
+}
+
 .grid {
   display: grid;
   gap: 16px;
