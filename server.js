@@ -42,6 +42,10 @@ function sendJson(response, statusCode, payload) {
   response.end(JSON.stringify(payload));
 }
 
+function envValue(key) {
+  return String(process.env[key] || "").trim();
+}
+
 function readJsonBody(request) {
   return new Promise((resolve, reject) => {
     let body = "";
@@ -109,8 +113,8 @@ function serveStatic(request, response) {
 }
 
 function requireSupabaseConfig() {
-  const url = process.env.SUPABASE_URL?.replace(/\/$/, "");
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const url = envValue("SUPABASE_URL").replace(/\/$/, "");
+  const key = envValue("SUPABASE_SERVICE_ROLE_KEY");
 
   if (!url || !key) {
     const error = new Error("缺少 Supabase 設定，請在 .env.local 設定 SUPABASE_URL 與 SUPABASE_SERVICE_ROLE_KEY。");
@@ -308,7 +312,8 @@ function openAiErrorMessage(statusCode, data) {
 }
 
 async function generateCopy(request, response) {
-  if (!process.env.OPENAI_API_KEY) {
+  const openaiApiKey = envValue("OPENAI_API_KEY");
+  if (!openaiApiKey) {
     sendJson(response, 500, { error: "尚未設定 OpenAI API Key" });
     return;
   }
@@ -337,11 +342,11 @@ async function generateCopy(request, response) {
     const openaiResponse = await fetch("https://api.openai.com/v1/responses", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+        Authorization: `Bearer ${openaiApiKey}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: process.env.OPENAI_MODEL || "gpt-4.1-mini",
+        model: envValue("OPENAI_MODEL") || "gpt-4.1-mini",
         instructions:
           "你是電影社群行銷文案企劃。請使用繁體中文，根據電影資料與溝通重點，一次產生 Facebook、IG、Threads 三個平台可使用的文章，並保留限時互動題與留言回覆建議。內容要自然、有宣傳節奏，避免劇透。只回傳符合 schema 的 JSON。",
         input: prompt,
@@ -406,6 +411,20 @@ async function generateCopy(request, response) {
       error: error.message || "文案生成失敗，請稍後再試。",
     });
   }
+}
+
+function configStatus(request, response) {
+  const openaiApiKey = envValue("OPENAI_API_KEY");
+  const supabaseUrl = envValue("SUPABASE_URL");
+  const supabaseKey = envValue("SUPABASE_SERVICE_ROLE_KEY");
+  sendJson(response, 200, {
+    supabaseUrlSet: Boolean(supabaseUrl),
+    supabaseKeySet: Boolean(supabaseKey),
+    openaiKeySet: Boolean(openaiApiKey),
+    openaiKeyPrefix: openaiApiKey ? openaiApiKey.slice(0, 8) : "",
+    openaiKeyLength: openaiApiKey.length,
+    openaiModel: envValue("OPENAI_MODEL") || "gpt-4.1-mini",
+  });
 }
 
 function detectSocialPlatform(linkUrl) {
@@ -534,6 +553,11 @@ const server = http.createServer((request, response) => {
 
   if (request.method === "POST" && url.pathname === "/api/analyze-social-link") {
     analyzeSocialLink(request, response);
+    return;
+  }
+
+  if (request.method === "GET" && url.pathname === "/api/config-status") {
+    configStatus(request, response);
     return;
   }
 
