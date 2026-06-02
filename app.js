@@ -227,6 +227,7 @@ let authChecked = false;
 let authRequired = false;
 let isAuthenticated = false;
 let authError = "";
+let isAuthSubmitting = false;
 const movieCoverPreviews = readStorage(storageKeys.covers, {});
 
 function readStorage(key, fallback) {
@@ -379,7 +380,7 @@ function authPage() {
           </div>
           <div class="field"><label>帳號</label><input class="input" name="username" autocomplete="username" required /></div>
           <div class="field"><label>密碼</label><input class="input" name="password" type="password" autocomplete="current-password" required /></div>
-          <button class="primary-button" type="submit">登入</button>
+          <button class="primary-button" type="submit" ${isAuthSubmitting ? "disabled" : ""}>${isAuthSubmitting ? "登入中..." : "登入"}</button>
           ${authError ? `<p class="status red">${escapeHtml(authError)}</p>` : ""}
         </div>
       </form>
@@ -415,6 +416,7 @@ async function loadWorkflowDataFromServer() {
     render();
   } catch (error) {
     console.warn("Workflow data sync failed", error);
+    render();
   }
 }
 
@@ -2038,6 +2040,8 @@ document.addEventListener("submit", async (event) => {
 
   if (event.target.id === "authForm") {
     authError = "";
+    isAuthSubmitting = true;
+    render();
     try {
       await requestJson("/api/login", {
         method: "POST",
@@ -2047,8 +2051,11 @@ document.addEventListener("submit", async (event) => {
         }),
       });
       isAuthenticated = true;
-      await loadWorkflowDataFromServer();
+      isAuthSubmitting = false;
+      render();
+      loadWorkflowDataFromServer();
     } catch (error) {
+      isAuthSubmitting = false;
       authError = error.message || "登入失敗，請確認帳號密碼。";
       render();
     }
