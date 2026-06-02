@@ -764,6 +764,50 @@ function renderCopySection(title, values) {
   return `<div class="copy-card"><strong>${escapeHtml(title)}</strong>${(values || []).map((item) => `<p>${escapeHtml(item)}</p>`).join("") || `<p class="muted">尚未產生內容</p>`}</div>`;
 }
 
+function buildMockCopyResult(movie, focus) {
+  const title = movie?.title || "這部電影";
+  const tone = movie?.socialTone || "有質感";
+  const sellingPoint = (movie?.coreSellingPoints || [])[0] || "故事張力";
+  const cleanFocus = focus || "正式宣傳上線，提醒觀眾關注上映資訊。";
+  return {
+    facebookPosts: [
+      `【${title}】即將帶來全新的觀影體驗。這次我們想用${tone}的方式，和你一起靠近${sellingPoint}。${cleanFocus}`,
+      `${title} 的故事已經準備好和大家見面。從角色、情緒到每一個轉折，都值得在大銀幕慢慢感受。`,
+      `如果你喜歡有記憶點的電影，這次請把 ${title} 放進片單。上映資訊與更多幕後內容會陸續公開。`,
+      `一部電影最迷人的地方，往往藏在細節裡。${title} 想和你一起看見那些不能錯過的瞬間。`,
+      `本週宣傳重點：${cleanFocus}。歡迎分享給也在等這部片的朋友。`,
+    ],
+    igPosts: [
+      `${title}｜${sellingPoint}\n用${tone}的節奏，慢慢靠近故事核心。\n#電影推薦 #${title}`,
+      `有些故事，看完會留在心裡。\n${title} 即將上映，先把日期留起來。`,
+      `正式宣傳啟動。\n${cleanFocus}\n你最期待哪一個橋段？`,
+      `一張海報、一句台詞、一個眼神。\n${title} 的情緒正在靠近。`,
+      `給正在找下一部電影的你：${title} 值得放進清單。`,
+    ],
+    threadsPosts: [
+      `如果只能用一句話形容 ${title}，你會怎麼說？`,
+      `${title} 的宣傳重點是「${cleanFocus}」，我覺得最適合先丟給觀眾討論的是角色動機。`,
+      `有些電影不是看完就結束，而是會讓你想和朋友聊很久。${title} 可能就是這種。`,
+      `你看電影最在意什麼？劇情、演員、節奏，還是看完後留下來的感覺？`,
+      `${title} 上映前，我們想先問：你最期待看到哪一種情緒？`,
+    ],
+    storyQuestions: [
+      `看完 ${title} 的預告，你第一個感覺是什麼？`,
+      `如果只能選一個關鍵字形容 ${title}，你會選哪個？`,
+      `你會約誰一起看 ${title}？`,
+      `你最期待 ${title} 的哪個元素：角色、劇情、畫面、音樂？`,
+      `上映後你想先看口碑再進場，還是第一時間衝？`,
+    ],
+    replySuggestions: [
+      `謝謝你的分享，這個角度很適合延伸成下一篇互動題。`,
+      `你提到的重點很棒，我們後續也會釋出更多相關內容。`,
+      `這個期待值收到，正式上映時一定要一起來聊。`,
+      `你的留言很有畫面感，感覺會是很好的觀影切入點。`,
+      `感謝支持，更多 ${title} 的宣傳內容會陸續更新。`,
+    ],
+  };
+}
+
 function copyPage() {
   const selectedMovie = getSelectedCopyMovie();
   const generatedHtml = generatedCopyResult
@@ -810,23 +854,32 @@ async function generateCopyPreview() {
   generatedCopyResult = null;
   render();
   try {
-    const payload = await requestJson("/api/generate-copy", {
-      method: "POST",
-      body: JSON.stringify({
-        movie: {
-          title: movie.title,
-          genre: movie.genre,
-          releaseDate: movie.releaseDate,
-          socialTone: movie.socialTone,
-          coreSellingPoints: movie.coreSellingPoints || [],
-        },
-        platforms: ["Facebook", "Instagram", "Threads"],
-        focus: copyFocusValue,
-      }),
-    });
-    generatedCopyResult = payload;
+    if (isGitHubPagesMode()) {
+      generatedCopyResult = buildMockCopyResult(movie, copyFocusValue);
+    } else {
+      const payload = await requestJson("/api/generate-copy", {
+        method: "POST",
+        body: JSON.stringify({
+          movie: {
+            title: movie.title,
+            genre: movie.genre,
+            releaseDate: movie.releaseDate,
+            socialTone: movie.socialTone,
+            coreSellingPoints: movie.coreSellingPoints || [],
+          },
+          platforms: ["Facebook", "Instagram", "Threads"],
+          focus: copyFocusValue,
+        }),
+      });
+      generatedCopyResult = payload;
+    }
   } catch (error) {
-    copyGeneratorError = friendlyCopyError(error);
+    if (isGitHubPagesMode()) {
+      generatedCopyResult = buildMockCopyResult(movie, copyFocusValue);
+      copyGeneratorError = "目前為 GitHub Pages 展示模式，已先產生展示文案。正式 OpenAI API 請部署到 Render 後使用。";
+    } else {
+      copyGeneratorError = friendlyCopyError(error);
+    }
   } finally {
     isCopyGenerating = false;
     render();
