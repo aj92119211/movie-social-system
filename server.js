@@ -134,10 +134,12 @@ function handleAuthStatus(request, response) {
 async function syncStatus(request, response) {
   try {
     const movies = await supabaseRequest("/movies?select=id&limit=1000");
+    const moviesWithCover = await supabaseRequest("/movies?select=id&cover_url=neq.&limit=1000");
     const collections = await supabaseRequest("/workflow_collections?select=kind,data");
     const counts = Object.fromEntries((collections || []).map((row) => [row.kind, Array.isArray(row.data) ? row.data.length : 0]));
     sendJson(response, 200, {
       movies: Array.isArray(movies) ? movies.length : 0,
+      movieCovers: Array.isArray(moviesWithCover) ? moviesWithCover.length : 0,
       assets: counts.assets || 0,
       schedules: counts.schedules || 0,
       questions: counts.questions || 0,
@@ -155,7 +157,7 @@ function readJsonBody(request) {
 
     request.on("data", (chunk) => {
       body += chunk;
-      if (body.length > 1_000_000) {
+      if (body.length > 8_000_000) {
         request.destroy();
         reject(new Error("Request body too large"));
       }

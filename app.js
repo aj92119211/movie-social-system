@@ -360,6 +360,25 @@ function fileToDataUrl(file) {
   });
 }
 
+async function fileToCompressedCoverDataUrl(file) {
+  const sourceUrl = await fileToDataUrl(file);
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.addEventListener("load", () => {
+      const maxWidth = 900;
+      const scale = Math.min(1, maxWidth / image.width);
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.max(1, Math.round(image.width * scale));
+      canvas.height = Math.max(1, Math.round(image.height * scale));
+      const context = canvas.getContext("2d");
+      context.drawImage(image, 0, 0, canvas.width, canvas.height);
+      resolve(canvas.toDataURL("image/jpeg", 0.78));
+    });
+    image.addEventListener("error", () => reject(new Error("封面壓縮失敗，請重新選擇圖片。")));
+    image.src = sourceUrl;
+  });
+}
+
 async function requestJson(url, options = {}) {
   const response = await fetch(url, {
     ...options,
@@ -542,6 +561,7 @@ function assetsForSelectedMovie() {
 }
 
 function moviePayloadFromForm(formData) {
+  const editingMovie = mockData.movies.find((movie) => movie.id === editingMovieId);
   return {
     title: String(formData.get("title") || "").trim(),
     genre: String(formData.get("genre") || "").trim(),
@@ -549,6 +569,7 @@ function moviePayloadFromForm(formData) {
     releaseStatus: String(formData.get("releaseStatus") || "未上映").trim(),
     socialTone: String(formData.get("socialTone") || "").trim(),
     coreSellingPoints: parseList(formData.get("coreSellingPoints")),
+    coverUrl: editingMovie?.coverUrl || movieCoverPreviews[editingMovie?.id] || "",
   };
 }
 
@@ -1769,7 +1790,7 @@ document.addEventListener("click", async (event) => {
     input.addEventListener("change", async () => {
       const file = input.files?.[0];
       if (!file) return;
-      await saveMovieCoverToServer(actionElement.dataset.movieId, await fileToDataUrl(file));
+      await saveMovieCoverToServer(actionElement.dataset.movieId, await fileToCompressedCoverDataUrl(file));
       render();
     });
     input.click();
