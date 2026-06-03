@@ -299,13 +299,25 @@ function writeLocalStorageOnly(key, value) {
 }
 
 function syncWorkflowStorage(key, value) {
+  return syncWorkflowStorageRequest(key, value).catch(() => {});
+}
+
+function syncWorkflowStorageRequest(key, value) {
   const kind = workflowStorageKinds[key];
-  if (!kind || isGitHubPagesMode()) return;
-  fetch(`/api/workflow-data/${encodeURIComponent(kind)}`, {
+  if (!kind || isGitHubPagesMode()) return Promise.resolve();
+  return requestJson(`/api/workflow-data/${encodeURIComponent(kind)}`, {
     method: "PUT",
-    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ data: value }),
-  }).catch(() => {});
+  });
+}
+
+async function saveSchedulesAndSync(schedules) {
+  mockData.schedules = schedules;
+  writeLocalStorageOnly(storageKeys.schedules, mockData.schedules);
+  workflowLastLoadedAt = Date.now();
+  if (!isGitHubPagesMode()) {
+    await syncWorkflowStorageRequest(storageKeys.schedules, mockData.schedules);
+  }
 }
 
 function escapeHtml(value) {
@@ -2714,9 +2726,17 @@ document.addEventListener("click", async (event) => {
   }
   if (action === "delete-schedule") {
     if (!window.confirm("確定要刪除這筆排程嗎？")) return;
-    mockData.schedules = mockData.schedules.filter((schedule) => schedule.id !== actionElement.dataset.scheduleId);
-    writeStorage(storageKeys.schedules, mockData.schedules);
-    render();
+    const previousSchedules = [...mockData.schedules];
+    const nextSchedules = mockData.schedules.filter((schedule) => schedule.id !== actionElement.dataset.scheduleId);
+    try {
+      await saveSchedulesAndSync(nextSchedules);
+      render();
+    } catch (error) {
+      mockData.schedules = previousSchedules;
+      writeLocalStorageOnly(storageKeys.schedules, mockData.schedules);
+      window.alert(error.message || "刪除排程失敗，請稍後再試。");
+      render();
+    }
   }
   if (action === "close-schedule-modal") {
     isScheduleModalOpen = false;
