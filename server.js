@@ -535,6 +535,12 @@ function styleExamplesPromptBlock(examples) {
 
 async function handleStyleExamplesApi(request, response, exampleId) {
   try {
+    if (request.method === "GET" && exampleId === "__schema") {
+      const rows = await supabaseRequest("/ai_style_examples?select=quality_tags,use_case,is_active,score,ai_instruction&limit=1");
+      sendJson(response, 200, { ok: true, checked: true, rows: Array.isArray(rows) ? rows.length : 0 });
+      return;
+    }
+
     if (request.method === "GET" && !exampleId) {
       const rows = await supabaseRequest("/ai_style_examples?select=*&limit=1000");
       sendJson(response, 200, { examples: (rows || []).map(mapStyleExampleFromDb) });

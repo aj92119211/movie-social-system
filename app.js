@@ -266,6 +266,7 @@ let styleExamplesLoading = false;
 let styleExamplesLoadedFromServer = false;
 let styleExamplesError = "";
 let styleExamplesNotice = "";
+let styleExamplesSchemaError = "";
 let isStyleExampleModalOpen = false;
 let editingStyleExampleId = null;
 let isStyleExampleSaving = false;
@@ -603,8 +604,14 @@ async function loadStyleExamplesFromServer(force = false) {
 
   styleExamplesLoading = true;
   styleExamplesError = "";
+  styleExamplesSchemaError = "";
   render();
   try {
+    try {
+      await requestJson("/api/ai-style-examples/__schema");
+    } catch (schemaError) {
+      styleExamplesSchemaError = `Supabase 欄位尚未完整建立：${schemaError.message} 請先執行 supabase/ai_style_examples_update.sql。`;
+    }
     const payload = await requestJson("/api/ai-style-examples");
     mockData.aiStyleExamples = Array.isArray(payload.examples) ? payload.examples.map(normalizeStyleExampleRecord) : [];
     writeLocalStorageOnly(storageKeys.styleExamples, mockData.aiStyleExamples);
@@ -1658,6 +1665,8 @@ function styleExampleModal() {
       <section class="modal" role="dialog" aria-modal="true">
         <div class="modal-header"><div><h2>${example ? "編輯風格範例" : "新增風格範例"}</h2><p>這些範例會提供給 OpenAI 產生文案、互動題與分析報告時參考。</p></div><button class="icon-button modal-close" type="button" data-action="close-style-example-modal">×</button></div>
         <form id="styleExampleForm" class="modal-form">
+          ${styleExamplesSchemaError ? `<div class="task-item"><strong>資料表需要更新</strong><span class="muted">${escapeHtml(styleExamplesSchemaError)}</span></div>` : ""}
+          ${styleExamplesError ? `<div class="task-item"><strong>儲存失敗</strong><span class="muted">${escapeHtml(styleExamplesError)}</span></div>` : ""}
           <div class="field"><label>類型 type</label><select class="select" name="type" required style="width:100%">${["貼文", "留言回覆", "CTA", "負評回覆", "數據分析", "互動題", "互動題改寫"].map((item) => option(item, example?.type || "貼文")).join("")}</select></div>
           <div class="field"><label>平台 platform</label><select class="select" name="platform" required style="width:100%">${["IG", "FB", "Threads", "YouTube", "通用"].map((item) => option(item, normalizeStyleValue(example?.platform) || "IG")).join("")}</select></div>
           <div class="field"><label>電影類型 movie_genre</label><select class="select" name="movieGenre" required style="width:100%">${["恐怖", "愛情", "喜劇", "劇情", "動作", "懸疑", "通用"].map((item) => option(item, normalizeStyleValue(example?.movieGenre) || "通用")).join("")}</select></div>
@@ -1692,6 +1701,7 @@ function styleExamplesPage() {
       </div>
       <button class="primary-button" type="button" data-action="open-style-example-modal">新增範例</button>
     </section>
+    ${styleExamplesSchemaError ? `<div class="task-item" style="margin-bottom:16px"><strong>資料表需要更新</strong><span class="muted">${escapeHtml(styleExamplesSchemaError)}</span></div>` : ""}
     ${styleExamplesError ? `<div class="task-item" style="margin-bottom:16px"><strong>AI 風格範例庫提示</strong><span class="muted">${escapeHtml(styleExamplesError)}</span></div>` : ""}
     ${styleExamplesNotice ? `<div class="task-item" style="margin-bottom:16px"><strong>更新成功</strong><span class="muted">${escapeHtml(styleExamplesNotice)}</span></div>` : ""}
     ${styleExamplesLoading ? `<div class="task-item" style="margin-bottom:16px"><strong>讀取風格範例中...</strong><span class="muted">正在從 Supabase 載入 ai_style_examples 資料表</span></div>` : ""}
