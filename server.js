@@ -431,13 +431,38 @@ async function handleWorkflowDataApi(request, response, kind) {
 }
 
 function normalizeCopyPayload(value) {
+  const cleanCopyList = (items) => Array.isArray(items)
+    ? items
+        .map((item) => String(item || "")
+          .replace(/"\],\s*"(igPosts|threadsPosts|storyQuestions|replySuggestions)"[\s\S]*$/u, "")
+          .replace(/\}\s*Reviewing the content:[\s\S]*$/u, "")
+          .replace(/\s*# Done\.[\s\S]*$/u, "")
+          .replace(/\s*\(END\)[\s\S]*$/u, "")
+          .trim())
+        .filter((item) => item && !/^(Reviewing the content|Final answer|No extra text|JSON only)/i.test(item))
+        .slice(0, 5)
+    : [];
   return {
-    facebookPosts: Array.isArray(value?.facebookPosts) ? value.facebookPosts : [],
-    igPosts: Array.isArray(value?.igPosts) ? value.igPosts : [],
-    threadsPosts: Array.isArray(value?.threadsPosts) ? value.threadsPosts : [],
-    storyQuestions: Array.isArray(value?.storyQuestions) ? value.storyQuestions : [],
-    replySuggestions: Array.isArray(value?.replySuggestions) ? value.replySuggestions : [],
+    facebookPosts: cleanCopyList(value?.facebookPosts),
+    igPosts: cleanCopyList(value?.igPosts),
+    threadsPosts: cleanCopyList(value?.threadsPosts),
+    storyQuestions: cleanCopyList(value?.storyQuestions),
+    replySuggestions: cleanCopyList(value?.replySuggestions),
   };
+}
+
+function parseOpenAiJsonText(outputText) {
+  const text = String(outputText || "").trim();
+  try {
+    return JSON.parse(text);
+  } catch {
+    const start = text.indexOf("{");
+    const end = text.lastIndexOf("}");
+    if (start >= 0 && end > start) {
+      return JSON.parse(text.slice(start, end + 1));
+    }
+    throw new Error("OpenAI 回傳格式無法解析，請重新生成一次。");
+  }
 }
 
 function normalizeQuestionToolPayload(value) {
@@ -516,7 +541,7 @@ async function generateCopy(request, response) {
       body: JSON.stringify({
         model: envValue("OPENAI_MODEL") || "gpt-4.1-mini",
         instructions:
-          "你是電影社群行銷文案企劃。請使用繁體中文，根據電影資料與溝通重點，一次產生 Facebook、IG、Threads 三個平台可使用的文章，並保留限時互動題與留言回覆建議。內容要自然、有宣傳節奏，避免劇透。只回傳符合 schema 的 JSON。",
+          "你是電影社群行銷文案企劃。請使用繁體中文，根據電影資料與溝通重點，一次產生 Facebook、IG、Threads 三個平台可使用的文章，並保留限時互動題與留言回覆建議。內容要自然、有宣傳節奏，避免劇透。每一則只放可直接發布的文案，不要放 JSON key、格式符號、分析說明、Reviewing、Final answer、END 或任何系統文字。只回傳符合 schema 的 JSON。",
         input: prompt,
         text: {
           format: {
@@ -572,7 +597,7 @@ async function generateCopy(request, response) {
     }
 
     const outputText = data.output_text || data.output?.flatMap((item) => item.content || []).find((item) => item.text)?.text;
-    const parsed = JSON.parse(outputText);
+    const parsed = parseOpenAiJsonText(outputText);
     sendJson(response, 200, normalizeCopyPayload(parsed));
   } catch (error) {
     sendJson(response, error.statusCode || 500, {
@@ -662,7 +687,7 @@ async function generateQuestionTool(request, response) {
     }
 
     const outputText = data.output_text || data.output?.flatMap((item) => item.content || []).find((item) => item.text)?.text;
-    const parsed = JSON.parse(outputText);
+    const parsed = parseOpenAiJsonText(outputText);
     sendJson(response, 200, normalizeQuestionToolPayload(parsed));
   } catch (error) {
     sendJson(response, error.statusCode || 500, {
@@ -756,7 +781,7 @@ async function generateQuestionBatch(request, response) {
     }
 
     const outputText = data.output_text || data.output?.flatMap((item) => item.content || []).find((item) => item.text)?.text;
-    const parsed = JSON.parse(outputText);
+    const parsed = parseOpenAiJsonText(outputText);
     sendJson(response, 200, normalizeQuestionBatchPayload(parsed));
   } catch (error) {
     sendJson(response, error.statusCode || 500, {

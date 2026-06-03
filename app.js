@@ -1052,8 +1052,18 @@ function scheduleModal() {
     </section></div>`;
 }
 
+function cleanGeneratedCopyText(value) {
+  return String(value || "")
+    .replace(/"\],\s*"(igPosts|threadsPosts|storyQuestions|replySuggestions)"[\s\S]*$/u, "")
+    .replace(/\}\s*Reviewing the content:[\s\S]*$/u, "")
+    .replace(/\s*# Done\.[\s\S]*$/u, "")
+    .replace(/\s*\(END\)[\s\S]*$/u, "")
+    .trim();
+}
+
 function renderCopySection(title, values) {
-  return `<div class="copy-card"><strong>${escapeHtml(title)}</strong>${(values || []).map((item) => `<p>${escapeHtml(item)}</p>`).join("") || `<p class="muted">尚未產生內容</p>`}</div>`;
+  const cleanValues = Array.isArray(values) ? values.map(cleanGeneratedCopyText).filter(Boolean).slice(0, 5) : [];
+  return `<div class="copy-card"><strong>${escapeHtml(title)}</strong>${cleanValues.map((item) => `<p>${escapeHtml(item)}</p>`).join("") || `<p class="muted">尚未產生內容</p>`}</div>`;
 }
 
 function buildMockCopyResult(movie, focus) {
