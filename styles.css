@@ -662,6 +662,39 @@ tr:last-child td {
   margin-bottom: 16px;
 }
 
+.style-example-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.style-example-card {
+  box-shadow: none;
+}
+
+.style-example-top {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: start;
+}
+
+.style-example-top h3 {
+  margin: 10px 0 0;
+  font-size: 17px;
+}
+
+.style-example-content {
+  margin-top: 14px;
+  padding: 14px;
+  border-radius: var(--radius);
+  background: #f8fafc;
+  border: 1px solid var(--line);
+  line-height: 1.7;
+  white-space: pre-wrap;
+}
+
 .analytics-toolbar {
   align-items: stretch;
 }
@@ -1007,6 +1040,7 @@ textarea {
   .asset-grid,
   .question-stats,
   .question-grid,
+  .style-example-grid,
   .question-filter-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -1073,6 +1107,7 @@ textarea {
   .asset-grid,
   .question-stats,
   .question-grid,
+  .style-example-grid,
   .question-filter-grid,
   .three-col {
     grid-template-columns: 1fr;
@@ -1084,6 +1119,7 @@ textarea {
 
   .review-hero,
   .question-card-top,
+  .style-example-top,
   .question-detail-grid {
     grid-template-columns: 1fr;
   }

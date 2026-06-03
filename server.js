@@ -2,7 +2,8 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const crypto = require("node:crypto");
-const { analyzePost } = require("./server/routes/ai");
+const { analyzePost, runMovieEditorApi } = require("./server/routes/ai");
+const { MOVIE_EDITOR_SYSTEM_PROMPT } = require("./server/ai/movieEditorPrompt");
 
 const rootDir = __dirname;
 const port = Number(process.env.PORT || 5173);
@@ -137,10 +138,12 @@ async function syncStatus(request, response) {
     const movies = await supabaseRequest("/movies?select=id&limit=1000");
     const moviesWithCover = await supabaseRequest("/movies?select=id&cover_url=neq.&limit=1000");
     const collections = await supabaseRequest("/workflow_collections?select=kind,data");
+    const styleExamples = await supabaseRequest("/ai_style_examples?select=id&limit=1000").catch(() => []);
     const counts = Object.fromEntries((collections || []).map((row) => [row.kind, Array.isArray(row.data) ? row.data.length : 0]));
     sendJson(response, 200, {
       movies: Array.isArray(movies) ? movies.length : 0,
       movieCovers: Array.isArray(moviesWithCover) ? moviesWithCover.length : 0,
+      styleExamples: Array.isArray(styleExamples) ? styleExamples.length : 0,
       assets: counts.assets || 0,
       schedules: counts.schedules || 0,
       questions: counts.questions || 0,
@@ -265,6 +268,33 @@ function mapMovieToDb(movie) {
   };
 }
 
+function mapStyleExampleFromDb(row) {
+  return {
+    id: row.id,
+    type: row.type || "",
+    platform: row.platform || "",
+    movieGenre: row.movie_genre || "",
+    campaignStage: row.campaign_stage || "",
+    tone: row.tone || "",
+    exampleContent: row.example_content || "",
+    whyItWorks: row.why_it_works || "",
+    usageNote: row.usage_note || "",
+  };
+}
+
+function mapStyleExampleToDb(example) {
+  return {
+    type: String(example.type || "").trim(),
+    platform: String(example.platform || "").trim(),
+    movie_genre: String(example.movieGenre || "").trim(),
+    campaign_stage: String(example.campaignStage || "").trim(),
+    tone: String(example.tone || "").trim(),
+    example_content: String(example.exampleContent || "").trim(),
+    why_it_works: String(example.whyItWorks || "").trim(),
+    usage_note: String(example.usageNote || "").trim(),
+  };
+}
+
 async function saveMovieToSupabase(pathname, method, movie) {
   const payload = mapMovieToDb(movie);
   try {
@@ -283,6 +313,17 @@ async function saveMovieToSupabase(pathname, method, movie) {
     });
     return rows.map((row) => ({ ...row, release_status: movie.releaseStatus || "未上映" }));
   }
+}
+
+function validateStyleExamplePayload(example) {
+  const requiredFields = ["type", "platform", "movieGenre", "campaignStage", "tone", "exampleContent"];
+  for (const field of requiredFields) {
+    if (!String(example[field] || "").trim()) {
+      return `${field} is required`;
+    }
+  }
+
+  return "";
 }
 
 function validateMoviePayload(movie) {
@@ -397,6 +438,120 @@ async function handleMoviesApi(request, response, movieId) {
     sendJson(response, 405, { error: "Method not allowed" });
   } catch (error) {
     sendJson(response, error.statusCode || 500, { error: error.message || "Movies API failed" });
+  }
+}
+
+async function loadRelevantStyleExamples(filters = {}) {
+  try {
+    const rows = await supabaseRequest("/ai_style_examples?select=*&limit=200");
+    const examples = (rows || []).map(mapStyleExampleFromDb);
+    const normalized = {
+      type: String(filters.type || "").toLowerCase(),
+      platform: String(filters.platform || "").toLowerCase(),
+      movieGenre: String(filters.movieGenre || filters.genre || "").toLowerCase(),
+      campaignStage: String(filters.campaignStage || filters.stage || "").toLowerCase(),
+      tone: String(filters.tone || "").toLowerCase(),
+    };
+
+    return examples
+      .map((example) => {
+        const fields = {
+          type: String(example.type || "").toLowerCase(),
+          platform: String(example.platform || "").toLowerCase(),
+          movieGenre: String(example.movieGenre || "").toLowerCase(),
+          campaignStage: String(example.campaignStage || "").toLowerCase(),
+          tone: String(example.tone || "").toLowerCase(),
+        };
+        const score = Object.entries(normalized).reduce((total, [key, value]) => {
+          if (!value) return total;
+          return total + (fields[key] && (fields[key].includes(value) || value.includes(fields[key])) ? 1 : 0);
+        }, 0);
+        return { example, score };
+      })
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 5)
+      .map((item) => item.example);
+  } catch {
+    return [];
+  }
+}
+
+function styleExamplesPromptBlock(examples) {
+  if (!Array.isArray(examples) || !examples.length) return "";
+  return [
+    "可參考的 AI 風格範例：",
+    ...examples.map((example, index) => [
+      `範例 ${index + 1}`,
+      `類型：${example.type || "未提供"}`,
+      `平台：${example.platform || "未提供"}`,
+      `電影類型：${example.movieGenre || "未提供"}`,
+      `宣傳情境：${example.campaignStage || "未提供"}`,
+      `語氣：${example.tone || "未提供"}`,
+      `範例內容：${example.exampleContent || "未提供"}`,
+      `好在哪裡：${example.whyItWorks || "未提供"}`,
+      `使用建議：${example.usageNote || "未提供"}`,
+    ].join("\n")),
+    "請參考以上範例的語氣、節奏與操作邏輯，但不要逐字照抄。",
+  ].join("\n\n");
+}
+
+async function handleStyleExamplesApi(request, response, exampleId) {
+  try {
+    if (request.method === "GET" && !exampleId) {
+      const rows = await supabaseRequest("/ai_style_examples?select=*&limit=1000");
+      sendJson(response, 200, { examples: (rows || []).map(mapStyleExampleFromDb) });
+      return;
+    }
+
+    if (request.method === "POST" && !exampleId) {
+      const body = await readJsonBody(request);
+      const validationError = validateStyleExamplePayload(body);
+      if (validationError) {
+        sendJson(response, 400, { error: validationError });
+        return;
+      }
+
+      const rows = await supabaseRequest("/ai_style_examples?select=*", {
+        method: "POST",
+        headers: { Prefer: "return=representation" },
+        body: JSON.stringify(mapStyleExampleToDb(body)),
+      });
+      sendJson(response, 201, { example: mapStyleExampleFromDb(rows[0]) });
+      return;
+    }
+
+    if (request.method === "PATCH" && exampleId) {
+      const body = await readJsonBody(request);
+      const validationError = validateStyleExamplePayload(body);
+      if (validationError) {
+        sendJson(response, 400, { error: validationError });
+        return;
+      }
+
+      const rows = await supabaseRequest(`/ai_style_examples?id=eq.${encodeURIComponent(exampleId)}&select=*`, {
+        method: "PATCH",
+        headers: { Prefer: "return=representation" },
+        body: JSON.stringify(mapStyleExampleToDb(body)),
+      });
+      if (!rows[0]) {
+        sendJson(response, 404, { error: "找不到 AI 風格範例。" });
+        return;
+      }
+      sendJson(response, 200, { example: mapStyleExampleFromDb(rows[0]) });
+      return;
+    }
+
+    if (request.method === "DELETE" && exampleId) {
+      await supabaseRequest(`/ai_style_examples?id=eq.${encodeURIComponent(exampleId)}`, {
+        method: "DELETE",
+      });
+      sendJson(response, 200, { ok: true });
+      return;
+    }
+
+    sendJson(response, 405, { error: "Method not allowed" });
+  } catch (error) {
+    sendJson(response, error.statusCode || 500, { error: error.message || "AI style examples API failed" });
   }
 }
 
@@ -523,6 +678,13 @@ async function generateCopy(request, response) {
 
   const movie = body.movie || {};
   const sellingPoints = Array.isArray(movie.coreSellingPoints) ? movie.coreSellingPoints.join("、") : "";
+  const styleExamples = await loadRelevantStyleExamples({
+    type: "貼文",
+    platform: "Facebook",
+    movieGenre: movie.genre,
+    campaignStage: body.focus,
+    tone: movie.socialTone,
+  });
   const prompt = [
     `電影：${movie.title || "未命名電影"}`,
     `類型：${movie.genre || "未提供"}`,
@@ -531,6 +693,7 @@ async function generateCopy(request, response) {
     `核心賣點：${sellingPoints || "未提供"}`,
     `目標平台：Facebook、Instagram、Threads`,
     `溝通重點：${body.focus || "請依電影資料產生上映宣傳文案"}`,
+    styleExamplesPromptBlock(styleExamples),
   ].join("\n");
 
   try {
@@ -542,8 +705,12 @@ async function generateCopy(request, response) {
       },
       body: JSON.stringify({
         model: envValue("OPENAI_MODEL") || "gpt-4.1-mini",
-        instructions:
-          "你是電影社群行銷文案企劃。請使用繁體中文，根據電影資料與溝通重點，一次產生 Facebook、IG、Threads 三個平台可使用的文章，並保留限時互動題與留言回覆建議。內容要自然、有宣傳節奏，避免劇透。每一則只放可直接發布的文案，不要放 JSON key、格式符號、分析說明、Reviewing、Final answer、END 或任何系統文字。只回傳符合 schema 的 JSON。",
+        instructions: [
+          MOVIE_EDITOR_SYSTEM_PROMPT,
+          "這次任務是產生電影社群貼文。請根據電影資料、溝通重點與風格範例，一次產生 Facebook、IG、Threads 三個平台可使用的文章，並保留限時互動題與留言回覆建議。",
+          "每一則只放可直接發布或可直接使用的內容，不要放 JSON key、格式符號、分析說明、Reviewing、Final answer、END 或任何系統文字。",
+          "只回傳符合 schema 的 JSON。",
+        ].join("\n\n"),
         input: prompt,
         text: {
           format: {
@@ -625,6 +792,13 @@ async function generateQuestionTool(request, response) {
 
   const mode = body.mode === "similar" ? "similar" : "rewrite";
   const question = body.question || {};
+  const styleExamples = await loadRelevantStyleExamples({
+    type: mode === "rewrite" ? "互動題改寫" : "互動題",
+    platform: question.platform,
+    movieGenre: question.movieGenre || question.genre,
+    campaignStage: question.phase,
+    tone: question.tone,
+  });
   const prompt = [
     `任務：${mode === "rewrite" ? "將互動題改寫成不同平台版本" : "根據原題產生 5 題相似互動題"}`,
     `原題：${question.content || "未提供"}`,
@@ -635,6 +809,7 @@ async function generateQuestionTool(request, response) {
     `宣傳階段：${question.phase || "未提供"}`,
     `建議 CTA：${question.cta || "未提供"}`,
     `備註：${question.note || "無"}`,
+    styleExamplesPromptBlock(styleExamples),
   ].join("\n");
 
   try {
@@ -715,6 +890,13 @@ async function generateQuestionBatch(request, response) {
 
   const movie = body.movie || {};
   const sellingPoints = Array.isArray(movie.coreSellingPoints) ? movie.coreSellingPoints.join("、") : "";
+  const styleExamples = await loadRelevantStyleExamples({
+    type: "互動題",
+    platform: "IG 限動",
+    movieGenre: movie.genre,
+    campaignStage: "互動題",
+    tone: movie.socialTone,
+  });
   const prompt = [
     "任務：產生 10 題新的社群互動問答題，請避免和既有題庫太相似。",
     `電影：${movie.title || "未命名電影"}`,
@@ -725,6 +907,7 @@ async function generateQuestionBatch(request, response) {
     `目前題庫數量：${body.existingCount || 0}`,
     `產生批次代號：${body.batchSeed || Date.now()}`,
     "請混合 IG 限動、Threads、Facebook、Reels，可包含投票、二選一、開放問答、留言引導、測驗等題型。",
+    styleExamplesPromptBlock(styleExamples),
   ].join("\n");
 
   try {
@@ -1020,7 +1203,24 @@ const server = http.createServer((request, response) => {
   }
 
   if (request.method === "POST" && url.pathname === "/api/ai/analyze-post") {
-    analyzePost(request, response, { readJsonBody, sendJson, envValue });
+    analyzePost(request, response, { readJsonBody, sendJson, envValue, loadRelevantStyleExamples });
+    return;
+  }
+
+  if (request.method === "POST" && url.pathname.startsWith("/api/ai/movie-editor/")) {
+    const taskName = decodeURIComponent(url.pathname.replace("/api/ai/movie-editor/", ""));
+    runMovieEditorApi(request, response, { readJsonBody, sendJson, envValue, loadRelevantStyleExamples }, taskName);
+    return;
+  }
+
+  if (url.pathname === "/api/ai-style-examples") {
+    handleStyleExamplesApi(request, response);
+    return;
+  }
+
+  if (url.pathname.startsWith("/api/ai-style-examples/")) {
+    const exampleId = decodeURIComponent(url.pathname.replace("/api/ai-style-examples/", ""));
+    handleStyleExamplesApi(request, response, exampleId);
     return;
   }
 

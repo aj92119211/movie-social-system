@@ -8,6 +8,7 @@
   questions: "movieSocialOps.questions",
   metrics: "movieSocialOps.socialMetrics",
   postAnalyses: "movieSocialOps.postAnalyses",
+  styleExamples: "movieSocialOps.aiStyleExamples",
   assetMovie: "movieSocialOps.selectedAssetMovie",
   scheduleMovie: "movieSocialOps.selectedScheduleMovie",
   analyticsMovie: "movieSocialOps.selectedAnalyticsMovie",
@@ -170,6 +171,19 @@ const mockData = {
     { movieId: "mov-001", platform: "Instagram", reach: 188000, impressions: 246000, views: 52000, likes: 9800, comments: 640, shares: 880, saves: 3980, newFollowers: 920, linkClicks: 1240 },
     { movieId: "mov-001", platform: "Threads", reach: 54000, impressions: 72000, views: 0, likes: 2100, comments: 360, shares: 190, saves: 260, newFollowers: 210, linkClicks: 300 },
   ],
+  aiStyleExamples: [
+    {
+      id: "style-001",
+      type: "貼文",
+      platform: "Instagram",
+      movieGenre: "驚悚",
+      campaignStage: "上映中",
+      tone: "神祕",
+      exampleContent: "今晚你敢把燈關掉嗎？《鬼牽手》上映中，揪一位膽子最大的朋友一起進戲院。",
+      whyItWorks: "用一句情境問題快速帶出恐怖片氣氛，也有明確揪團 CTA。",
+      usageNote: "適合用在 IG 圖文或 Reels 文案開頭。",
+    },
+  ],
 };
 
 const pages = [
@@ -178,6 +192,7 @@ const pages = [
   { id: "assets", title: "素材庫", icon: "素" },
   { id: "schedule", title: "社群排程", icon: "排" },
   { id: "copy", title: "AI 文案產生器", icon: "文" },
+  { id: "style", title: "AI 風格範例庫", icon: "風" },
   { id: "review", title: "互動問答題庫", icon: "問" },
   { id: "analytics", title: "貼文數據分析", icon: "數" },
 ];
@@ -235,6 +250,11 @@ let copyFocusValue = localStorage.getItem(storageKeys.copyFocus) || "正式預�
 let isCopyGenerating = false;
 let copyGeneratorError = "";
 let generatedCopyResult = null;
+let styleExamplesLoading = false;
+let styleExamplesLoadedFromServer = false;
+let styleExamplesError = "";
+let isStyleExampleModalOpen = false;
+let editingStyleExampleId = null;
 let authChecked = false;
 let authRequired = false;
 let isAuthenticated = false;
@@ -554,6 +574,75 @@ function applyWorkflowCollection(storageKey, serverValue, currentValue) {
   }
   writeLocalStorageOnly(storageKey, serverValue);
   return serverValue;
+}
+
+async function loadStyleExamplesFromServer(force = false) {
+  if (styleExamplesLoading || (styleExamplesLoadedFromServer && !force)) return;
+  if (isGitHubPagesMode()) {
+    mockData.aiStyleExamples = readStorage(storageKeys.styleExamples, mockData.aiStyleExamples);
+    styleExamplesLoadedFromServer = true;
+    styleExamplesError = "目前為 GitHub Pages 展示模式，AI 風格範例會暫存在這台瀏覽器。";
+    render();
+    return;
+  }
+
+  styleExamplesLoading = true;
+  styleExamplesError = "";
+  render();
+  try {
+    const payload = await requestJson("/api/ai-style-examples");
+    mockData.aiStyleExamples = Array.isArray(payload.examples) ? payload.examples : [];
+    writeLocalStorageOnly(storageKeys.styleExamples, mockData.aiStyleExamples);
+    styleExamplesLoadedFromServer = true;
+  } catch (error) {
+    mockData.aiStyleExamples = readStorage(storageKeys.styleExamples, mockData.aiStyleExamples);
+    styleExamplesError = `AI 風格範例庫尚未連上 Supabase。請確認 ai_style_examples 資料表與 Render 環境變數。（${error.message}）`;
+  } finally {
+    styleExamplesLoading = false;
+    render();
+  }
+}
+
+function styleExamplePayloadFromForm(formData) {
+  return {
+    type: String(formData.get("type") || "").trim(),
+    platform: String(formData.get("platform") || "").trim(),
+    movieGenre: String(formData.get("movieGenre") || "").trim(),
+    campaignStage: String(formData.get("campaignStage") || "").trim(),
+    tone: String(formData.get("tone") || "").trim(),
+    exampleContent: String(formData.get("exampleContent") || "").trim(),
+    whyItWorks: String(formData.get("whyItWorks") || "").trim(),
+    usageNote: String(formData.get("usageNote") || "").trim(),
+  };
+}
+
+async function saveStyleExampleToServer(exampleData) {
+  const editingExample = mockData.aiStyleExamples.find((example) => String(example.id) === String(editingStyleExampleId));
+  if (isGitHubPagesMode()) {
+    if (editingExample) Object.assign(editingExample, exampleData);
+    else mockData.aiStyleExamples.unshift({ id: `style-${Date.now()}`, ...exampleData });
+    writeStorage(storageKeys.styleExamples, mockData.aiStyleExamples);
+    styleExamplesError = "目前為 GitHub Pages 展示模式，AI 風格範例會暫存在這台瀏覽器。";
+    return;
+  }
+
+  const url = editingExample ? `/api/ai-style-examples/${encodeURIComponent(editingExample.id)}` : "/api/ai-style-examples";
+  await requestJson(url, {
+    method: editingExample ? "PATCH" : "POST",
+    body: JSON.stringify(exampleData),
+  });
+  await loadStyleExamplesFromServer(true);
+}
+
+async function deleteStyleExampleFromServer(exampleId) {
+  if (isGitHubPagesMode()) {
+    mockData.aiStyleExamples = mockData.aiStyleExamples.filter((example) => String(example.id) !== String(exampleId));
+    writeStorage(storageKeys.styleExamples, mockData.aiStyleExamples);
+    styleExamplesError = "目前為 GitHub Pages 展示模式，AI 風格範例會暫存在這台瀏覽器。";
+    return;
+  }
+  await requestJson(`/api/ai-style-examples/${encodeURIComponent(exampleId)}`, { method: "DELETE" });
+  await loadStyleExamplesFromServer(true);
 }
 
 function isGitHubPagesMode() {
@@ -1306,9 +1395,17 @@ async function generateQuestionAiResult(question, mode) {
     if (isGitHubPagesMode()) {
       questionAiResult = fallbackQuestionAiResult(question, mode);
     } else {
+      const movie = mockData.movies.find((item) => item.id === question.movieId);
       const payload = await requestJson("/api/generate-question-tool", {
         method: "POST",
-        body: JSON.stringify({ mode, question }),
+        body: JSON.stringify({
+          mode,
+          question: {
+            ...question,
+            movieTitle: movie ? movieDisplayName(movie) : question.movieTitle,
+            movieGenre: movie?.genre || question.movieGenre || "",
+          },
+        }),
       });
       questionAiResult = {
         title: mode === "rewrite" ? "AI 改寫結果" : "AI 相似題",
@@ -1402,6 +1499,93 @@ async function generateCopyPreview() {
     render();
   }
 }
+
+function styleExampleCard(example) {
+  return `
+    <article class="card style-example-card">
+      <div class="card-body">
+        <div class="style-example-top">
+          <div>
+            <div class="meta-row">
+              <span class="tag">${escapeHtml(example.type)}</span>
+              <span class="tag">${escapeHtml(example.platform)}</span>
+              <span class="tag">${escapeHtml(example.movieGenre)}</span>
+              <span class="tag">${escapeHtml(example.campaignStage)}</span>
+              ${status(example.tone || "參考")}
+            </div>
+            <h3>${escapeHtml(example.type || "未分類")}｜${escapeHtml(example.platform || "未指定平台")}</h3>
+          </div>
+          <div class="meta-row">
+            <button class="secondary-button" type="button" data-action="edit-style-example" data-style-id="${example.id}">編輯</button>
+            <button class="secondary-button" type="button" data-action="delete-style-example" data-style-id="${example.id}">刪除</button>
+          </div>
+        </div>
+        <div class="style-example-content">${escapeHtml(example.exampleContent || "尚未填寫範例內容")}</div>
+        <div class="question-detail-grid">
+          <div><span class="muted">為什麼這則好</span><strong>${escapeHtml(example.whyItWorks || "尚未填寫")}</strong></div>
+          <div><span class="muted">使用建議</span><strong>${escapeHtml(example.usageNote || "尚未填寫")}</strong></div>
+        </div>
+      </div>
+    </article>`;
+}
+
+function styleExampleModal() {
+  const example = mockData.aiStyleExamples.find((item) => String(item.id) === String(editingStyleExampleId));
+  return `
+    <div class="modal-backdrop" role="presentation">
+      <section class="modal" role="dialog" aria-modal="true">
+        <div class="modal-header"><div><h2>${example ? "編輯風格範例" : "新增風格範例"}</h2><p>這些範例會提供給 OpenAI 產生文案、互動題與分析報告時參考。</p></div><button class="icon-button modal-close" type="button" data-action="close-style-example-modal">×</button></div>
+        <form id="styleExampleForm" class="modal-form">
+          <div class="field"><label>類型 type</label><select class="select" name="type" required style="width:100%">${["貼文", "CTA", "留言回覆", "互動題", "互動題改寫", "數據分析"].map((item) => option(item, example?.type || "貼文")).join("")}</select></div>
+          <div class="field"><label>平台 platform</label><select class="select" name="platform" required style="width:100%">${["Facebook", "Instagram", "Threads", "YouTube", "IG 限動", "Reels", "通用"].map((item) => option(item, example?.platform || "Instagram")).join("")}</select></div>
+          <div class="field"><label>電影類型 movie_genre</label><input class="input" name="movieGenre" required value="${escapeHtml(example?.movieGenre || "")}" placeholder="例如：驚悚、愛情、動作、紀錄片" /></div>
+          <div class="field"><label>宣傳情境 campaign_stage</label><select class="select" name="campaignStage" required style="width:100%">${["前導期", "預告上線", "上映倒數", "上映中", "口碑擴散", "下檔前"].map((item) => option(item, example?.campaignStage || "上映中")).join("")}</select></div>
+          <div class="field"><label>語氣 tone</label><input class="input" name="tone" required value="${escapeHtml(example?.tone || "")}" placeholder="例如：神祕、熱血、感性、幽默、專業白話" /></div>
+          <div class="field"><label>範例內容 example_content</label><textarea name="exampleContent" required>${escapeHtml(example?.exampleContent || "")}</textarea></div>
+          <div class="field"><label>為什麼這則好 why_it_works</label><textarea name="whyItWorks">${escapeHtml(example?.whyItWorks || "")}</textarea></div>
+          <div class="field"><label>使用建議 usage_note</label><textarea name="usageNote">${escapeHtml(example?.usageNote || "")}</textarea></div>
+          <div class="modal-actions"><button class="secondary-button" type="button" data-action="close-style-example-modal">取消</button><button class="primary-button" type="submit">儲存</button></div>
+        </form>
+      </section>
+    </div>`;
+}
+
+function styleExamplesPage() {
+  const typeCounts = Object.entries(mockData.aiStyleExamples.reduce((counts, example) => {
+    const key = example.type || "未分類";
+    counts[key] = (counts[key] || 0) + 1;
+    return counts;
+  }, {}));
+  return `
+    <section class="review-hero">
+      <div>
+        <h2>AI 風格範例庫</h2>
+        <p>管理 OpenAI 產生貼文、CTA、留言回覆、互動題與數據分析時可參考的風格範例。</p>
+      </div>
+      <button class="primary-button" type="button" data-action="open-style-example-modal">新增範例</button>
+    </section>
+    ${styleExamplesError ? `<div class="task-item" style="margin-bottom:16px"><strong>AI 風格範例庫提示</strong><span class="muted">${escapeHtml(styleExamplesError)}</span></div>` : ""}
+    ${styleExamplesLoading ? `<div class="task-item" style="margin-bottom:16px"><strong>讀取風格範例中...</strong><span class="muted">正在從 Supabase 載入 ai_style_examples 資料表</span></div>` : ""}
+    <div class="grid stats-grid question-stats">
+      ${[
+        ["總範例數", mockData.aiStyleExamples.length, "目前可供 AI 參考"],
+        ["貼文範例", mockData.aiStyleExamples.filter((item) => item.type === "貼文").length, "文案生成可用"],
+        ["互動題範例", mockData.aiStyleExamples.filter((item) => item.type.includes("互動題")).length, "問答集可用"],
+        ["分析範例", mockData.aiStyleExamples.filter((item) => item.type === "數據分析").length, "數據報告可用"],
+      ].map(([label, value, note]) => `<article class="card stat-card"><span>${label}</span><strong>${value}</strong><small>${note}</small></article>`).join("")}
+    </div>
+    <section class="card" style="margin-top:16px">
+      <div class="card-header"><div><h2>範例分類</h2><p>OpenAI 會依 type、platform、movie_genre、campaign_stage、tone 讀取相關範例。</p></div></div>
+      <div class="card-body">
+        <div class="meta-row">${typeCounts.map(([type, count]) => `<span class="tag">${escapeHtml(type)} ${count}</span>`).join("") || `<span class="muted">目前尚無範例。</span>`}</div>
+      </div>
+    </section>
+    <div class="style-example-grid">
+      ${mockData.aiStyleExamples.map(styleExampleCard).join("") || `<article class="card"><div class="card-body"><h3>尚無 AI 風格範例</h3><p class="muted">請新增第一筆範例，或確認 Supabase 的 ai_style_examples 資料表已有資料。</p></div></article>`}
+    </div>
+    ${isStyleExampleModalOpen ? styleExampleModal() : ""}`;
+}
+
 function uniqueQuestionOptions(key) {
   return ["全部", ...new Set(mockData.questions.map((item) => item[key]).filter(Boolean))];
 }
@@ -1850,6 +2034,7 @@ function aiPostAnalysisPayload() {
   const { data, metrics } = postAnalysisResult;
   return {
     movieTitle: movie ? movieDisplayName(movie) : "未提供",
+    movieGenre: movie?.genre || "",
     platform: data.platform,
     postUrl: data.postUrl,
     title: data.title,
@@ -2112,7 +2297,7 @@ function analyticsPage() {
     </section>
   `;
 }
-const renderers = { dashboard, movies: moviesPage, assets: assetsPage, schedule: schedulePage, copy: copyPage, review: reviewPage, analytics: analyticsPage };
+const renderers = { dashboard, movies: moviesPage, assets: assetsPage, schedule: schedulePage, copy: copyPage, style: styleExamplesPage, review: reviewPage, analytics: analyticsPage };
 
 function render() {
   if (!authChecked) {
@@ -2151,6 +2336,10 @@ function render() {
     isQuestionScheduleModalOpen = false;
     schedulingQuestionId = null;
   }
+  if (page.id !== "style") {
+    isStyleExampleModalOpen = false;
+    editingStyleExampleId = null;
+  }
   if (page.id !== "analytics") {
     isMetricModalOpen = false;
     editingMetricPlatform = null;
@@ -2160,6 +2349,7 @@ function render() {
   renderNav(page.id);
   if (["movies", "assets", "schedule", "copy", "review", "analytics"].includes(page.id) && Date.now() - moviesLastLoadedAt > 5000) loadMoviesFromServer(true);
   if (["assets", "schedule", "review", "analytics", "dashboard"].includes(page.id) && Date.now() - workflowLastLoadedAt > 5000) loadWorkflowDataFromServer();
+  if (page.id === "style" && !styleExamplesLoadedFromServer) loadStyleExamplesFromServer(true);
 }
 
 window.addEventListener("hashchange", render);
@@ -2464,6 +2654,31 @@ document.addEventListener("click", async (event) => {
   if (action === "generate-copy-preview") {
     generateCopyPreview();
   }
+  if (action === "open-style-example-modal") {
+    isStyleExampleModalOpen = true;
+    editingStyleExampleId = null;
+    render();
+  }
+  if (action === "edit-style-example") {
+    editingStyleExampleId = actionElement.dataset.styleId;
+    isStyleExampleModalOpen = true;
+    render();
+  }
+  if (action === "close-style-example-modal") {
+    isStyleExampleModalOpen = false;
+    editingStyleExampleId = null;
+    render();
+  }
+  if (action === "delete-style-example") {
+    if (!window.confirm("確定要刪除這筆 AI 風格範例嗎？")) return;
+    try {
+      await deleteStyleExampleFromServer(actionElement.dataset.styleId);
+      render();
+    } catch (error) {
+      styleExamplesError = error.message || "AI 風格範例刪除失敗。";
+      render();
+    }
+  }
   if (action === "open-question-modal") {
     isQuestionModalOpen = true;
     editingQuestionId = null;
@@ -2562,7 +2777,7 @@ document.addEventListener("click", async (event) => {
 });
 
 document.addEventListener("submit", async (event) => {
-  if (!["authForm", "movieForm", "assetForm", "scheduleForm", "activityForm", "questionForm", "questionScheduleForm", "metricForm", "analyticsLinkForm", "manualAnalyticsForm", "postAnalysisForm"].includes(event.target.id)) return;
+  if (!["authForm", "movieForm", "assetForm", "scheduleForm", "activityForm", "styleExampleForm", "questionForm", "questionScheduleForm", "metricForm", "analyticsLinkForm", "manualAnalyticsForm", "postAnalysisForm"].includes(event.target.id)) return;
   event.preventDefault();
   const formData = new FormData(event.target);
 
@@ -2724,6 +2939,20 @@ document.addEventListener("submit", async (event) => {
     return;
   }
 
+  if (event.target.id === "styleExampleForm") {
+    try {
+      await saveStyleExampleToServer(styleExamplePayloadFromForm(formData));
+      isStyleExampleModalOpen = false;
+      editingStyleExampleId = null;
+      styleExamplesError = "";
+      render();
+    } catch (error) {
+      styleExamplesError = error.message || "AI 風格範例儲存失敗。";
+      render();
+    }
+    return;
+  }
+
   if (event.target.id === "scheduleForm") {
     const scheduleData = {
       movieId: formData.get("movieId") || selectedScheduleMovieId || "",
@@ -2829,6 +3058,7 @@ mockData.activities = readStorage(storageKeys.activities, mockData.activities);
 mockData.questions = readStorage(storageKeys.questions, mockData.questions);
 mockData.socialMetrics = readStorage(storageKeys.metrics, mockData.socialMetrics);
 savedPostAnalyses = readStorage(storageKeys.postAnalyses, savedPostAnalyses);
+mockData.aiStyleExamples = readStorage(storageKeys.styleExamples, mockData.aiStyleExamples);
 movieReleaseStatusOverrides = readStorage(storageKeys.movieReleaseStatuses, movieReleaseStatusOverrides);
 render();
 checkAuthStatus();
