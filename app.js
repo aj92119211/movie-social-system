@@ -90,6 +90,7 @@ const mockData = {
   activities: [
     {
       id: "act-001",
+      movieId: "mov-001",
       title: "媒體試映會",
       location: "光點華山電影館",
       dateTime: "2026-06-08T14:00",
@@ -98,6 +99,7 @@ const mockData = {
     },
     {
       id: "act-002",
+      movieId: "mov-001",
       title: "主創直播訪談",
       location: "Facebook Live",
       dateTime: "2026-06-05T20:00",
@@ -380,6 +382,28 @@ function normalizeAndPersistSchedules() {
   writeStorage(storageKeys.schedules, mockData.schedules);
 }
 
+function normalizeActivitiesWithMovieIds(activities) {
+  const validMovieIds = new Set(mockData.movies.map((movie) => movie.id));
+  const fallbackMovieId = mockData.movies[0]?.id || "";
+  let changed = false;
+  const items = activities.map((activity) => {
+    const currentMovieId = validMovieIds.has(activity.movieId) ? activity.movieId : "";
+    const nextMovieId = currentMovieId || fallbackMovieId;
+    if ((activity.movieId || "") === nextMovieId) return activity;
+    changed = true;
+    return { ...activity, movieId: nextMovieId };
+  });
+  return { items, changed };
+}
+
+function normalizeAndPersistActivities() {
+  if (!mockData.movies.length || !mockData.activities.length) return;
+  const normalized = normalizeActivitiesWithMovieIds(mockData.activities);
+  if (!normalized.changed) return;
+  mockData.activities = normalized.items;
+  writeStorage(storageKeys.activities, mockData.activities);
+}
+
 function fileToDataUrl(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -465,6 +489,7 @@ async function loadWorkflowDataFromServer() {
     mockData.socialMetrics = applyWorkflowCollection(storageKeys.metrics, collections.socialMetrics, mockData.socialMetrics);
     savedPostAnalyses = applyWorkflowCollection(storageKeys.postAnalyses, collections.postAnalyses, savedPostAnalyses);
     normalizeAndPersistSchedules();
+    normalizeAndPersistActivities();
     render();
   } catch (error) {
     console.warn("Workflow data sync failed", error);
@@ -497,6 +522,7 @@ function loadMoviesFromLocalStorage() {
   moviesError = movieDemoModeMessage;
   ensureSelectedMovies();
   normalizeAndPersistSchedules();
+  normalizeAndPersistActivities();
 }
 
 function loadMoviesFallback(message) {
@@ -509,6 +535,7 @@ function loadMoviesFallback(message) {
   moviesError = message;
   ensureSelectedMovies();
   normalizeAndPersistSchedules();
+  normalizeAndPersistActivities();
 }
 
 function friendlyCopyError(error) {
@@ -547,6 +574,7 @@ async function loadMoviesFromServer(force = false) {
     moviesLastLoadedAt = Date.now();
     ensureSelectedMovies();
     normalizeAndPersistSchedules();
+    normalizeAndPersistActivities();
   } catch (error) {
     loadMoviesFallback(error?.message ? `${movieSupabaseErrorMessage}（${error.message}）` : movieSupabaseErrorMessage);
   } finally {
@@ -797,13 +825,22 @@ function dashboardRecentActivities() {
     .slice(0, 5);
 }
 
+function activitiesForMovie(movieId) {
+  return mockData.activities
+    .filter((activity) => activity.movieId === movieId && parseActivityDateTime(activity.dateTime))
+    .sort((a, b) => parseActivityDateTime(b.dateTime) - parseActivityDateTime(a.dateTime))
+    .slice(0, 5);
+}
+
 function activityModal() {
   const activity = mockData.activities.find((item) => item.id === editingActivityId);
+  const currentMovieId = activity?.movieId || mockData.movies[0]?.id || "";
   return `
     <div class="modal-backdrop" role="presentation">
       <section class="modal" role="dialog" aria-modal="true">
         <div class="modal-header"><div><h2>${activity ? "編輯活動" : "新增活動"}</h2><p>管理首頁近期活動資訊。</p></div><button class="icon-button modal-close" type="button" data-action="close-activity-modal">×</button></div>
         <form id="activityForm" class="modal-form">
+          <div class="field"><label>電影專案</label><select class="select" name="movieId" required style="width:100%">${mockData.movies.map((movie) => option(movie.id, currentMovieId, movie.title)).join("")}</select></div>
           <div class="field"><label>活動</label><input class="input" name="title" required value="${escapeHtml(activity?.title || "")}" /></div>
           <div class="field"><label>地點</label><input class="input" name="location" required value="${escapeHtml(activity?.location || "")}" /></div>
           <div class="field"><label>時間</label><input class="input" name="dateTime" type="datetime-local" required value="${escapeHtml(activity?.dateTime || "")}" /></div>
@@ -816,7 +853,6 @@ function activityModal() {
 }
 
 function dashboard() {
-  const recentActivities = dashboardRecentActivities();
   return `
     <div class="grid stats-grid">
       ${[
@@ -829,20 +865,34 @@ function dashboard() {
         .join("")}
     </div>
     <section class="card" style="margin-top:16px">
-      <div class="card-header"><div><h2>近期活動</h2><p>最新 5 筆活動資訊</p></div><button class="primary-button" type="button" data-action="open-activity-modal">新增活動</button></div>
+      <div class="card-header"><div><h2>近期活動</h2><p>依電影資料同步分組，每部電影顯示最新 5 筆活動</p></div><button class="primary-button" type="button" data-action="open-activity-modal" ${mockData.movies.length ? "" : "disabled"}>新增活動</button></div>
       <div class="card-body list">
-        ${recentActivities.map((item) => `
-          <div class="task-item">
-            <div>
-              <strong>${escapeHtml(item.title)}</strong>
-              <span class="muted">${escapeHtml(item.location)}｜${escapeHtml(formatActivityDateTime(item.dateTime))}｜${escapeHtml(item.attendees)}</span>
-              ${item.note ? `<span class="muted">備註：${escapeHtml(item.note)}</span>` : ""}
-            </div>
-            <div class="meta-row">
-              <button class="secondary-button" type="button" data-action="edit-activity" data-activity-id="${item.id}">編輯</button>
-              <button class="secondary-button" type="button" data-action="delete-activity" data-activity-id="${item.id}">刪除</button>
-            </div>
-          </div>`).join("")}
+        ${mockData.movies.map((movie) => {
+          const movieActivities = activitiesForMovie(movie.id);
+          return `
+            <article class="task-item">
+              <div style="width:100%">
+                <div class="card-header" style="padding:0 0 10px;border-bottom:0">
+                  <div><strong>${escapeHtml(movie.title)}</strong><span class="muted">${escapeHtml(movie.genre || "電影專案")}｜${escapeHtml(movie.releaseStatus || "未上映")}</span></div>
+                  <span class="status blue">${movieActivities.length} 筆活動</span>
+                </div>
+                <div class="list">
+                  ${movieActivities.map((item) => `
+                    <div class="task-item">
+                      <div>
+                        <strong>${escapeHtml(item.title)}</strong>
+                        <span class="muted">${escapeHtml(item.location)}｜${escapeHtml(formatActivityDateTime(item.dateTime))}｜${escapeHtml(item.attendees)}</span>
+                        ${item.note ? `<span class="muted">備註：${escapeHtml(item.note)}</span>` : ""}
+                      </div>
+                      <div class="meta-row">
+                        <button class="secondary-button" type="button" data-action="edit-activity" data-activity-id="${item.id}">編輯</button>
+                        <button class="secondary-button" type="button" data-action="delete-activity" data-activity-id="${item.id}">刪除</button>
+                      </div>
+                    </div>`).join("") || `<div class="task-item"><span class="muted">目前尚無活動排程</span></div>`}
+                </div>
+              </div>
+            </article>`;
+        }).join("") || `<div class="task-item"><span class="muted">請先新增電影，再建立近期活動。</span></div>`}
       </div>
     </section>
     ${isActivityModalOpen ? activityModal() : ""}
@@ -1946,6 +1996,7 @@ document.addEventListener("click", async (event) => {
     render();
   }
   if (action === "open-activity-modal") {
+    if (!mockData.movies.length) return window.alert("請先新增電影，再建立近期活動。");
     isActivityModalOpen = true;
     editingActivityId = null;
     render();
@@ -2174,6 +2225,7 @@ document.addEventListener("submit", async (event) => {
 
   if (event.target.id === "activityForm") {
     const activityData = {
+      movieId: formData.get("movieId") || mockData.movies[0]?.id || "",
       title: formData.get("title") || "未命名活動",
       location: formData.get("location") || "未指定地點",
       dateTime: formData.get("dateTime") || "",
