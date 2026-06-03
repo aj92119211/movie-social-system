@@ -279,11 +279,16 @@ function mapStyleExampleFromDb(row) {
     exampleContent: row.example_content || "",
     whyItWorks: row.why_it_works || "",
     usageNote: row.usage_note || "",
+    qualityTags: Array.isArray(row.quality_tags) ? row.quality_tags : [],
+    useCase: row.use_case || "",
+    isActive: row.is_active !== false,
+    score: Number(row.score || 3),
+    aiInstruction: row.ai_instruction || "",
   };
 }
 
-function mapStyleExampleToDb(example) {
-  return {
+function mapStyleExampleToDb(example, includeAdvancedFields = true) {
+  const payload = {
     type: String(example.type || "").trim(),
     platform: String(example.platform || "").trim(),
     movie_genre: String(example.movieGenre || "").trim(),
@@ -293,6 +298,14 @@ function mapStyleExampleToDb(example) {
     why_it_works: String(example.whyItWorks || "").trim(),
     usage_note: String(example.usageNote || "").trim(),
   };
+  if (includeAdvancedFields) {
+    payload.quality_tags = Array.isArray(example.qualityTags) ? example.qualityTags : [];
+    payload.use_case = String(example.useCase || "").trim();
+    payload.is_active = example.isActive !== false;
+    payload.score = Math.min(5, Math.max(1, Number(example.score || 3)));
+    payload.ai_instruction = String(example.aiInstruction || "").trim();
+  }
+  return payload;
 }
 
 async function saveMovieToSupabase(pathname, method, movie) {
@@ -335,6 +348,28 @@ function validateMoviePayload(movie) {
   }
 
   return "";
+}
+
+function isMissingStyleExampleColumnError(error) {
+  const message = String(error?.message || "");
+  return ["quality_tags", "use_case", "is_active", "score", "ai_instruction"].some((column) => message.includes(column));
+}
+
+async function saveStyleExampleToSupabase(pathname, method, example) {
+  try {
+    return await supabaseRequest(pathname, {
+      method,
+      headers: { Prefer: "return=representation" },
+      body: JSON.stringify(mapStyleExampleToDb(example)),
+    });
+  } catch (error) {
+    if (!isMissingStyleExampleColumnError(error)) throw error;
+    return supabaseRequest(pathname, {
+      method,
+      headers: { Prefer: "return=representation" },
+      body: JSON.stringify(mapStyleExampleToDb(example, false)),
+    });
+  }
 }
 
 function createExternalServiceError(error, serviceName) {
@@ -444,7 +479,7 @@ async function handleMoviesApi(request, response, movieId) {
 async function loadRelevantStyleExamples(filters = {}) {
   try {
     const rows = await supabaseRequest("/ai_style_examples?select=*&limit=200");
-    const examples = (rows || []).map(mapStyleExampleFromDb);
+    const examples = (rows || []).map(mapStyleExampleFromDb).filter((example) => example.isActive !== false);
     const normalized = {
       type: String(filters.type || "").toLowerCase(),
       platform: String(filters.platform || "").toLowerCase(),
@@ -462,11 +497,12 @@ async function loadRelevantStyleExamples(filters = {}) {
           campaignStage: String(example.campaignStage || "").toLowerCase(),
           tone: String(example.tone || "").toLowerCase(),
         };
-        const score = Object.entries(normalized).reduce((total, [key, value]) => {
+        const matchScore = Object.entries(normalized).reduce((total, [key, value]) => {
           if (!value) return total;
           return total + (fields[key] && (fields[key].includes(value) || value.includes(fields[key])) ? 1 : 0);
         }, 0);
-        return { example, score };
+        const qualityScore = Number(example.score || 3) / 5;
+        return { example, score: matchScore * 10 + qualityScore };
       })
       .sort((a, b) => b.score - a.score)
       .slice(0, 5)
@@ -490,6 +526,10 @@ function styleExamplesPromptBlock(examples) {
       `範例內容：${example.exampleContent || "未提供"}`,
       `好在哪裡：${example.whyItWorks || "未提供"}`,
       `使用建議：${example.usageNote || "未提供"}`,
+      `品質標籤：${Array.isArray(example.qualityTags) && example.qualityTags.length ? example.qualityTags.join("、") : "未提供"}`,
+      `適用任務：${example.useCase || "未提供"}`,
+      `推薦分數：${example.score || 3}/5`,
+      `AI 使用提示：${example.aiInstruction || "未提供"}`,
     ].join("\n")),
     "請參考以上範例的語氣、節奏與操作邏輯，但不要逐字照抄。",
   ].join("\n\n");
@@ -511,11 +551,7 @@ async function handleStyleExamplesApi(request, response, exampleId) {
         return;
       }
 
-      const rows = await supabaseRequest("/ai_style_examples?select=*", {
-        method: "POST",
-        headers: { Prefer: "return=representation" },
-        body: JSON.stringify(mapStyleExampleToDb(body)),
-      });
+      const rows = await saveStyleExampleToSupabase("/ai_style_examples?select=*", "POST", body);
       sendJson(response, 201, { example: mapStyleExampleFromDb(rows[0]) });
       return;
     }
@@ -528,11 +564,7 @@ async function handleStyleExamplesApi(request, response, exampleId) {
         return;
       }
 
-      const rows = await supabaseRequest(`/ai_style_examples?id=eq.${encodeURIComponent(exampleId)}&select=*`, {
-        method: "PATCH",
-        headers: { Prefer: "return=representation" },
-        body: JSON.stringify(mapStyleExampleToDb(body)),
-      });
+      const rows = await saveStyleExampleToSupabase(`/ai_style_examples?id=eq.${encodeURIComponent(exampleId)}&select=*`, "PATCH", body);
       if (!rows[0]) {
         sendJson(response, 404, { error: "找不到 AI 風格範例。" });
         return;

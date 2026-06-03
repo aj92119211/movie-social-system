@@ -182,6 +182,11 @@ const mockData = {
       exampleContent: "今晚你敢把燈關掉嗎？《鬼牽手》上映中，揪一位膽子最大的朋友一起進戲院。",
       whyItWorks: "用一句情境問題快速帶出恐怖片氣氛，也有明確揪團 CTA。",
       usageNote: "適合用在 IG 圖文或 Reels 文案開頭。",
+      qualityTags: ["有記憶點", "適合互動"],
+      useCase: "產生 IG 貼文",
+      isActive: true,
+      score: 5,
+      aiInstruction: "模仿短句節奏，不要直接複製。",
     },
   ],
 };
@@ -199,7 +204,7 @@ const pages = [
 
 const colors = ["#234a8f", "#0e7c86", "#6d4c92", "#b86b00", "#168463", "#c84444"];
 const scheduleStatuses = ["靈感", "草稿", "製作中", "內部審核", "片方審核", "已通過", "已排程", "已發布"];
-const statusClass = { 已通過: "green", 已排程: "green", 已發布: "green", 可使用: "green", 高效題: "green", 上映中: "green", 未上映: "amber", 下檔: "red", 草稿: "amber", 靈感: "amber", 製作中: "blue", 內部審核: "amber", 片方審核: "amber", 修改中: "red", 停用: "red" };
+const statusClass = { 已通過: "green", 已排程: "green", 已發布: "green", 可使用: "green", 高效題: "green", 啟用: "green", 上映中: "green", 未上映: "amber", 下檔: "red", 草稿: "amber", 靈感: "amber", 製作中: "blue", 內部審核: "amber", 片方審核: "amber", 修改中: "red", 停用: "red" };
 
 let moviesLoadedFromServer = false;
 let moviesLoading = false;
@@ -241,6 +246,13 @@ let questionFilters = {
   phase: "全部",
   status: "全部",
   performance: "全部",
+};
+let styleExampleFilters = {
+  search: "",
+  type: "全部",
+  platform: "全部",
+  movieGenre: "全部",
+  campaignStage: "全部",
 };
 let selectedAssetMovieId = localStorage.getItem(storageKeys.assetMovie) || "";
 let selectedScheduleMovieId = localStorage.getItem(storageKeys.scheduleMovie) || "";
@@ -613,6 +625,11 @@ function styleExamplePayloadFromForm(formData) {
     exampleContent: String(formData.get("exampleContent") || "").trim(),
     whyItWorks: String(formData.get("whyItWorks") || "").trim(),
     usageNote: String(formData.get("usageNote") || "").trim(),
+    qualityTags: parseList(formData.get("qualityTags")),
+    useCase: String(formData.get("useCase") || "").trim(),
+    isActive: formData.get("isActive") === "on",
+    score: Math.min(5, Math.max(1, Number(formData.get("score") || 3))),
+    aiInstruction: String(formData.get("aiInstruction") || "").trim(),
   };
 }
 
@@ -1500,7 +1517,64 @@ async function generateCopyPreview() {
   }
 }
 
+const styleFilterOptions = {
+  type: ["全部", "貼文", "留言回覆", "CTA", "負評回覆", "數據分析"],
+  platform: ["全部", "IG", "FB", "Threads", "YouTube", "通用"],
+  movieGenre: ["全部", "恐怖", "愛情", "喜劇", "劇情", "動作", "懸疑", "通用"],
+  campaignStage: ["全部", "上映前", "上映中", "下檔前", "口碑期", "通用"],
+};
+
+function normalizeStyleValue(value) {
+  const text = String(value || "").trim();
+  const aliases = {
+    Instagram: "IG",
+    Facebook: "FB",
+    "IG 限動": "IG",
+    Reels: "IG",
+    驚悚: "恐怖",
+    前導期: "上映前",
+    預告上線: "上映前",
+    上映倒數: "上映前",
+    口碑擴散: "口碑期",
+  };
+  return aliases[text] || text;
+}
+
+function styleExampleMatchesFilters(example) {
+  const keyword = styleExampleFilters.search.trim().toLowerCase();
+  const keywordMatch = !keyword || [
+    example.exampleContent,
+    example.tone,
+    example.whyItWorks,
+    example.usageNote,
+    example.useCase,
+    example.aiInstruction,
+    ...(example.qualityTags || []),
+  ].some((value) => String(value || "").toLowerCase().includes(keyword));
+  return keywordMatch &&
+    (styleExampleFilters.type === "全部" || normalizeStyleValue(example.type) === styleExampleFilters.type) &&
+    (styleExampleFilters.platform === "全部" || normalizeStyleValue(example.platform) === styleExampleFilters.platform) &&
+    (styleExampleFilters.movieGenre === "全部" || normalizeStyleValue(example.movieGenre) === styleExampleFilters.movieGenre) &&
+    (styleExampleFilters.campaignStage === "全部" || normalizeStyleValue(example.campaignStage) === styleExampleFilters.campaignStage);
+}
+
+function styleFilterSelect(name, label) {
+  return `<label class="filter-field"><span>${label}</span><select class="select style-filter" data-filter="${name}">${styleFilterOptions[name].map((item) => option(item, styleExampleFilters[name])).join("")}</select></label>`;
+}
+
+function styleExampleStats() {
+  return [
+    ["總範例數", mockData.aiStyleExamples.length, "目前累積範例"],
+    ["啟用範例數", mockData.aiStyleExamples.filter((item) => item.isActive !== false).length, "OpenAI 會優先參考"],
+    ["貼文範例數", mockData.aiStyleExamples.filter((item) => normalizeStyleValue(item.type) === "貼文").length, "貼文生成可用"],
+    ["負評回覆範例數", mockData.aiStyleExamples.filter((item) => normalizeStyleValue(item.type) === "負評回覆").length, "危機回覆可用"],
+    ["數據分析範例數", mockData.aiStyleExamples.filter((item) => normalizeStyleValue(item.type) === "數據分析").length, "分析報告可用"],
+  ];
+}
+
 function styleExampleCard(example) {
+  const tags = Array.isArray(example.qualityTags) ? example.qualityTags : parseList(example.qualityTags);
+  const active = example.isActive !== false;
   return `
     <article class="card style-example-card">
       <div class="card-body">
@@ -1511,19 +1585,26 @@ function styleExampleCard(example) {
               <span class="tag">${escapeHtml(example.platform)}</span>
               <span class="tag">${escapeHtml(example.movieGenre)}</span>
               <span class="tag">${escapeHtml(example.campaignStage)}</span>
+              ${status(active ? "啟用" : "停用")}
               ${status(example.tone || "參考")}
             </div>
             <h3>${escapeHtml(example.type || "未分類")}｜${escapeHtml(example.platform || "未指定平台")}</h3>
+            <span class="muted">${escapeHtml(example.useCase || "尚未設定適用任務")}｜推薦 ${"★".repeat(Number(example.score || 3))}${"☆".repeat(5 - Number(example.score || 3))}</span>
           </div>
           <div class="meta-row">
+            <button class="secondary-button" type="button" data-action="copy-style-example" data-style-id="${example.id}">複製內容</button>
+            <button class="secondary-button" type="button" data-action="use-style-example" data-style-id="${example.id}">用這則生成</button>
             <button class="secondary-button" type="button" data-action="edit-style-example" data-style-id="${example.id}">編輯</button>
             <button class="secondary-button" type="button" data-action="delete-style-example" data-style-id="${example.id}">刪除</button>
           </div>
         </div>
         <div class="style-example-content">${escapeHtml(example.exampleContent || "尚未填寫範例內容")}</div>
+        <div class="meta-row">${tags.map((tag) => `<span class="tag">${escapeHtml(tag)}</span>`).join("") || `<span class="muted">尚未設定品質標籤</span>`}</div>
         <div class="question-detail-grid">
           <div><span class="muted">為什麼這則好</span><strong>${escapeHtml(example.whyItWorks || "尚未填寫")}</strong></div>
           <div><span class="muted">使用建議</span><strong>${escapeHtml(example.usageNote || "尚未填寫")}</strong></div>
+          <div><span class="muted">給 AI 的使用提示</span><strong>${escapeHtml(example.aiInstruction || "尚未填寫")}</strong></div>
+          <div><span class="muted">適用任務</span><strong>${escapeHtml(example.useCase || "尚未設定")}</strong></div>
         </div>
       </div>
     </article>`;
@@ -1536,14 +1617,19 @@ function styleExampleModal() {
       <section class="modal" role="dialog" aria-modal="true">
         <div class="modal-header"><div><h2>${example ? "編輯風格範例" : "新增風格範例"}</h2><p>這些範例會提供給 OpenAI 產生文案、互動題與分析報告時參考。</p></div><button class="icon-button modal-close" type="button" data-action="close-style-example-modal">×</button></div>
         <form id="styleExampleForm" class="modal-form">
-          <div class="field"><label>類型 type</label><select class="select" name="type" required style="width:100%">${["貼文", "CTA", "留言回覆", "互動題", "互動題改寫", "數據分析"].map((item) => option(item, example?.type || "貼文")).join("")}</select></div>
-          <div class="field"><label>平台 platform</label><select class="select" name="platform" required style="width:100%">${["Facebook", "Instagram", "Threads", "YouTube", "IG 限動", "Reels", "通用"].map((item) => option(item, example?.platform || "Instagram")).join("")}</select></div>
-          <div class="field"><label>電影類型 movie_genre</label><input class="input" name="movieGenre" required value="${escapeHtml(example?.movieGenre || "")}" placeholder="例如：驚悚、愛情、動作、紀錄片" /></div>
-          <div class="field"><label>宣傳情境 campaign_stage</label><select class="select" name="campaignStage" required style="width:100%">${["前導期", "預告上線", "上映倒數", "上映中", "口碑擴散", "下檔前"].map((item) => option(item, example?.campaignStage || "上映中")).join("")}</select></div>
+          <div class="field"><label>類型 type</label><select class="select" name="type" required style="width:100%">${["貼文", "留言回覆", "CTA", "負評回覆", "數據分析", "互動題", "互動題改寫"].map((item) => option(item, example?.type || "貼文")).join("")}</select></div>
+          <div class="field"><label>平台 platform</label><select class="select" name="platform" required style="width:100%">${["IG", "FB", "Threads", "YouTube", "通用"].map((item) => option(item, normalizeStyleValue(example?.platform) || "IG")).join("")}</select></div>
+          <div class="field"><label>電影類型 movie_genre</label><select class="select" name="movieGenre" required style="width:100%">${["恐怖", "愛情", "喜劇", "劇情", "動作", "懸疑", "通用"].map((item) => option(item, normalizeStyleValue(example?.movieGenre) || "通用")).join("")}</select></div>
+          <div class="field"><label>宣傳情境 campaign_stage</label><select class="select" name="campaignStage" required style="width:100%">${["上映前", "上映中", "下檔前", "口碑期", "通用"].map((item) => option(item, normalizeStyleValue(example?.campaignStage) || "上映中")).join("")}</select></div>
           <div class="field"><label>語氣 tone</label><input class="input" name="tone" required value="${escapeHtml(example?.tone || "")}" placeholder="例如：神祕、熱血、感性、幽默、專業白話" /></div>
+          <div class="field"><label>品質標籤 quality_tags</label><textarea name="qualityTags" placeholder="例如：有記憶點、適合互動、適合轉粉">${escapeHtml((example?.qualityTags || []).join ? example.qualityTags.join(", ") : example?.qualityTags || "")}</textarea></div>
+          <div class="field"><label>適用任務 use_case</label><input class="input" name="useCase" value="${escapeHtml(example?.useCase || "")}" placeholder="例如：產生 IG 貼文、產生負評回覆" /></div>
+          <div class="field"><label>推薦程度 score</label><select class="select" name="score" style="width:100%">${[1, 2, 3, 4, 5].map((item) => option(String(item), String(example?.score || 3), `${item} 分`)).join("")}</select></div>
+          <div class="field"><label>是否啟用 is_active</label><label class="toggle-row"><input type="checkbox" name="isActive" ${example?.isActive === false ? "" : "checked"} /> 啟用，讓 OpenAI 可以參考這則範例</label></div>
           <div class="field"><label>範例內容 example_content</label><textarea name="exampleContent" required>${escapeHtml(example?.exampleContent || "")}</textarea></div>
           <div class="field"><label>為什麼這則好 why_it_works</label><textarea name="whyItWorks">${escapeHtml(example?.whyItWorks || "")}</textarea></div>
           <div class="field"><label>使用建議 usage_note</label><textarea name="usageNote">${escapeHtml(example?.usageNote || "")}</textarea></div>
+          <div class="field"><label>給 AI 的使用提示 ai_instruction</label><textarea name="aiInstruction" placeholder="例如：模仿短句節奏，不要直接複製">${escapeHtml(example?.aiInstruction || "")}</textarea></div>
           <div class="modal-actions"><button class="secondary-button" type="button" data-action="close-style-example-modal">取消</button><button class="primary-button" type="submit">儲存</button></div>
         </form>
       </section>
@@ -1551,6 +1637,7 @@ function styleExampleModal() {
 }
 
 function styleExamplesPage() {
+  const visibleExamples = mockData.aiStyleExamples.filter(styleExampleMatchesFilters);
   const typeCounts = Object.entries(mockData.aiStyleExamples.reduce((counts, example) => {
     const key = example.type || "未分類";
     counts[key] = (counts[key] || 0) + 1;
@@ -1567,21 +1654,25 @@ function styleExamplesPage() {
     ${styleExamplesError ? `<div class="task-item" style="margin-bottom:16px"><strong>AI 風格範例庫提示</strong><span class="muted">${escapeHtml(styleExamplesError)}</span></div>` : ""}
     ${styleExamplesLoading ? `<div class="task-item" style="margin-bottom:16px"><strong>讀取風格範例中...</strong><span class="muted">正在從 Supabase 載入 ai_style_examples 資料表</span></div>` : ""}
     <div class="grid stats-grid question-stats">
-      ${[
-        ["總範例數", mockData.aiStyleExamples.length, "目前可供 AI 參考"],
-        ["貼文範例", mockData.aiStyleExamples.filter((item) => item.type === "貼文").length, "文案生成可用"],
-        ["互動題範例", mockData.aiStyleExamples.filter((item) => item.type.includes("互動題")).length, "問答集可用"],
-        ["分析範例", mockData.aiStyleExamples.filter((item) => item.type === "數據分析").length, "數據報告可用"],
-      ].map(([label, value, note]) => `<article class="card stat-card"><span>${label}</span><strong>${value}</strong><small>${note}</small></article>`).join("")}
+      ${styleExampleStats().map(([label, value, note]) => `<article class="card stat-card"><span>${label}</span><strong>${value}</strong><small>${note}</small></article>`).join("")}
     </div>
+    <section class="card question-filter-card"><div class="card-body">
+      <div class="question-filter-grid">
+        <label class="filter-field filter-wide"><span>搜尋範例內容</span><input class="input style-filter-input" data-filter="search" value="${escapeHtml(styleExampleFilters.search)}" placeholder="搜尋範例、語氣、好在哪裡、使用建議或標籤" /></label>
+        ${styleFilterSelect("type", "類型")}
+        ${styleFilterSelect("platform", "平台")}
+        ${styleFilterSelect("movieGenre", "電影類型")}
+        ${styleFilterSelect("campaignStage", "宣傳情境")}
+      </div>
+    </div></section>
     <section class="card" style="margin-top:16px">
-      <div class="card-header"><div><h2>範例分類</h2><p>OpenAI 會依 type、platform、movie_genre、campaign_stage、tone 讀取相關範例。</p></div></div>
+      <div class="card-header"><div><h2>範例分類</h2><p>目前顯示 ${visibleExamples.length} 筆；OpenAI 會優先讀取啟用、分數高且條件相符的範例。</p></div></div>
       <div class="card-body">
         <div class="meta-row">${typeCounts.map(([type, count]) => `<span class="tag">${escapeHtml(type)} ${count}</span>`).join("") || `<span class="muted">目前尚無範例。</span>`}</div>
       </div>
     </section>
     <div class="style-example-grid">
-      ${mockData.aiStyleExamples.map(styleExampleCard).join("") || `<article class="card"><div class="card-body"><h3>尚無 AI 風格範例</h3><p class="muted">請新增第一筆範例，或確認 Supabase 的 ai_style_examples 資料表已有資料。</p></div></article>`}
+      ${visibleExamples.map(styleExampleCard).join("") || `<article class="card"><div class="card-body"><h3>找不到符合條件的範例</h3><p class="muted">請調整搜尋或篩選條件，或新增第一筆範例。</p></div></article>`}
     </div>
     ${isStyleExampleModalOpen ? styleExampleModal() : ""}`;
 }
@@ -2368,6 +2459,15 @@ document.addEventListener("input", (event) => {
     input?.focus();
     input?.setSelectionRange(cursorPosition, cursorPosition);
   }
+  if (event.target.classList.contains("style-filter-input")) {
+    const filterName = event.target.dataset.filter;
+    const cursorPosition = event.target.selectionStart;
+    styleExampleFilters[filterName] = event.target.value;
+    render();
+    const input = document.querySelector(`.style-filter-input[data-filter="${filterName}"]`);
+    input?.focus();
+    input?.setSelectionRange(cursorPosition, cursorPosition);
+  }
 });
 
 document.addEventListener("change", (event) => {
@@ -2430,6 +2530,10 @@ document.addEventListener("change", (event) => {
   }
   if (event.target.classList.contains("question-filter")) {
     questionFilters[event.target.dataset.filter] = event.target.value;
+    render();
+  }
+  if (event.target.classList.contains("style-filter")) {
+    styleExampleFilters[event.target.dataset.filter] = event.target.value;
     render();
   }
 });
@@ -2676,6 +2780,29 @@ document.addEventListener("click", async (event) => {
       render();
     } catch (error) {
       styleExamplesError = error.message || "AI 風格範例刪除失敗。";
+      render();
+    }
+  }
+  if (action === "copy-style-example") {
+    const example = mockData.aiStyleExamples.find((item) => String(item.id) === String(actionElement.dataset.styleId));
+    if (example) {
+      navigator.clipboard?.writeText(example.exampleContent || "");
+      window.alert("範例內容已複製。");
+    }
+  }
+  if (action === "use-style-example") {
+    const example = mockData.aiStyleExamples.find((item) => String(item.id) === String(actionElement.dataset.styleId));
+    if (example) {
+      copyFocusValue = [
+        example.useCase ? `任務：${example.useCase}` : "",
+        example.aiInstruction ? `AI 使用提示：${example.aiInstruction}` : "",
+        example.usageNote ? `使用建議：${example.usageNote}` : "",
+        `請參考這則範例的語氣與邏輯：${example.exampleContent || ""}`,
+      ].filter(Boolean).join("\n");
+      localStorage.setItem(storageKeys.copyFocus, copyFocusValue);
+      generatedCopyResult = null;
+      copyGeneratorError = "";
+      location.hash = "copy";
       render();
     }
   }

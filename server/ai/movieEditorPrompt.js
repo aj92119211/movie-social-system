@@ -84,6 +84,10 @@ function buildStyleExamplesBlock(styleExamples = []) {
       `範例內容：${example.exampleContent || example.example_content || "未提供"}`,
       `為什麼這則好：${example.whyItWorks || example.why_it_works || "未提供"}`,
       `使用建議：${example.usageNote || example.usage_note || "未提供"}`,
+      `品質標籤：${Array.isArray(example.qualityTags || example.quality_tags) ? (example.qualityTags || example.quality_tags).join("、") : "未提供"}`,
+      `適用任務：${example.useCase || example.use_case || "未提供"}`,
+      `推薦分數：${example.score || 3}/5`,
+      `AI 使用提示：${example.aiInstruction || example.ai_instruction || "未提供"}`,
     ].join("\n")),
     "請參考以上範例的語氣、節奏與操作邏輯，但不要逐字照抄。",
   ].join("\n\n");

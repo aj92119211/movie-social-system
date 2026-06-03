@@ -695,6 +695,28 @@ tr:last-child td {
   white-space: pre-wrap;
 }
 
+.style-example-card .question-detail-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.toggle-row {
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #fff;
+  color: var(--text);
+  font-weight: 700;
+}
+
+.toggle-row input {
+  width: 16px;
+  height: 16px;
+}
+
 .analytics-toolbar {
   align-items: stretch;
 }
@@ -1120,7 +1142,8 @@ textarea {
   .review-hero,
   .question-card-top,
   .style-example-top,
-  .question-detail-grid {
+  .question-detail-grid,
+  .style-example-card .question-detail-grid {
     grid-template-columns: 1fr;
   }
 
