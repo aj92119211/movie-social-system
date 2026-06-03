@@ -896,6 +896,12 @@ async function saveMovieToServer(movieData) {
       replaceMovieInState(payload.movie);
     }
     await loadMoviesFromServer(true);
+    if (movieData.releaseDate === null) {
+      const savedMovie = mockData.movies.find((movie) => movie.id === (movieId || payload.movie?.id));
+      if (savedMovie?.releaseDate) {
+        throw new Error("上映日期清空沒有成功，資料庫仍回傳舊日期。請確認 Supabase 已允許 release_date 為空值。");
+      }
+    }
   } catch (error) {
     const detail = String(error?.message || "");
     const releaseDateHint = detail.includes("release_date")

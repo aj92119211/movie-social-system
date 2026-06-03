@@ -256,7 +256,7 @@ function mapMovieToDb(movie) {
   return {
     title: movie.title,
     genre: movie.genre,
-    release_date: movie.releaseDate ? String(movie.releaseDate).replaceAll("/", "-") : null,
+    release_date: normalizeReleaseDateForDb(movie.releaseDate),
     release_status: movie.releaseStatus || "未上映",
     social_tone: movie.socialTone,
     core_selling_points: Array.isArray(movie.coreSellingPoints) ? movie.coreSellingPoints : [],
@@ -266,6 +266,15 @@ function mapMovieToDb(movie) {
     color: movie.color || "#234a8f",
     cover_url: movie.coverUrl || "",
   };
+}
+
+function normalizeReleaseDateForDb(value) {
+  const releaseDate = String(value ?? "").trim();
+  return releaseDate ? releaseDate.replaceAll("/", "-") : null;
+}
+
+function shouldClearReleaseDate(movie) {
+  return Object.prototype.hasOwnProperty.call(movie, "releaseDate") && normalizeReleaseDateForDb(movie.releaseDate) === null;
 }
 
 function mapStyleExampleFromDb(row) {
@@ -327,6 +336,21 @@ async function saveMovieToSupabase(pathname, method, movie) {
     });
     return rows.map((row) => ({ ...row, release_status: movie.releaseStatus || "未上映" }));
   }
+}
+
+async function ensureMovieReleaseDateCleared(pathname, rows, shouldClear) {
+  if (!shouldClear || rows?.[0]?.release_date == null) return rows;
+  const clearedRows = await supabaseRequest(pathname, {
+    method: "PATCH",
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify({ release_date: null }),
+  });
+  if (clearedRows?.[0]?.release_date != null) {
+    const error = new Error("上映日期清空失敗，Supabase 仍回傳舊日期。");
+    error.statusCode = 500;
+    throw error;
+  }
+  return clearedRows;
 }
 
 function validateStyleExamplePayload(example) {
@@ -449,7 +473,8 @@ async function handleMoviesApi(request, response, movieId) {
         return;
       }
 
-      const rows = await saveMovieToSupabase(`/movies?id=eq.${encodeURIComponent(movieId)}&select=*`, "PATCH", body);
+      let rows = await saveMovieToSupabase(`/movies?id=eq.${encodeURIComponent(movieId)}&select=*`, "PATCH", body);
+      rows = await ensureMovieReleaseDateCleared(`/movies?id=eq.${encodeURIComponent(movieId)}&select=*`, rows, shouldClearReleaseDate(body));
 
       if (!rows[0]) {
         sendJson(response, 404, { error: "找不到電影資料。" });
