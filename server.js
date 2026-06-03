@@ -351,11 +351,6 @@ function validateMoviePayload(movie) {
   return "";
 }
 
-function isMissingStyleExampleColumnError(error) {
-  const message = String(error?.message || "");
-  return ["quality_tags", "use_case", "is_active", "score", "ai_instruction"].some((column) => message.includes(column));
-}
-
 async function saveStyleExampleToSupabase(pathname, method, example) {
   try {
     return await supabaseRequest(pathname, {
@@ -364,12 +359,14 @@ async function saveStyleExampleToSupabase(pathname, method, example) {
       body: JSON.stringify(mapStyleExampleToDb(example)),
     });
   } catch (error) {
-    if (!isMissingStyleExampleColumnError(error)) throw error;
-    return supabaseRequest(pathname, {
-      method,
-      headers: { Prefer: "return=representation" },
-      body: JSON.stringify(mapStyleExampleToDb(example, false)),
-    });
+    const message = String(error?.message || "");
+    const missingColumn = ["quality_tags", "use_case", "is_active", "score", "ai_instruction"].find((column) => message.includes(column));
+    if (missingColumn) {
+      const setupError = new Error(`Supabase 缺少欄位 ${missingColumn}，請先在 SQL Editor 執行 supabase/ai_style_examples_update.sql。`);
+      setupError.statusCode = 500;
+      throw setupError;
+    }
+    throw error;
   }
 }
 

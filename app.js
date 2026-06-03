@@ -265,8 +265,10 @@ let generatedCopyResult = null;
 let styleExamplesLoading = false;
 let styleExamplesLoadedFromServer = false;
 let styleExamplesError = "";
+let styleExamplesNotice = "";
 let isStyleExampleModalOpen = false;
 let editingStyleExampleId = null;
+let isStyleExampleSaving = false;
 let isTextComposing = false;
 let authChecked = false;
 let authRequired = false;
@@ -604,11 +606,11 @@ async function loadStyleExamplesFromServer(force = false) {
   render();
   try {
     const payload = await requestJson("/api/ai-style-examples");
-    mockData.aiStyleExamples = Array.isArray(payload.examples) ? payload.examples : [];
+    mockData.aiStyleExamples = Array.isArray(payload.examples) ? payload.examples.map(normalizeStyleExampleRecord) : [];
     writeLocalStorageOnly(storageKeys.styleExamples, mockData.aiStyleExamples);
     styleExamplesLoadedFromServer = true;
   } catch (error) {
-    mockData.aiStyleExamples = readStorage(storageKeys.styleExamples, mockData.aiStyleExamples);
+    mockData.aiStyleExamples = readStorage(storageKeys.styleExamples, mockData.aiStyleExamples).map(normalizeStyleExampleRecord);
     styleExamplesError = `AI 風格範例庫尚未連上 Supabase。請確認 ai_style_examples 資料表與 Render 環境變數。（${error.message}）`;
   } finally {
     styleExamplesLoading = false;
@@ -629,27 +631,58 @@ function styleExamplePayloadFromForm(formData) {
     qualityTags: parseList(formData.get("qualityTags")),
     useCase: String(formData.get("useCase") || "").trim(),
     isActive: formData.get("isActive") === "on",
-    score: Math.min(5, Math.max(1, Number(formData.get("score") || 3))),
+    score: Math.min(5, Math.max(1, Math.round(Number(formData.get("score") || 3)))),
     aiInstruction: String(formData.get("aiInstruction") || "").trim(),
   };
+}
+
+function normalizeStyleExampleRecord(example) {
+  return {
+    id: example.id,
+    type: example.type || "",
+    platform: example.platform || "",
+    movieGenre: example.movieGenre || "",
+    campaignStage: example.campaignStage || "",
+    tone: example.tone || "",
+    exampleContent: example.exampleContent || "",
+    whyItWorks: example.whyItWorks || "",
+    usageNote: example.usageNote || "",
+    qualityTags: Array.isArray(example.qualityTags) ? example.qualityTags : parseList(example.qualityTags),
+    useCase: example.useCase || "",
+    isActive: example.isActive !== false,
+    score: Math.min(5, Math.max(1, Math.round(Number(example.score || 3)))),
+    aiInstruction: example.aiInstruction || "",
+  };
+}
+
+function upsertStyleExampleState(example) {
+  const normalized = normalizeStyleExampleRecord(example);
+  const index = mockData.aiStyleExamples.findIndex((item) => String(item.id) === String(normalized.id));
+  if (index >= 0) mockData.aiStyleExamples[index] = normalized;
+  else mockData.aiStyleExamples.unshift(normalized);
+  writeLocalStorageOnly(storageKeys.styleExamples, mockData.aiStyleExamples);
+  return normalized;
 }
 
 async function saveStyleExampleToServer(exampleData) {
   const editingExample = mockData.aiStyleExamples.find((example) => String(example.id) === String(editingStyleExampleId));
   if (isGitHubPagesMode()) {
-    if (editingExample) Object.assign(editingExample, exampleData);
-    else mockData.aiStyleExamples.unshift({ id: `style-${Date.now()}`, ...exampleData });
+    const localExample = normalizeStyleExampleRecord({ id: editingExample?.id || `style-${Date.now()}`, ...exampleData });
+    if (editingExample) Object.assign(editingExample, localExample);
+    else mockData.aiStyleExamples.unshift(localExample);
     writeStorage(storageKeys.styleExamples, mockData.aiStyleExamples);
     styleExamplesError = "目前為 GitHub Pages 展示模式，AI 風格範例會暫存在這台瀏覽器。";
+    styleExamplesNotice = "已儲存到瀏覽器暫存。";
     return;
   }
 
   const url = editingExample ? `/api/ai-style-examples/${encodeURIComponent(editingExample.id)}` : "/api/ai-style-examples";
-  await requestJson(url, {
+  const payload = await requestJson(url, {
     method: editingExample ? "PATCH" : "POST",
     body: JSON.stringify(exampleData),
   });
-  await loadStyleExamplesFromServer(true);
+  if (payload.example) upsertStyleExampleState(payload.example);
+  styleExamplesLoadedFromServer = true;
 }
 
 async function deleteStyleExampleFromServer(exampleId) {
@@ -1638,7 +1671,7 @@ function styleExampleModal() {
           <div class="field"><label>為什麼這則好 why_it_works</label><textarea name="whyItWorks">${escapeHtml(example?.whyItWorks || "")}</textarea></div>
           <div class="field"><label>使用建議 usage_note</label><textarea name="usageNote">${escapeHtml(example?.usageNote || "")}</textarea></div>
           <div class="field"><label>給 AI 的使用提示 ai_instruction</label><textarea name="aiInstruction" placeholder="例如：模仿短句節奏，不要直接複製">${escapeHtml(example?.aiInstruction || "")}</textarea></div>
-          <div class="modal-actions"><button class="secondary-button" type="button" data-action="close-style-example-modal">取消</button><button class="primary-button" type="submit">儲存</button></div>
+          <div class="modal-actions"><button class="secondary-button" type="button" data-action="close-style-example-modal" ${isStyleExampleSaving ? "disabled" : ""}>取消</button><button class="primary-button" type="submit" ${isStyleExampleSaving ? "disabled" : ""}>${isStyleExampleSaving ? "儲存中..." : "儲存"}</button></div>
         </form>
       </section>
     </div>`;
@@ -1660,6 +1693,7 @@ function styleExamplesPage() {
       <button class="primary-button" type="button" data-action="open-style-example-modal">新增範例</button>
     </section>
     ${styleExamplesError ? `<div class="task-item" style="margin-bottom:16px"><strong>AI 風格範例庫提示</strong><span class="muted">${escapeHtml(styleExamplesError)}</span></div>` : ""}
+    ${styleExamplesNotice ? `<div class="task-item" style="margin-bottom:16px"><strong>更新成功</strong><span class="muted">${escapeHtml(styleExamplesNotice)}</span></div>` : ""}
     ${styleExamplesLoading ? `<div class="task-item" style="margin-bottom:16px"><strong>讀取風格範例中...</strong><span class="muted">正在從 Supabase 載入 ai_style_examples 資料表</span></div>` : ""}
     <div class="grid stats-grid question-stats">
       ${styleExampleStats().map(([label, value, note]) => `<article class="card stat-card"><span>${label}</span><strong>${value}</strong><small>${note}</small></article>`).join("")}
@@ -2787,25 +2821,33 @@ document.addEventListener("click", async (event) => {
   if (action === "open-style-example-modal") {
     isStyleExampleModalOpen = true;
     editingStyleExampleId = null;
+    styleExamplesError = "";
+    styleExamplesNotice = "";
     render();
   }
   if (action === "edit-style-example") {
     editingStyleExampleId = actionElement.dataset.styleId;
     isStyleExampleModalOpen = true;
+    styleExamplesError = "";
+    styleExamplesNotice = "";
     render();
   }
   if (action === "close-style-example-modal") {
     isStyleExampleModalOpen = false;
     editingStyleExampleId = null;
+    isStyleExampleSaving = false;
     render();
   }
   if (action === "delete-style-example") {
     if (!window.confirm("確定要刪除這筆 AI 風格範例嗎？")) return;
     try {
       await deleteStyleExampleFromServer(actionElement.dataset.styleId);
+      styleExamplesError = "";
+      styleExamplesNotice = "已刪除。";
       render();
     } catch (error) {
       styleExamplesError = error.message || "AI 風格範例刪除失敗。";
+      styleExamplesNotice = "";
       render();
     }
   }
@@ -3093,14 +3135,23 @@ document.addEventListener("submit", async (event) => {
   }
 
   if (event.target.id === "styleExampleForm") {
+    if (isStyleExampleSaving) return;
+    isStyleExampleSaving = true;
+    styleExamplesError = "";
+    styleExamplesNotice = "";
+    render();
     try {
       await saveStyleExampleToServer(styleExamplePayloadFromForm(formData));
       isStyleExampleModalOpen = false;
       editingStyleExampleId = null;
+      isStyleExampleSaving = false;
       styleExamplesError = "";
+      styleExamplesNotice = "已儲存，畫面已更新。";
       render();
     } catch (error) {
+      isStyleExampleSaving = false;
       styleExamplesError = error.message || "AI 風格範例儲存失敗。";
+      styleExamplesNotice = "";
       render();
     }
     return;
