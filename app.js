@@ -341,6 +341,11 @@ function formatDateForDisplay(value) {
   return String(value || "").replaceAll("-", "/");
 }
 
+function movieReleaseDateLabel(value) {
+  const releaseDate = formatDateForDisplay(value).trim();
+  return releaseDate || "待確認";
+}
+
 function formatActivityDateTime(value) {
   if (!value) return "";
   const [datePart, timePart = ""] = String(value).split("T");
@@ -860,10 +865,11 @@ function assetsForSelectedMovie() {
 
 function moviePayloadFromForm(formData) {
   const editingMovie = mockData.movies.find((movie) => movie.id === editingMovieId);
+  const releaseDate = formatDateForDisplay(formData.get("releaseDate")).trim();
   return {
     title: String(formData.get("title") || "").trim(),
     genre: String(formData.get("genre") || "").trim(),
-    releaseDate: formatDateForDisplay(formData.get("releaseDate")),
+    releaseDate,
     releaseStatus: String(formData.get("releaseStatus") || "未上映").trim(),
     socialTone: String(formData.get("socialTone") || "").trim(),
     coreSellingPoints: parseList(formData.get("coreSellingPoints")),
@@ -1130,7 +1136,7 @@ function moviesPage() {
           <div class="movie-cover-wrap">${movieCover(movie)}</div>
           <div class="card-body">
             <h3>${escapeHtml(movie.title)}</h3>
-            <span class="muted">${escapeHtml(movie.genre)}｜上映 ${escapeHtml(movie.releaseDate)}</span>
+            <span class="muted">${escapeHtml(movie.genre)}｜上映 ${escapeHtml(movieReleaseDateLabel(movie.releaseDate))}</span>
             <div class="meta-row">${status(movie.releaseStatus || "未上映")}${status(movie.phase || "企劃中")}<span class="tag">負責 ${escapeHtml(movie.owner || "未指定")}</span></div>
             <p class="muted">語氣：${escapeHtml(movie.socialTone)}</p>
             <div class="meta-row">${(movie.coreSellingPoints || []).map((point) => `<span class="tag">${escapeHtml(point)}</span>`).join("")}</div>
@@ -1156,7 +1162,7 @@ function movieModal() {
         <form id="movieForm" class="modal-form">
           <div class="field"><label for="movieTitle">片名</label><input class="input" id="movieTitle" name="title" required value="${escapeHtml(movie?.title || "")}" /></div>
           <div class="field"><label for="movieGenre">類型</label><input class="input" id="movieGenre" name="genre" required value="${escapeHtml(movie?.genre || "")}" /></div>
-          <div class="field"><label for="movieReleaseDate">上映日期</label><input class="input" id="movieReleaseDate" name="releaseDate" type="date" required value="${escapeHtml(formatDateForInput(movie?.releaseDate))}" /></div>
+          <div class="field"><label for="movieReleaseDate">上映日期</label><input class="input" id="movieReleaseDate" name="releaseDate" type="date" value="${escapeHtml(formatDateForInput(movie?.releaseDate))}" /><p class="muted">如果上映時間尚未確定，可以先留空，系統會顯示「待確認」。</p></div>
           <div class="field"><label for="movieReleaseStatus">上映狀態</label><select class="select" id="movieReleaseStatus" name="releaseStatus" required style="width:100%">${["未上映", "上映中", "下檔"].map((item) => option(item, movie?.releaseStatus || "未上映")).join("")}</select></div>
           <div class="field"><label for="movieSocialTone">社群語氣</label><textarea id="movieSocialTone" name="socialTone" required>${escapeHtml(movie?.socialTone || "")}</textarea></div>
           <div class="field"><label for="movieSellingPoints">核心賣點</label><textarea id="movieSellingPoints" name="coreSellingPoints" required placeholder="請用逗號分隔">${escapeHtml((movie?.coreSellingPoints || []).join(", "))}</textarea></div>

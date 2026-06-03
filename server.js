@@ -256,7 +256,7 @@ function mapMovieToDb(movie) {
   return {
     title: movie.title,
     genre: movie.genre,
-    release_date: String(movie.releaseDate || "").replaceAll("/", "-"),
+    release_date: movie.releaseDate ? String(movie.releaseDate).replaceAll("/", "-") : null,
     release_status: movie.releaseStatus || "未上映",
     social_tone: movie.socialTone,
     core_selling_points: Array.isArray(movie.coreSellingPoints) ? movie.coreSellingPoints : [],
@@ -341,7 +341,7 @@ function validateStyleExamplePayload(example) {
 }
 
 function validateMoviePayload(movie) {
-  const requiredFields = ["title", "genre", "releaseDate", "socialTone"];
+  const requiredFields = ["title", "genre", "socialTone"];
   for (const field of requiredFields) {
     if (!String(movie[field] || "").trim()) {
       return `${field} is required`;

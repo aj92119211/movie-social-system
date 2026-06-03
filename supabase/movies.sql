@@ -2,7 +2,7 @@ create table if not exists public.movies (
   id uuid primary key default gen_random_uuid(),
   title text not null,
   genre text not null,
-  release_date date not null,
+  release_date date,
   release_status text not null default '未上映' check (release_status in ('未上映', '上映中', '下檔')),
   social_tone text not null,
   core_selling_points text[] not null default '{}',
@@ -13,6 +13,9 @@ create table if not exists public.movies (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table public.movies
+alter column release_date drop not null;
 
 alter table public.movies
 add column if not exists release_status text not null default '未上映';
