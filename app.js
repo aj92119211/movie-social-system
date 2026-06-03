@@ -9,6 +9,7 @@
   metrics: "movieSocialOps.socialMetrics",
   postAnalyses: "movieSocialOps.postAnalyses",
   assetMovie: "movieSocialOps.selectedAssetMovie",
+  scheduleMovie: "movieSocialOps.selectedScheduleMovie",
   copyMovie: "movieSocialOps.selectedCopyMovie",
   copyFocus: "movieSocialOps.copyFocus",
 };
@@ -51,6 +52,7 @@ const mockData = {
   schedules: [
     {
       id: "sch-001",
+      movieId: "mov-001",
       date: "2026/06/01",
       platform: "Facebook",
       topic: "正式預告上線",
@@ -62,6 +64,7 @@ const mockData = {
     },
     {
       id: "sch-002",
+      movieId: "mov-001",
       date: "2026/06/03",
       platform: "Instagram",
       topic: "角色金句圖",
@@ -73,6 +76,7 @@ const mockData = {
     },
     {
       id: "sch-003",
+      movieId: "mov-001",
       date: "2026/06/10",
       platform: "Threads",
       topic: "上映倒數互動",
@@ -218,6 +222,7 @@ let questionFilters = {
   performance: "全部",
 };
 let selectedAssetMovieId = localStorage.getItem(storageKeys.assetMovie) || "";
+let selectedScheduleMovieId = localStorage.getItem(storageKeys.scheduleMovie) || "";
 let selectedCopyMovieId = localStorage.getItem(storageKeys.copyMovie) || "";
 let copyFocusValue = localStorage.getItem(storageKeys.copyFocus) || "正式預告上線、提醒上映日期、主打懸疑氛圍，語氣要精準但保留神祕感。";
 let isCopyGenerating = false;
@@ -343,12 +348,36 @@ function getScheduleWeekStart() {
 function schedulesForCurrentWeek() {
   const start = getScheduleWeekStart();
   const end = addDays(start, 7);
+  const selectedMovie = getSelectedScheduleMovie();
   return mockData.schedules
     .filter((item) => {
       const date = parseLocalDate(item.date);
-      return date && date >= start && date < end;
+      return date && date >= start && date < end && (!selectedMovie || scheduleMovieId(item) === selectedMovie.id);
     })
     .sort((a, b) => parseLocalDate(a.date) - parseLocalDate(b.date));
+}
+
+function normalizeSchedulesWithMovieIds(schedules) {
+  const validMovieIds = new Set(mockData.movies.map((movie) => movie.id));
+  const fallbackMovieId = selectedScheduleMovieId && validMovieIds.has(selectedScheduleMovieId) ? selectedScheduleMovieId : mockData.movies[0]?.id || "";
+  let changed = false;
+  const items = schedules.map((schedule) => {
+    const assetMovieId = mockData.assets.find((asset) => asset.id === schedule.assetId)?.movieId || "";
+    const currentMovieId = validMovieIds.has(schedule.movieId) ? schedule.movieId : "";
+    const nextMovieId = currentMovieId || (validMovieIds.has(assetMovieId) ? assetMovieId : fallbackMovieId);
+    if ((schedule.movieId || "") === nextMovieId) return schedule;
+    changed = true;
+    return { ...schedule, movieId: nextMovieId };
+  });
+  return { items, changed };
+}
+
+function normalizeAndPersistSchedules() {
+  if (!mockData.movies.length || !mockData.schedules.length) return;
+  const normalized = normalizeSchedulesWithMovieIds(mockData.schedules);
+  if (!normalized.changed) return;
+  mockData.schedules = normalized.items;
+  writeStorage(storageKeys.schedules, mockData.schedules);
 }
 
 function fileToDataUrl(file) {
@@ -435,6 +464,7 @@ async function loadWorkflowDataFromServer() {
     mockData.questions = applyWorkflowCollection(storageKeys.questions, collections.questions, mockData.questions);
     mockData.socialMetrics = applyWorkflowCollection(storageKeys.metrics, collections.socialMetrics, mockData.socialMetrics);
     savedPostAnalyses = applyWorkflowCollection(storageKeys.postAnalyses, collections.postAnalyses, savedPostAnalyses);
+    normalizeAndPersistSchedules();
     render();
   } catch (error) {
     console.warn("Workflow data sync failed", error);
@@ -466,6 +496,7 @@ function loadMoviesFromLocalStorage() {
   moviesLoading = false;
   moviesError = movieDemoModeMessage;
   ensureSelectedMovies();
+  normalizeAndPersistSchedules();
 }
 
 function loadMoviesFallback(message) {
@@ -477,6 +508,7 @@ function loadMoviesFallback(message) {
   moviesLoading = false;
   moviesError = message;
   ensureSelectedMovies();
+  normalizeAndPersistSchedules();
 }
 
 function friendlyCopyError(error) {
@@ -514,6 +546,7 @@ async function loadMoviesFromServer(force = false) {
     moviesLoadedFromServer = true;
     moviesLastLoadedAt = Date.now();
     ensureSelectedMovies();
+    normalizeAndPersistSchedules();
   } catch (error) {
     loadMoviesFallback(error?.message ? `${movieSupabaseErrorMessage}（${error.message}）` : movieSupabaseErrorMessage);
   } finally {
@@ -524,8 +557,10 @@ async function loadMoviesFromServer(force = false) {
 
 function ensureSelectedMovies() {
   if (!mockData.movies.some((movie) => movie.id === selectedAssetMovieId)) selectedAssetMovieId = mockData.movies[0]?.id || "";
+  if (!mockData.movies.some((movie) => movie.id === selectedScheduleMovieId)) selectedScheduleMovieId = mockData.movies[0]?.id || "";
   if (!mockData.movies.some((movie) => movie.id === selectedCopyMovieId)) selectedCopyMovieId = mockData.movies[0]?.id || "";
   if (selectedAssetMovieId) localStorage.setItem(storageKeys.assetMovie, selectedAssetMovieId);
+  if (selectedScheduleMovieId) localStorage.setItem(storageKeys.scheduleMovie, selectedScheduleMovieId);
   if (selectedCopyMovieId) localStorage.setItem(storageKeys.copyMovie, selectedCopyMovieId);
 }
 
@@ -537,6 +572,11 @@ function getSelectedAssetMovie() {
 function getSelectedCopyMovie() {
   ensureSelectedMovies();
   return mockData.movies.find((movie) => movie.id === selectedCopyMovieId) || null;
+}
+
+function getSelectedScheduleMovie() {
+  ensureSelectedMovies();
+  return mockData.movies.find((movie) => movie.id === selectedScheduleMovieId) || null;
 }
 
 function movieName(movieId) {
@@ -553,6 +593,14 @@ function assetLinkUrl(assetId) {
 
 function scheduleAssetLink(schedule) {
   return schedule?.assetLinkUrl || assetLinkUrl(schedule?.assetId) || "";
+}
+
+function scheduleMovieId(schedule) {
+  return schedule?.movieId || mockData.assets.find((asset) => asset.id === schedule?.assetId)?.movieId || "";
+}
+
+function assetsForScheduleMovie(movieId) {
+  return mockData.assets.filter((asset) => !movieId || asset.movieId === movieId);
 }
 
 function questionMovieName(movieId) {
@@ -903,25 +951,28 @@ function assetModal() {
 function schedulePage() {
   const start = getScheduleWeekStart();
   const end = addDays(start, 6);
+  const selectedMovie = getSelectedScheduleMovie();
   const visibleSchedules = schedulesForCurrentWeek();
   return `
     <div class="toolbar">
+      <select class="select" id="scheduleMovieSelect" ${mockData.movies.length ? "" : "disabled"}>${mockData.movies.map((movie) => option(movie.id, selectedMovie?.id, movie.title)).join("") || "<option>尚無電影資料</option>"}</select>
+      <input class="input" readonly value="${selectedMovie ? `${selectedMovie.title} 的社群排程` : "請先新增電影"}" />
       <button class="secondary-button" type="button" data-action="schedule-week-prev">上一週</button>
-      <button class="primary-button" type="button" data-action="open-schedule-modal">新增排程</button>
+      <button class="primary-button" type="button" data-action="open-schedule-modal" ${selectedMovie ? "" : "disabled"}>新增排程</button>
       <button class="secondary-button" type="button" data-action="schedule-week-next">下一週</button>
     </div>
-    <div class="task-item" style="margin-bottom:16px"><strong>社群排程清單</strong><span class="muted">${formatWeekDate(start)} - ${formatWeekDate(end)}，共 ${visibleSchedules.length} 筆排程</span></div>
+    <div class="task-item" style="margin-bottom:16px"><strong>${escapeHtml(selectedMovie?.title || "尚無電影")}</strong><span class="muted">${formatWeekDate(start)} - ${formatWeekDate(end)}，共 ${visibleSchedules.length} 筆排程</span></div>
     <section class="card">
-      <div class="card-header"><div><h2>社群排程清單</h2><p>依發文日期顯示目前週次。</p></div></div>
+      <div class="card-header"><div><h2>社群排程清單</h2><p>依目前選取電影與發文日期顯示週次排程。</p></div></div>
       <div class="card-body table-wrap">
         <table>
-          <thead><tr><th>日期</th><th>平台</th><th>主題</th><th>文案</th><th>素材</th><th>負責人</th><th>狀態</th><th>操作</th></tr></thead>
+          <thead><tr><th>日期</th><th>電影</th><th>平台</th><th>主題</th><th>文案</th><th>素材</th><th>負責人</th><th>狀態</th><th>操作</th></tr></thead>
           <tbody>${visibleSchedules.map((item) => `
             <tr>
-              <td>${escapeHtml(item.date)}</td><td>${escapeHtml(item.platform)}</td><td><strong>${escapeHtml(item.topic)}</strong></td><td>${escapeHtml(item.copy)}</td><td><div class="meta-row"><span>${escapeHtml(assetName(item.assetId))}</span>${scheduleAssetLink(item) ? `<button class="secondary-button" type="button" data-action="open-schedule-asset-link" data-schedule-id="${item.id}">連結</button>` : ""}</div></td><td>${escapeHtml(item.owner)}</td>
+              <td>${escapeHtml(item.date)}</td><td>${escapeHtml(movieName(scheduleMovieId(item)))}</td><td>${escapeHtml(item.platform)}</td><td><strong>${escapeHtml(item.topic)}</strong></td><td>${escapeHtml(item.copy)}</td><td><div class="meta-row"><span>${escapeHtml(assetName(item.assetId))}</span>${scheduleAssetLink(item) ? `<button class="secondary-button" type="button" data-action="open-schedule-asset-link" data-schedule-id="${item.id}">連結</button>` : ""}</div></td><td>${escapeHtml(item.owner)}</td>
               <td><select class="select schedule-status-select" data-schedule-id="${item.id}">${scheduleStatuses.map((state) => option(state, item.status)).join("")}</select></td>
               <td><div class="meta-row"><button class="secondary-button" type="button" data-action="edit-schedule" data-schedule-id="${item.id}">編輯</button><button class="secondary-button" type="button" data-action="delete-schedule" data-schedule-id="${item.id}">刪除</button></div></td>
-            </tr>`).join("") || `<tr><td colspan="8"><span class="muted">這一週目前沒有社群排程。</span></td></tr>`}</tbody>
+            </tr>`).join("") || `<tr><td colspan="9"><span class="muted">${selectedMovie ? "這部電影這一週目前沒有社群排程。" : "請先新增電影，再建立社群排程。"}</span></td></tr>`}</tbody>
         </table>
       </div>
     </section>
@@ -930,15 +981,19 @@ function schedulePage() {
 
 function scheduleModal() {
   const schedule = mockData.schedules.find((item) => item.id === editingScheduleId);
+  const selectedMovie = getSelectedScheduleMovie();
+  const selectedMovieId = scheduleMovieId(schedule) || selectedMovie?.id || "";
+  const scheduleAssets = assetsForScheduleMovie(selectedMovieId);
   return `
     <div class="modal-backdrop" role="presentation"><section class="modal" role="dialog" aria-modal="true">
-      <div class="modal-header"><div><h2>${schedule ? "編輯排程" : "新增排程"}</h2><p>設定社群發文時間與內容。</p></div><button class="icon-button modal-close" type="button" data-action="close-schedule-modal">×</button></div>
+      <div class="modal-header"><div><h2>${schedule ? "編輯排程" : "新增排程"}</h2><p>設定單部電影的社群發文時間與內容。</p></div><button class="icon-button modal-close" type="button" data-action="close-schedule-modal">×</button></div>
       <form id="scheduleForm" class="modal-form">
+        <div class="field"><label>電影專案</label><select class="select" id="scheduleMovieId" name="movieId" required style="width:100%">${mockData.movies.map((movie) => option(movie.id, selectedMovieId, movie.title)).join("")}</select></div>
         <div class="field"><label>發布日期</label><input class="input" name="date" type="date" required value="${escapeHtml(formatDateForInput(schedule?.date || formatWeekDate(getScheduleWeekStart())))}" /></div>
         <div class="field"><label>平台</label><select class="select" name="platform" style="width:100%">${["Facebook", "Instagram", "Instagram Reels", "Threads", "YouTube Shorts", "TikTok", "LINE VOOM"].map((item) => option(item, schedule?.platform || "Facebook")).join("")}</select></div>
         <div class="field"><label>內容主題</label><input class="input" name="topic" required value="${escapeHtml(schedule?.topic || "")}" /></div>
         <div class="field"><label>文案</label><textarea name="copy" required>${escapeHtml(schedule?.copy || "")}</textarea></div>
-        <div class="field"><label>使用素材</label><select class="select" id="scheduleAssetId" name="assetId" style="width:100%"><option value="">未指定素材</option>${mockData.assets.map((asset) => option(asset.id, schedule?.assetId || "", asset.name)).join("")}</select></div>
+        <div class="field"><label>使用素材</label><select class="select" id="scheduleAssetId" name="assetId" style="width:100%"><option value="">未指定素材</option>${scheduleAssets.map((asset) => option(asset.id, schedule?.assetId || "", asset.name)).join("")}</select></div>
         <div class="field"><label>素材連結</label><div class="link-input-row"><input class="input" id="scheduleAssetLinkUrl" name="assetLinkUrl" type="url" value="${escapeHtml(scheduleAssetLink(schedule))}" placeholder="https://drive.google.com/... 或圖片 / 影片連結" /><button class="secondary-button" type="button" data-action="enable-schedule-link">新增連結</button></div><small class="muted">可貼上 Google Drive、雲端圖片或影片連結；若素材庫已有連結，選取素材時會自動帶入。</small></div>
         <div class="field"><label>狀態</label><select class="select" name="status" style="width:100%">${scheduleStatuses.map((item) => option(item, schedule?.status || "草稿")).join("")}</select></div>
         <div class="field"><label>負責人</label><input class="input" name="owner" required value="${escapeHtml(schedule?.owner || "")}" /></div>
@@ -1700,7 +1755,7 @@ function render() {
   document.querySelector("#pageTitle").textContent = page.title;
   document.querySelector("#pageContent").innerHTML = renderers[page.id]();
   renderNav(page.id);
-  if (["movies", "assets", "copy", "review"].includes(page.id) && Date.now() - moviesLastLoadedAt > 5000) loadMoviesFromServer(true);
+  if (["movies", "assets", "schedule", "copy", "review"].includes(page.id) && Date.now() - moviesLastLoadedAt > 5000) loadMoviesFromServer(true);
   if (["assets", "schedule", "review", "analytics", "dashboard"].includes(page.id) && Date.now() - workflowLastLoadedAt > 5000) loadWorkflowDataFromServer();
 }
 
@@ -1731,6 +1786,14 @@ document.addEventListener("change", (event) => {
     render();
     return;
   }
+  if (event.target.id === "scheduleMovieSelect") {
+    selectedScheduleMovieId = event.target.value;
+    localStorage.setItem(storageKeys.scheduleMovie, selectedScheduleMovieId);
+    isScheduleModalOpen = false;
+    editingScheduleId = null;
+    render();
+    return;
+  }
   if (event.target.id === "copyMovie") {
     selectedCopyMovieId = event.target.value;
     localStorage.setItem(storageKeys.copyMovie, selectedCopyMovieId);
@@ -1743,6 +1806,15 @@ document.addEventListener("change", (event) => {
     const linkInput = document.getElementById("scheduleAssetLinkUrl");
     const selectedLink = assetLinkUrl(event.target.value);
     if (linkInput && selectedLink) linkInput.value = selectedLink;
+    return;
+  }
+  if (event.target.id === "scheduleMovieId") {
+    const assetSelect = document.getElementById("scheduleAssetId");
+    const linkInput = document.getElementById("scheduleAssetLinkUrl");
+    if (assetSelect) {
+      assetSelect.innerHTML = `<option value="">未指定素材</option>${assetsForScheduleMovie(event.target.value).map((asset) => option(asset.id, "", asset.name)).join("")}`;
+    }
+    if (linkInput) linkInput.value = "";
     return;
   }
   if (event.target.classList.contains("schedule-status-select")) {
@@ -1839,6 +1911,7 @@ document.addEventListener("click", async (event) => {
     render();
   }
   if (action === "open-schedule-modal") {
+    if (!getSelectedScheduleMovie()) return window.alert("請先新增電影，再建立社群排程。");
     isScheduleModalOpen = true;
     editingScheduleId = null;
     render();
@@ -2209,6 +2282,7 @@ document.addEventListener("submit", async (event) => {
 
   if (event.target.id === "scheduleForm") {
     const scheduleData = {
+      movieId: formData.get("movieId") || selectedScheduleMovieId || "",
       date: formatDateForDisplay(formData.get("date")),
       platform: formData.get("platform") || "Facebook",
       topic: formData.get("topic") || "未命名主題",
@@ -2222,6 +2296,8 @@ document.addEventListener("submit", async (event) => {
     if (editingSchedule) Object.assign(editingSchedule, scheduleData);
     else mockData.schedules.push({ id: `sch-${Date.now()}`, ...scheduleData });
     writeStorage(storageKeys.schedules, mockData.schedules);
+    selectedScheduleMovieId = scheduleData.movieId;
+    if (selectedScheduleMovieId) localStorage.setItem(storageKeys.scheduleMovie, selectedScheduleMovieId);
     const date = parseLocalDate(scheduleData.date);
     if (date) currentScheduleWeekStart = startOfWeek(date);
     isScheduleModalOpen = false;
@@ -2253,6 +2329,7 @@ document.addEventListener("submit", async (event) => {
     const question = mockData.questions.find((item) => item.id === schedulingQuestionId);
     const scheduleData = {
       id: `sch-${Date.now()}`,
+      movieId: question?.movieId || selectedScheduleMovieId || "",
       date: formatDateForDisplay(formData.get("date")),
       platform: formData.get("platform") || "Facebook",
       topic: question ? `互動題：${question.content.slice(0, 18)}` : "互動題",
