@@ -209,6 +209,7 @@ const statusClass = { 已通過: "green", 已排程: "green", 已發布: "green"
 let moviesLoadedFromServer = false;
 let moviesLoading = false;
 let moviesError = "";
+let movieSaveMessage = "";
 const movieDemoModeMessage = "目前為 GitHub Pages 展示模式，電影資料會暫存在這台瀏覽器，不會永久同步到 Supabase。";
 const movieSupabaseErrorMessage = "電影資料尚未連上 Supabase。請到 Render Environment Variables 檢查 SUPABASE_URL 與 SUPABASE_SERVICE_ROLE_KEY；目前暫用瀏覽器資料顯示。";
 let isMovieModalOpen = false;
@@ -869,7 +870,7 @@ function moviePayloadFromForm(formData) {
   return {
     title: String(formData.get("title") || "").trim(),
     genre: String(formData.get("genre") || "").trim(),
-    releaseDate,
+    releaseDate: releaseDate || null,
     releaseStatus: String(formData.get("releaseStatus") || "未上映").trim(),
     socialTone: String(formData.get("socialTone") || "").trim(),
     coreSellingPoints: parseList(formData.get("coreSellingPoints")),
@@ -893,8 +894,8 @@ async function saveMovieToServer(movieData) {
     }
     await loadMoviesFromServer(true);
   } catch (error) {
-    saveMovieLocally(movieData, editingMovie);
     moviesError = error?.message ? `${movieSupabaseErrorMessage}（${error.message}）` : movieSupabaseErrorMessage;
+    throw new Error(moviesError);
   }
 }
 
@@ -1126,6 +1127,7 @@ function dashboard() {
 function moviesPage() {
   return `
     ${moviesError ? `<div class="task-item" style="margin-bottom:16px"><strong>電影資料展示模式</strong><span class="muted">${escapeHtml(moviesError)}</span></div>` : ""}
+    ${movieSaveMessage ? `<div class="task-item" style="margin-bottom:16px"><strong>${escapeHtml(movieSaveMessage)}</strong><span class="muted">電影資料已更新。</span></div>` : ""}
     ${moviesLoading ? `<div class="task-item" style="margin-bottom:16px"><strong>讀取電影資料中...</strong><span class="muted">正在從 Supabase 載入 movies 資料表</span></div>` : ""}
     <div class="toolbar">
       <button class="primary-button" type="button" data-action="open-movie-modal">新增電影</button>
@@ -3142,9 +3144,11 @@ document.addEventListener("submit", async (event) => {
       isMovieModalOpen = false;
       editingMovieId = null;
       moviesError = "";
+      movieSaveMessage = "已儲存";
       location.hash = "movies";
       render();
     } catch (error) {
+      movieSaveMessage = "";
       moviesError = error.message;
       render();
     }
