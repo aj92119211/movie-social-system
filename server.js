@@ -451,6 +451,23 @@ function normalizeQuestionToolPayload(value) {
   };
 }
 
+function normalizeQuestionBatchPayload(value) {
+  return {
+    questions: Array.isArray(value?.questions)
+      ? value.questions.map((item) => ({
+          content: String(item?.content || "").trim(),
+          type: String(item?.type || "開放問答"),
+          platform: String(item?.platform || "IG 限動"),
+          tone: String(item?.tone || "親切"),
+          phase: String(item?.phase || "預告上線"),
+          cta: String(item?.cta || "回覆或留言告訴我們"),
+          asset: String(item?.asset || "主視覺海報"),
+          note: String(item?.note || ""),
+        })).filter((item) => item.content)
+      : [],
+  };
+}
+
 function openAiErrorMessage(statusCode, data) {
   if (statusCode === 401) {
     const code = data?.error?.code || data?.error?.type || "unauthorized";
@@ -650,6 +667,100 @@ async function generateQuestionTool(request, response) {
   } catch (error) {
     sendJson(response, error.statusCode || 500, {
       error: error.message || "互動題 AI 產生失敗，請稍後再試。",
+    });
+  }
+}
+
+async function generateQuestionBatch(request, response) {
+  const openaiApiKey = envValue("OPENAI_API_KEY");
+  if (!openaiApiKey) {
+    sendJson(response, 500, { error: "尚未設定 OpenAI API Key" });
+    return;
+  }
+
+  let body;
+  try {
+    body = await readJsonBody(request);
+  } catch (error) {
+    sendJson(response, 400, { error: error.message });
+    return;
+  }
+
+  const movie = body.movie || {};
+  const sellingPoints = Array.isArray(movie.coreSellingPoints) ? movie.coreSellingPoints.join("、") : "";
+  const prompt = [
+    "任務：產生 10 題新的社群互動問答題，請避免和既有題庫太相似。",
+    `電影：${movie.title || "未命名電影"}`,
+    `類型：${movie.genre || "未提供"}`,
+    `上映日期：${movie.releaseDate || "未提供"}`,
+    `社群語氣：${movie.socialTone || "未提供"}`,
+    `核心賣點：${sellingPoints || "未提供"}`,
+    `目前題庫數量：${body.existingCount || 0}`,
+    `產生批次代號：${body.batchSeed || Date.now()}`,
+    "請混合 IG 限動、Threads、Facebook、Reels，可包含投票、二選一、開放問答、留言引導、測驗等題型。",
+  ].join("\n");
+
+  try {
+    const openaiResponse = await fetch("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${openaiApiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: envValue("OPENAI_MODEL") || "gpt-4.1-mini",
+        instructions:
+          "你是影視社群互動題企劃。請使用繁體中文，根據電影資料產生 10 題新的互動問答題。題目要適合小編直接使用、不劇透、角度多元，並提供題型、平台、語氣、宣傳階段、CTA、建議素材與備註。只回傳符合 schema 的 JSON。",
+        input: prompt,
+        text: {
+          format: {
+            type: "json_schema",
+            name: "movie_question_batch",
+            strict: true,
+            schema: {
+              type: "object",
+              additionalProperties: false,
+              properties: {
+                questions: {
+                  type: "array",
+                  minItems: 10,
+                  maxItems: 10,
+                  items: {
+                    type: "object",
+                    additionalProperties: false,
+                    properties: {
+                      content: { type: "string" },
+                      type: { type: "string" },
+                      platform: { type: "string" },
+                      tone: { type: "string" },
+                      phase: { type: "string" },
+                      cta: { type: "string" },
+                      asset: { type: "string" },
+                      note: { type: "string" },
+                    },
+                    required: ["content", "type", "platform", "tone", "phase", "cta", "asset", "note"],
+                  },
+                },
+              },
+              required: ["questions"],
+            },
+          },
+        },
+      }),
+    });
+
+    const data = await openaiResponse.json();
+    if (!openaiResponse.ok) {
+      sendJson(response, openaiResponse.status, { error: openAiErrorMessage(openaiResponse.status, data) });
+      return;
+    }
+
+    const outputText = data.output_text || data.output?.flatMap((item) => item.content || []).find((item) => item.text)?.text;
+    const parsed = JSON.parse(outputText);
+    sendJson(response, 200, normalizeQuestionBatchPayload(parsed));
+  } catch (error) {
+    sendJson(response, error.statusCode || 500, {
+      error: error.message || "AI 題目生成失敗，請稍後再試。",
     });
   }
 }
@@ -875,6 +986,11 @@ const server = http.createServer((request, response) => {
 
   if (request.method === "POST" && url.pathname === "/api/generate-question-tool") {
     generateQuestionTool(request, response);
+    return;
+  }
+
+  if (request.method === "POST" && url.pathname === "/api/generate-question-batch") {
+    generateQuestionBatch(request, response);
     return;
   }
 

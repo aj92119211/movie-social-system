@@ -1123,6 +1123,108 @@ function fallbackQuestionAiResult(question, mode) {
   };
 }
 
+function questionBatchMovie() {
+  if (questionFilters.movieId !== "全部") {
+    return mockData.movies.find((movie) => movie.id === questionFilters.movieId) || null;
+  }
+  return getSelectedCopyMovie() || mockData.movies[0] || null;
+}
+
+function fallbackQuestionBatch(movie) {
+  const title = movie?.title || "電影專案";
+  const tones = ["親切", "神祕", "感性", "幽默", "懸疑"];
+  const platforms = ["IG 限動", "Threads", "Facebook", "Reels"];
+  const types = ["開放問答", "投票", "二選一", "留言引導", "測驗"];
+  const phases = ["前導期", "預告上線", "上映倒數", "上映中", "口碑擴散"];
+  return Array.from({ length: 10 }, (_, index) => ({
+    content: `看完《${title}》這個線索後，你最想知道哪個角色的下一步？`,
+    type: types[index % types.length],
+    platform: platforms[index % platforms.length],
+    tone: tones[index % tones.length],
+    phase: phases[index % phases.length],
+    cta: "回覆、留言或投票告訴我們",
+    asset: index % 2 ? "角色劇照" : "主視覺海報",
+    note: "展示模式產生，可再依檔期調整。",
+  }));
+}
+
+function appendQuestionBatch(questions, movie) {
+  const now = Date.now();
+  const createdAt = formatWeekDate(new Date());
+  const nextQuestions = questions.map((question, index) => ({
+    id: `q-ai-${now}-${index}`,
+    content: question.content || "未命名題目",
+    movieId: movie?.id || "",
+    type: question.type || "開放問答",
+    platform: question.platform || "IG 限動",
+    tone: question.tone || "親切",
+    phase: question.phase || "預告上線",
+    status: "可使用",
+    cta: question.cta || "回覆或留言告訴我們",
+    asset: question.asset || "主視覺海報",
+    uses: 0,
+    lastUsed: "",
+    performance: "未測試",
+    note: question.note || "AI 生成題目，可再編輯調整。",
+    createdAt,
+  }));
+  mockData.questions = [...mockData.questions, ...nextQuestions];
+  writeStorage(storageKeys.questions, mockData.questions);
+  return nextQuestions;
+}
+
+async function generateQuestionBatch() {
+  if (isQuestionAiGenerating) return;
+  const movie = questionBatchMovie();
+  isQuestionAiGenerating = true;
+  questionAiResult = {
+    title: "AI 生成題目中",
+    note: "請稍候，正在產生新一批互動題。完成後會追加到原本題庫下方。",
+    items: [{ title: "生成中", text: "OpenAI 正在依電影資料產生 10 題新的互動問答題。" }],
+  };
+  render();
+  try {
+    let generatedQuestions;
+    if (isGitHubPagesMode()) {
+      generatedQuestions = fallbackQuestionBatch(movie);
+    } else {
+      const payload = await requestJson("/api/generate-question-batch", {
+        method: "POST",
+        body: JSON.stringify({
+          movie: {
+            title: movie?.title || "電影專案",
+            genre: movie?.genre || "",
+            releaseDate: movie?.releaseDate || "",
+            socialTone: movie?.socialTone || "",
+            coreSellingPoints: movie?.coreSellingPoints || [],
+          },
+          existingCount: mockData.questions.length,
+          batchSeed: Date.now(),
+        }),
+      });
+      generatedQuestions = payload.questions || [];
+    }
+    const addedQuestions = appendQuestionBatch(generatedQuestions, movie);
+    questionAiResult = {
+      title: "AI 生成題目完成",
+      note: `已新增 ${addedQuestions.length} 筆題目到題庫下方。按鈕可以再次點擊，繼續生成新一批。`,
+      items: addedQuestions.slice(0, 10).map((question, index) => ({
+        title: `新題目 ${index + 1}`,
+        text: question.content,
+      })),
+    };
+  } catch (error) {
+    questionAiResult = {
+      title: "AI 生成題目失敗",
+      note: `${friendlyCopyError(error)} 請確認 OpenAI 設定後可再次點擊重試。`,
+      items: [{ title: "尚未新增題目", text: "這次生成失敗，原本題庫沒有被覆蓋或刪除。" }],
+    };
+  } finally {
+    isQuestionAiGenerating = false;
+    render();
+  }
+}
+
 async function generateQuestionAiResult(question, mode) {
   isQuestionAiGenerating = true;
   questionAiResult = {
@@ -1357,7 +1459,7 @@ function reviewPage() {
         <h2>互動問答題庫</h2>
         <p>管理 IG 限動、Threads、Facebook、Reels 等社群互動題</p>
       </div>
-      <div class="meta-row"><button class="primary-button" type="button" data-action="open-question-modal">新增題目</button><button class="secondary-button" type="button" data-action="ai-generate-questions" ${isQuestionAiGenerating ? "disabled" : ""}>${isQuestionAiGenerating ? "生成中..." : "AI 生成題目"}</button></div>
+      <div class="meta-row"><button class="primary-button" type="button" data-action="open-question-modal">新增題目</button><button class="secondary-button" type="button" data-action="ai-generate-questions" ${isQuestionAiGenerating ? "disabled" : ""}>${isQuestionAiGenerating ? "生成中..." : "用 AI 生成題目"}</button></div>
     </section>
     <div class="grid stats-grid question-stats">${questionStats().map(([label, value, note]) => `<article class="card stat-card"><span>${label}</span><strong>${value}</strong><small>${note}</small></article>`).join("")}</div>
     <section class="card question-filter-card"><div class="card-body">
@@ -2129,31 +2231,7 @@ document.addEventListener("click", async (event) => {
     render();
   }
   if (action === "ai-generate-questions") {
-    const selectedMovie = getSelectedCopyMovie();
-    const title = selectedMovie?.title || "電影專案";
-    mockData.questions = [
-      ...mockData.questions,
-      ...Array.from({ length: 10 }, (_, index) => ({
-        id: `q-ai-${Date.now()}-${index}`,
-        content: `看完《${title}》這個片段後，你第一個想到的關鍵字是什麼？`,
-        movieId: selectedMovie?.id || "",
-        type: index % 2 ? "投票" : "開放問答",
-        platform: ["IG 限動", "Threads", "Facebook", "Reels"][index % 4],
-        tone: ["親切", "神祕", "感性", "幽默"][index % 4],
-        phase: ["預告上線", "上映倒數", "上映中", "口碑擴散"][index % 4],
-        status: "可使用",
-        cta: "回覆、留言或投票告訴我們",
-        asset: "主視覺海報",
-        uses: 0,
-        lastUsed: "",
-        performance: "未測試",
-        note: "AI 展示模式產生，可再依檔期調整。",
-        createdAt: formatWeekDate(new Date()),
-      })),
-    ];
-    writeStorage(storageKeys.questions, mockData.questions);
-    questionAiResult = { title: "AI 生成題目", items: [{ title: "已產生 10 筆假題目", text: "新題目已加入題庫，可直接編輯或加入排程。" }] };
-    render();
+    generateQuestionBatch();
   }
   if (action === "rewrite-question" || action === "similar-question") {
     const question = mockData.questions.find((item) => item.id === actionElement.dataset.questionId);
