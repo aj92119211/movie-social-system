@@ -259,7 +259,10 @@ let selectedAssetMovieId = localStorage.getItem(storageKeys.assetMovie) || "";
 let selectedScheduleMovieId = localStorage.getItem(storageKeys.scheduleMovie) || "";
 let selectedAnalyticsMovieId = localStorage.getItem(storageKeys.analyticsMovie) || "";
 let selectedCopyMovieId = localStorage.getItem(storageKeys.copyMovie) || "";
-let copyFocusValue = localStorage.getItem(storageKeys.copyFocus) || "正式預告上線、提醒上映日期、主打懸疑氛圍，語氣要精準但保留神祕感。";
+const legacyCopyFocusDefault = "正式預告上線、提醒上映日期、主打懸疑氛圍，語氣要精準但保留神祕感。";
+const copyFocusDefault = "正式預告上線、主打懸疑氛圍，語氣要精準但保留神祕感。";
+let copyFocusValue = localStorage.getItem(storageKeys.copyFocus) || copyFocusDefault;
+if (copyFocusValue === legacyCopyFocusDefault) copyFocusValue = copyFocusDefault;
 let isCopyGenerating = false;
 let copyGeneratorError = "";
 let generatedCopyResult = null;
@@ -1328,18 +1331,18 @@ function buildMockCopyResult(movie, focus) {
   const title = movie?.title || "這部電影";
   const tone = movie?.socialTone || "有質感";
   const sellingPoint = (movie?.coreSellingPoints || [])[0] || "故事張力";
-  const cleanFocus = focus || "正式宣傳上線，提醒觀眾關注上映資訊。";
+  const cleanFocus = focus || "正式宣傳上線，提醒觀眾關注故事氛圍與角色亮點。";
   return {
     facebookPosts: [
       `【${title}】即將帶來全新的觀影體驗。這次我們想用${tone}的方式，和你一起靠近${sellingPoint}。${cleanFocus}`,
       `${title} 的故事已經準備好和大家見面。從角色、情緒到每一個轉折，都值得在大銀幕慢慢感受。`,
-      `如果你喜歡有記憶點的電影，這次請把 ${title} 放進片單。上映資訊與更多幕後內容會陸續公開。`,
+      `如果你喜歡有記憶點的電影，這次請把 ${title} 放進片單。更多幕後與角色內容會陸續公開。`,
       `一部電影最迷人的地方，往往藏在細節裡。${title} 想和你一起看見那些不能錯過的瞬間。`,
       `本週宣傳重點：${cleanFocus}。歡迎分享給也在等這部片的朋友。`,
     ],
     igPosts: [
       `${title}｜${sellingPoint}\n用${tone}的節奏，慢慢靠近故事核心。\n#電影推薦 #${title}`,
-      `有些故事，看完會留在心裡。\n${title} 即將上映，先把日期留起來。`,
+      `有些故事，看完會留在心裡。\n${title} 的情緒正在慢慢靠近。`,
       `正式宣傳啟動。\n${cleanFocus}\n你最期待哪一個橋段？`,
       `一張海報、一句台詞、一個眼神。\n${title} 的情緒正在靠近。`,
       `給正在找下一部電影的你：${title} 值得放進清單。`,
@@ -1551,8 +1554,8 @@ function copyPage() {
           ${moviesError ? `<p class="status red">${escapeHtml(moviesError)}</p>` : ""}
           ${moviesLoading ? `<p class="muted">正在同步電影資料...</p>` : ""}
           <div class="field"><label>電影</label><select class="select" id="copyMovie" style="width:100%" ${mockData.movies.length ? "" : "disabled"}>${mockData.movies.map((movie) => option(movie.id, selectedMovie?.id, movie.title)).join("") || "<option>尚無電影資料</option>"}</select></div>
-          ${selectedMovie ? `<div class="task-item"><span class="muted">${escapeHtml(selectedMovie.genre)}｜上映 ${escapeHtml(movieReleaseDateLabel(selectedMovie.releaseDate))}｜${escapeHtml(selectedMovie.socialTone)}</span></div>` : ""}
-          <div class="field"><label>溝通重點</label><textarea id="copyFocus" placeholder="例如：正式預告上線、提醒上映日期、主打懸疑氛圍，語氣要精準但保留神祕感。">${escapeHtml(copyFocusValue)}</textarea></div>
+          ${selectedMovie ? `<div class="task-item"><span class="muted">${escapeHtml(selectedMovie.genre)}｜${escapeHtml(selectedMovie.socialTone)}</span></div>` : ""}
+          <div class="field"><label>溝通重點</label><textarea id="copyFocus" placeholder="例如：正式預告上線、主打懸疑氛圍，語氣要精準但保留神祕感。">${escapeHtml(copyFocusValue)}</textarea></div>
           <button class="primary-button" type="button" data-action="generate-copy-preview" ${isCopyGenerating || !selectedMovie ? "disabled" : ""}>${isCopyGenerating ? "生成中..." : "生成文案"}</button>
           ${copyGeneratorError ? `<p class="status red">${escapeHtml(copyGeneratorError)}</p>` : ""}
         </div>
@@ -1587,7 +1590,6 @@ async function generateCopyPreview() {
           movie: {
             title: movie.title,
             genre: movie.genre,
-            releaseDate: movie.releaseDate,
             socialTone: movie.socialTone,
             coreSellingPoints: movie.coreSellingPoints || [],
           },

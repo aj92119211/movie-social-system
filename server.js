@@ -758,11 +758,10 @@ async function generateCopy(request, response) {
   const prompt = [
     `電影：${movie.title || "未命名電影"}`,
     `類型：${movie.genre || "未提供"}`,
-    `上映日期：${movie.releaseDate || "未提供"}`,
     `社群語氣：${movie.socialTone || "未提供"}`,
     `核心賣點：${sellingPoints || "未提供"}`,
     `目標平台：Facebook、Instagram、Threads`,
-    `溝通重點：${body.focus || "請依電影資料產生上映宣傳文案"}`,
+    `溝通重點：${body.focus || "請依電影資料產生社群宣傳文案"}`,
     styleExamplesPromptBlock(styleExamples),
   ].join("\n");
 
@@ -778,6 +777,7 @@ async function generateCopy(request, response) {
         instructions: [
           MOVIE_EDITOR_SYSTEM_PROMPT,
           "這次任務是產生電影社群貼文。請根據電影資料、溝通重點與風格範例，一次產生 Facebook、IG、Threads 三個平台可使用的文章，並保留限時互動題與留言回覆建議。",
+          "不要自行加入上映日期、上映時間、檔期或任何未在溝通重點中明確提供的日期資訊。社群語氣只代表文字風格，不代表日期資訊。",
           "每一則只放可直接發布或可直接使用的內容，不要放 JSON key、格式符號、分析說明、Reviewing、Final answer、END 或任何系統文字。",
           "只回傳符合 schema 的 JSON。",
         ].join("\n\n"),
