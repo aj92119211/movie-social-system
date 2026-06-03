@@ -10,6 +10,7 @@
   postAnalyses: "movieSocialOps.postAnalyses",
   assetMovie: "movieSocialOps.selectedAssetMovie",
   scheduleMovie: "movieSocialOps.selectedScheduleMovie",
+  analyticsMovie: "movieSocialOps.selectedAnalyticsMovie",
   copyMovie: "movieSocialOps.selectedCopyMovie",
   copyFocus: "movieSocialOps.copyFocus",
 };
@@ -165,9 +166,9 @@ const mockData = {
     },
   ],
   socialMetrics: [
-    { platform: "Facebook", reach: 125000, likes: 4300, comments: 280, shares: 620, saves: 740, newFollowers: 320 },
-    { platform: "Instagram", reach: 188000, likes: 9800, comments: 640, shares: 880, saves: 3980, newFollowers: 920 },
-    { platform: "Threads", reach: 54000, likes: 2100, comments: 360, shares: 190, saves: 260, newFollowers: 210 },
+    { movieId: "mov-001", platform: "Facebook", reach: 125000, impressions: 168000, views: 0, likes: 4300, comments: 280, shares: 620, saves: 740, newFollowers: 320, linkClicks: 860 },
+    { movieId: "mov-001", platform: "Instagram", reach: 188000, impressions: 246000, views: 52000, likes: 9800, comments: 640, shares: 880, saves: 3980, newFollowers: 920, linkClicks: 1240 },
+    { movieId: "mov-001", platform: "Threads", reach: 54000, impressions: 72000, views: 0, likes: 2100, comments: 360, shares: 190, saves: 260, newFollowers: 210, linkClicks: 300 },
   ],
 };
 
@@ -225,6 +226,7 @@ let questionFilters = {
 };
 let selectedAssetMovieId = localStorage.getItem(storageKeys.assetMovie) || "";
 let selectedScheduleMovieId = localStorage.getItem(storageKeys.scheduleMovie) || "";
+let selectedAnalyticsMovieId = localStorage.getItem(storageKeys.analyticsMovie) || "";
 let selectedCopyMovieId = localStorage.getItem(storageKeys.copyMovie) || "";
 let copyFocusValue = localStorage.getItem(storageKeys.copyFocus) || "正式預告上線、提醒上映日期、主打懸疑氛圍，語氣要精準但保留神祕感。";
 let isCopyGenerating = false;
@@ -416,6 +418,36 @@ function normalizeAndPersistActivities() {
   writeStorage(storageKeys.activities, mockData.activities);
 }
 
+function normalizeAnalyticsWithMovieIds() {
+  if (!mockData.movies.length) return;
+  const validMovieIds = new Set(mockData.movies.map((movie) => movie.id));
+  const fallbackMovieId = selectedAnalyticsMovieId && validMovieIds.has(selectedAnalyticsMovieId) ? selectedAnalyticsMovieId : mockData.movies[0]?.id || "";
+  let metricsChanged = false;
+  mockData.socialMetrics = mockData.socialMetrics.map((metric) => {
+    const currentMovieId = validMovieIds.has(metric.movieId) ? metric.movieId : "";
+    const nextMovieId = currentMovieId || fallbackMovieId;
+    const normalized = {
+      ...metric,
+      movieId: nextMovieId,
+      impressions: Number(metric.impressions || 0),
+      views: Number(metric.views || 0),
+      linkClicks: Number(metric.linkClicks || 0),
+    };
+    if (metric.movieId !== normalized.movieId || metric.impressions !== normalized.impressions || metric.views !== normalized.views) metricsChanged = true;
+    return normalized;
+  });
+  let analysesChanged = false;
+  savedPostAnalyses = savedPostAnalyses.map((analysis) => {
+    const currentMovieId = validMovieIds.has(analysis.movieId) ? analysis.movieId : "";
+    const nextMovieId = currentMovieId || (validMovieIds.has(analysis.data?.movieId) ? analysis.data.movieId : fallbackMovieId);
+    if (analysis.movieId === nextMovieId && analysis.data?.movieId === nextMovieId) return analysis;
+    analysesChanged = true;
+    return { ...analysis, movieId: nextMovieId, data: { ...(analysis.data || {}), movieId: nextMovieId } };
+  });
+  if (metricsChanged) writeStorage(storageKeys.metrics, mockData.socialMetrics);
+  if (analysesChanged) writeStorage(storageKeys.postAnalyses, savedPostAnalyses);
+}
+
 function fileToDataUrl(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -502,6 +534,7 @@ async function loadWorkflowDataFromServer() {
     savedPostAnalyses = applyWorkflowCollection(storageKeys.postAnalyses, collections.postAnalyses, savedPostAnalyses);
     normalizeAndPersistSchedules();
     normalizeAndPersistActivities();
+    normalizeAnalyticsWithMovieIds();
     render();
   } catch (error) {
     console.warn("Workflow data sync failed", error);
@@ -535,6 +568,7 @@ function loadMoviesFromLocalStorage() {
   ensureSelectedMovies();
   normalizeAndPersistSchedules();
   normalizeAndPersistActivities();
+  normalizeAnalyticsWithMovieIds();
 }
 
 function loadMoviesFallback(message) {
@@ -548,6 +582,7 @@ function loadMoviesFallback(message) {
   ensureSelectedMovies();
   normalizeAndPersistSchedules();
   normalizeAndPersistActivities();
+  normalizeAnalyticsWithMovieIds();
 }
 
 function friendlyCopyError(error) {
@@ -587,6 +622,7 @@ async function loadMoviesFromServer(force = false) {
     ensureSelectedMovies();
     normalizeAndPersistSchedules();
     normalizeAndPersistActivities();
+    normalizeAnalyticsWithMovieIds();
   } catch (error) {
     loadMoviesFallback(error?.message ? `${movieSupabaseErrorMessage}（${error.message}）` : movieSupabaseErrorMessage);
   } finally {
@@ -598,9 +634,11 @@ async function loadMoviesFromServer(force = false) {
 function ensureSelectedMovies() {
   if (!mockData.movies.some((movie) => movie.id === selectedAssetMovieId)) selectedAssetMovieId = mockData.movies[0]?.id || "";
   if (!mockData.movies.some((movie) => movie.id === selectedScheduleMovieId)) selectedScheduleMovieId = mockData.movies[0]?.id || "";
+  if (!mockData.movies.some((movie) => movie.id === selectedAnalyticsMovieId)) selectedAnalyticsMovieId = mockData.movies[0]?.id || "";
   if (!mockData.movies.some((movie) => movie.id === selectedCopyMovieId)) selectedCopyMovieId = mockData.movies[0]?.id || "";
   if (selectedAssetMovieId) localStorage.setItem(storageKeys.assetMovie, selectedAssetMovieId);
   if (selectedScheduleMovieId) localStorage.setItem(storageKeys.scheduleMovie, selectedScheduleMovieId);
+  if (selectedAnalyticsMovieId) localStorage.setItem(storageKeys.analyticsMovie, selectedAnalyticsMovieId);
   if (selectedCopyMovieId) localStorage.setItem(storageKeys.copyMovie, selectedCopyMovieId);
 }
 
@@ -617,6 +655,11 @@ function getSelectedCopyMovie() {
 function getSelectedScheduleMovie() {
   ensureSelectedMovies();
   return mockData.movies.find((movie) => movie.id === selectedScheduleMovieId) || null;
+}
+
+function getSelectedAnalyticsMovie() {
+  ensureSelectedMovies();
+  return mockData.movies.find((movie) => movie.id === selectedAnalyticsMovieId) || null;
 }
 
 function movieName(movieId) {
@@ -1511,9 +1554,11 @@ function reviewPage() {
   `;
 }
 function analyticsTotals() {
-  return mockData.socialMetrics.reduce(
+  return analyticsMetricsForSelectedMovie().reduce(
     (totals, item) => ({
       reach: totals.reach + Number(item.reach || 0),
+      impressions: totals.impressions + Number(item.impressions || 0),
+      views: totals.views + Number(item.views || 0),
       likes: totals.likes + Number(item.likes || 0),
       comments: totals.comments + Number(item.comments || 0),
       shares: totals.shares + Number(item.shares || 0),
@@ -1521,8 +1566,18 @@ function analyticsTotals() {
       newFollowers: totals.newFollowers + Number(item.newFollowers || 0),
       linkClicks: totals.linkClicks + Number(item.linkClicks || 0),
     }),
-    { reach: 0, likes: 0, comments: 0, shares: 0, saves: 0, newFollowers: 0, linkClicks: 0 },
+    { reach: 0, impressions: 0, views: 0, likes: 0, comments: 0, shares: 0, saves: 0, newFollowers: 0, linkClicks: 0 },
   );
+}
+
+function analyticsMetricsForSelectedMovie() {
+  const movie = getSelectedAnalyticsMovie();
+  return movie ? mockData.socialMetrics.filter((metric) => metric.movieId === movie.id) : [];
+}
+
+function postAnalysesForSelectedMovie() {
+  const movie = getSelectedAnalyticsMovie();
+  return movie ? savedPostAnalyses.filter((analysis) => (analysis.movieId || analysis.data?.movieId) === movie.id) : [];
 }
 
 function engagementRate(item) {
@@ -1545,7 +1600,9 @@ function postNumber(formData, key) {
 }
 
 function calculatePostAnalysis(formData) {
+  const movieId = String(formData.get("movieId") || selectedAnalyticsMovieId || "");
   const data = {
+    movieId,
     platform: formData.get("platform") || "Instagram",
     postUrl: String(formData.get("post_url") || "").trim(),
     title: String(formData.get("title") || "未命名貼文").trim(),
@@ -1576,10 +1633,10 @@ function calculatePostAnalysis(formData) {
   const labels = [];
   if (metrics.engagementRate >= 0.06 && metrics.followerConversionRate < 0.01) labels.push("高互動、低轉粉型");
   if (data.reach >= 50000 && metrics.engagementRate < 0.03) labels.push("高觸及、低互動型");
-  if (data.shares > data.saves) labels.push("擴散型內容");
-  if (data.saves > data.shares) labels.push("收藏型內容");
+  if (metrics.shareRate >= 0.01 || data.shares > data.saves) labels.push("高分享擴散型");
+  if (metrics.saveRate >= 0.01 || data.saves > data.shares) labels.push("高收藏保存型");
   if (metrics.engagementRate >= 0.06 && metrics.followerConversionRate >= 0.01) labels.push("高價值轉換型內容");
-  if (!labels.length) labels.push("穩定觀察型內容");
+  if (!labels.length) labels.push("表現普通、需要優化型");
   const primary = labels[0];
   const report = {
     summary: labels.join("、"),
@@ -1641,6 +1698,40 @@ function postAnalysisGeneratedOutputHtml() {
       <div class="card-header"><div><h2>${escapeHtml(postAnalysisOutput.title)}</h2><p>依目前貼文數據用程式邏輯產生，尚未串接 AI。</p></div></div>
       <div class="card-body copy-grid">${postAnalysisOutput.items.map((item) => `<div class="copy-card"><strong>${escapeHtml(item.title)}</strong><p>${escapeHtml(item.text)}</p></div>`).join("")}</div>
     </section>`;
+}
+
+function platformBriefAnalysis(item) {
+  const engagement = engagementRate(item);
+  const followRate = metricRate(item, "newFollowers");
+  if (engagement >= 6 && followRate < 1) return "互動熱度高，但追蹤轉換仍可加強。";
+  if (Number(item.reach || 0) >= 50000 && engagement < 3) return "觸及不錯，但需要更強的互動鉤子。";
+  if (metricRate(item, "shares") >= 1) return "分享率突出，適合放大話題擴散。";
+  if (metricRate(item, "saves") >= 1) return "收藏率佳，適合延伸資訊型內容。";
+  if (engagement >= 6 && followRate >= 1) return "互動與轉粉都好，可整理成模板。";
+  return "表現穩定，建議持續測試素材與 CTA。";
+}
+
+function platformOverviewCards() {
+  const knownPlatforms = ["Instagram", "Facebook", "Threads", "YouTube"];
+  const metrics = analyticsMetricsForSelectedMovie();
+  return knownPlatforms.map((platform) => {
+    const item = metrics.find((metric) => metric.platform === platform || metric.platform?.includes(platform)) || { platform };
+    const interactions = metricInteractions(item);
+    return `
+      <article class="card stat-card">
+        <span>${escapeHtml(platform)}</span>
+        <strong>${formatNumber(interactions)}</strong>
+        <small>互動數</small>
+        <div class="metric-mini-grid">
+          <span>觸及 ${formatNumber(item.reach)}</span>
+          <span>曝光 ${formatNumber(item.impressions)}</span>
+          <span>互動率 ${engagementRate(item).toFixed(2)}%</span>
+          <span>新增追蹤 ${formatNumber(item.newFollowers)}</span>
+          <span>轉粉率 ${metricRate(item, "newFollowers").toFixed(2)}%</span>
+        </div>
+        <p class="muted">${escapeHtml(platformBriefAnalysis(item))}</p>
+      </article>`;
+  }).join("");
 }
 
 function metricInteractions(item) {
@@ -1718,14 +1809,49 @@ function buildManualAnalyticsReport(metrics) {
   };
 }
 
+function buildMovieAnalyticsReport() {
+  const movie = getSelectedAnalyticsMovie();
+  const metrics = analyticsMetricsForSelectedMovie();
+  const analyses = postAnalysisResult ? [postAnalysisResult, ...postAnalysesForSelectedMovie()] : postAnalysesForSelectedMovie();
+  const totals = summarizeMetrics(metrics);
+  const bestPlatform = [...metrics].sort((a, b) => engagementRate(b) - engagementRate(a))[0];
+  const weakestPlatform = [...metrics].filter((item) => Number(item.reach || 0) || metricInteractions(item)).sort((a, b) => engagementRate(a) - engagementRate(b))[0];
+  const latestAnalysis = analyses[0];
+  const engagement = rateFromTotals(totals, "interactions");
+  const followRate = rateFromTotals(totals, "newFollowers");
+  const contentType = latestAnalysis?.labels?.[0] || (engagement >= 6 && followRate >= 1 ? "高價值轉換型內容" : engagement >= 6 ? "高互動、低轉粉型" : "表現普通、需要優化型");
+  return {
+    source: `${movie ? movieDisplayName(movie) : "未選擇電影"}｜電影社群數據分析`,
+    highlights: [
+      { title: "整體表現", text: metrics.length ? `整體互動率 ${engagement.toFixed(2)}%，追蹤轉換率 ${followRate.toFixed(2)}%。` : "目前尚無平台數據。" },
+      { title: "表現最好平台", text: bestPlatform ? `${bestPlatform.platform}（互動率 ${engagementRate(bestPlatform).toFixed(2)}%）` : "尚無資料" },
+      { title: "表現最弱平台", text: weakestPlatform ? `${weakestPlatform.platform}（互動率 ${engagementRate(weakestPlatform).toFixed(2)}%）` : "尚無資料" },
+      { title: "貼文類型", text: contentType },
+    ],
+    insights: [
+      latestAnalysis ? `最新單篇「${latestAnalysis.data.title}」被判斷為「${latestAnalysis.labels.join("、")}」。` : "尚未建立單篇貼文分析，建議先輸入一篇貼文數據。",
+      bestPlatform ? `${bestPlatform.platform} 目前最適合作為這部電影的主力社群觀察平台。` : "目前還沒有可比較的平台。",
+      weakestPlatform && bestPlatform && weakestPlatform.platform !== bestPlatform.platform ? `${weakestPlatform.platform} 互動較弱，可優先檢查素材、文案開頭與 CTA 是否清楚。` : "各平台差異尚不明顯，可以先累積更多貼文數據。",
+    ],
+    actions: [
+      contentType.includes("低轉粉") ? "下一篇請加入更明確的追蹤理由，例如幕後、角色解析或上映提醒系列。" : "下一篇可延伸目前表現較好的素材形式，測試不同發文時間。",
+      totals.saves >= totals.shares ? "收藏高於分享，建議做懶人包、角色資訊或上映資訊整理。" : "分享高於收藏，建議加入朋友標記、二選一或話題提問放大擴散。",
+      "每週固定保存單篇貼文分析，累積到 5 篇後會更容易看出內容規律。",
+    ],
+  };
+}
+
 function metricModal() {
-  const metric = mockData.socialMetrics.find((item) => item.platform === editingMetricPlatform) || {};
+  const metric = analyticsMetricsForSelectedMovie().find((item) => item.platform === editingMetricPlatform) || {};
   return `
     <div class="modal-backdrop" role="presentation"><section class="modal" role="dialog" aria-modal="true">
       <div class="modal-header"><div><h2>${metric.platform ? "編輯數據" : "新增平台數據"}</h2><p>手動更新社群平台成效，資料會先存在瀏覽器。</p></div><button class="icon-button modal-close" type="button" data-action="close-metric-modal">×</button></div>
       <form id="metricForm" class="modal-form">
+        <input type="hidden" name="movieId" value="${escapeHtml(selectedAnalyticsMovieId || "")}" />
         <div class="field"><label>平台</label><input class="input" name="platform" required value="${escapeHtml(metric.platform || "")}" ${metric.platform ? "readonly" : ""} /></div>
+        <div class="field"><label>曝光</label><input class="input" name="impressions" type="number" min="0" value="${Number(metric.impressions || 0)}" /></div>
         <div class="field"><label>觸及</label><input class="input" name="reach" type="number" min="0" value="${Number(metric.reach || 0)}" /></div>
+        <div class="field"><label>觀看</label><input class="input" name="views" type="number" min="0" value="${Number(metric.views || 0)}" /></div>
         <div class="field"><label>按讚</label><input class="input" name="likes" type="number" min="0" value="${Number(metric.likes || 0)}" /></div>
         <div class="field"><label>留言</label><input class="input" name="comments" type="number" min="0" value="${Number(metric.comments || 0)}" /></div>
         <div class="field"><label>分享</label><input class="input" name="shares" type="number" min="0" value="${Number(metric.shares || 0)}" /></div>
@@ -1782,8 +1908,11 @@ function buildAnalyticsReportFromUrl(url) {
 
 function upsertSocialMetric(metric) {
   const normalized = {
+    movieId: metric.movieId || selectedAnalyticsMovieId || mockData.movies[0]?.id || "",
     platform: metric.platform || "未知平台",
+    impressions: Number(metric.impressions || 0),
     reach: Number(metric.reach || 0),
+    views: Number(metric.views || 0),
     likes: Number(metric.likes || 0),
     comments: Number(metric.comments || 0),
     shares: Number(metric.shares || 0),
@@ -1791,7 +1920,7 @@ function upsertSocialMetric(metric) {
     newFollowers: Number(metric.newFollowers || 0),
     linkClicks: Number(metric.linkClicks || 0),
   };
-  const existing = mockData.socialMetrics.find((item) => item.platform === normalized.platform);
+  const existing = mockData.socialMetrics.find((item) => item.movieId === normalized.movieId && item.platform === normalized.platform);
   if (existing) Object.assign(existing, normalized);
   else mockData.socialMetrics.push(normalized);
   writeStorage(storageKeys.metrics, mockData.socialMetrics);
@@ -1815,7 +1944,9 @@ function manualAnalyticsRows() {
         <div class="manual-metric-row">
           <input class="input" name="url${index}" type="url" placeholder="社群連結 ${index + 1}" />
           <input class="input" name="platform${index}" placeholder="平台" />
+          <input class="input" name="impressions${index}" type="number" min="0" placeholder="曝光" />
           <input class="input" name="reach${index}" type="number" min="0" placeholder="觸及" />
+          <input class="input" name="views${index}" type="number" min="0" placeholder="觀看" />
           <input class="input" name="likes${index}" type="number" min="0" placeholder="按讚" />
           <input class="input" name="comments${index}" type="number" min="0" placeholder="留言" />
           <input class="input" name="shares${index}" type="number" min="0" placeholder="分享" />
@@ -1830,21 +1961,33 @@ function manualAnalyticsRows() {
 
 function analyticsPage() {
   const result = postAnalysisResult;
+  const selectedMovie = getSelectedAnalyticsMovie();
+  const movieReport = buildMovieAnalyticsReport();
   const today = new Date().toISOString().slice(0, 10);
   return `
     <section class="page-hero">
       <div>
-        <p class="eyebrow">手動輸入版</p>
-        <h2>單篇貼文數據分析</h2>
-        <p>先不串爬蟲與 API，輸入單篇貼文資料後自動計算核心指標並產生判讀建議。</p>
+        <p class="eyebrow">電影社群數據分析工具</p>
+        <h2>數據分析 Analytics</h2>
+        <p>選擇電影後，只顯示該電影的社群平台數據與單篇貼文分析。</p>
       </div>
-      <div class="task-item"><strong>已儲存分析</strong><span class="muted">${savedPostAnalyses.length} 筆暫存在瀏覽器</span></div>
+      <div class="task-item">
+        <strong>電影選擇器</strong>
+        <select class="select" id="analyticsMovieSelect" ${mockData.movies.length ? "" : "disabled"}>${mockData.movies.map((movie) => option(movie.id, selectedMovie?.id, movieDisplayName(movie))).join("") || "<option>尚無電影資料</option>"}</select>
+        <span class="muted">${selectedMovie ? `${movieDisplayName(selectedMovie)}｜已儲存 ${postAnalysesForSelectedMovie().length} 筆分析` : "請先新增電影"}</span>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-header"><div><h2>平台數據總覽</h2><p>${selectedMovie ? `${movieDisplayName(selectedMovie)} 的 Instagram、Facebook、Threads、YouTube 數據` : "請先選擇電影"}</p></div></div>
+      <div class="card-body grid stats-grid">${platformOverviewCards()}</div>
     </section>
 
     <form id="postAnalysisForm" class="post-analysis-layout">
       <section class="card">
         <div class="card-header"><div><h2>貼文基本資料</h2><p>建立這篇貼文的分析背景。</p></div></div>
         <div class="card-body post-form-grid">
+          <input type="hidden" name="movieId" value="${escapeHtml(selectedMovie?.id || "")}" />
           <div class="field"><label>平台</label><select class="select" name="platform" required>${["Instagram", "Facebook", "Threads", "YouTube"].map((item) => option(item, result?.data.platform || "Instagram")).join("")}</select></div>
           <div class="field"><label>貼文連結</label><input class="input" name="post_url" type="url" value="${escapeHtml(result?.data.postUrl || "")}" placeholder="https://..." /></div>
           <div class="field field-wide"><label>貼文標題</label><input class="input" name="title" required value="${escapeHtml(result?.data.title || "")}" placeholder="例如：正式預告上線主貼文" /></div>
@@ -1878,6 +2021,16 @@ function analyticsPage() {
     </div>
 
     ${postAnalysisReportHtml()}
+    <section class="card analytics-report">
+      <div class="card-header"><div><h2>AI 分析報告</h2><p>先用程式邏輯產生，尚未串接 OpenAI。</p></div></div>
+      <div class="card-body">
+        <div class="grid three-col">${movieReport.highlights.map((item) => `<div class="task-item"><div><strong>${escapeHtml(item.title)}</strong><span class="muted">${escapeHtml(item.text)}</span></div></div>`).join("")}</div>
+        <div class="analytics-report-grid">
+          <div><h3>整體解讀</h3>${movieReport.insights.map((item) => `<p>${escapeHtml(item)}</p>`).join("")}</div>
+          <div><h3>下一篇建議</h3>${movieReport.actions.map((item) => `<p>${escapeHtml(item)}</p>`).join("")}</div>
+        </div>
+      </div>
+    </section>
     ${postAnalysisGeneratedOutputHtml()}
 
     <section class="card">
@@ -1886,6 +2039,8 @@ function analyticsPage() {
         <button class="secondary-button" type="button" data-action="generate-next-post-direction" ${result ? "" : "disabled"}>產生下一篇貼文方向</button>
         <button class="secondary-button" type="button" data-action="generate-comment-question" ${result ? "" : "disabled"}>產生留言互動題</button>
         <button class="secondary-button" type="button" data-action="generate-cta-copy" ${result ? "" : "disabled"}>產生 CTA 文案</button>
+        <button class="secondary-button" type="button" data-action="generate-review-report" ${result ? "" : "disabled"}>產生檢討報告</button>
+        <button class="secondary-button" type="button" data-action="export-analysis-summary" ${result ? "" : "disabled"}>匯出分析摘要</button>
         <button class="primary-button" type="button" data-action="save-post-analysis" ${result ? "" : "disabled"}>儲存分析</button>
       </div>
     </section>
@@ -1937,7 +2092,7 @@ function render() {
   document.querySelector("#pageTitle").textContent = page.title;
   document.querySelector("#pageContent").innerHTML = renderers[page.id]();
   renderNav(page.id);
-  if (["movies", "assets", "schedule", "copy", "review"].includes(page.id) && Date.now() - moviesLastLoadedAt > 5000) loadMoviesFromServer(true);
+  if (["movies", "assets", "schedule", "copy", "review", "analytics"].includes(page.id) && Date.now() - moviesLastLoadedAt > 5000) loadMoviesFromServer(true);
   if (["assets", "schedule", "review", "analytics", "dashboard"].includes(page.id) && Date.now() - workflowLastLoadedAt > 5000) loadWorkflowDataFromServer();
 }
 
@@ -1973,6 +2128,15 @@ document.addEventListener("change", (event) => {
     localStorage.setItem(storageKeys.scheduleMovie, selectedScheduleMovieId);
     isScheduleModalOpen = false;
     editingScheduleId = null;
+    render();
+    return;
+  }
+  if (event.target.id === "analyticsMovieSelect") {
+    selectedAnalyticsMovieId = event.target.value;
+    localStorage.setItem(storageKeys.analyticsMovie, selectedAnalyticsMovieId);
+    postAnalysisResult = null;
+    postAnalysisOutput = null;
+    analyticsReport = null;
     render();
     return;
   }
@@ -2188,11 +2352,42 @@ document.addEventListener("click", async (event) => {
     };
     render();
   }
+  if (action === "generate-review-report") {
+    if (!postAnalysisResult) return;
+    const { data, metrics, labels } = postAnalysisResult;
+    postAnalysisOutput = {
+      title: "檢討報告",
+      items: [
+        { title: "內容類型", text: labels.join("、") },
+        { title: "主要問題", text: metrics.engagementRate < 0.03 ? "互動率偏低，建議調整開頭鉤子與互動 CTA。" : metrics.followerConversionRate < 0.01 ? "互動已有基礎，但轉粉不足，建議補強追蹤理由。" : "整體表現可延伸，建議測試不同素材版本。" },
+        { title: "下一步", text: `針對「${data.title}」保留表現好的元素，下一篇測試更明確的留言題或購票/預告導流。` },
+      ],
+    };
+    render();
+  }
+  if (action === "export-analysis-summary") {
+    if (!postAnalysisResult) return;
+    const { data, metrics, labels, report } = postAnalysisResult;
+    const summary = [
+      `電影：${movieName(data.movieId)}`,
+      `平台：${data.platform}`,
+      `貼文：${data.title}`,
+      `類型：${labels.join("、")}`,
+      `總互動：${formatNumber(metrics.totalEngagements)}`,
+      `互動率：${percent(metrics.engagementRate)}`,
+      `追蹤轉換率：${percent(metrics.followerConversionRate)}`,
+      `點擊率：${percent(metrics.clickRate)}`,
+      `下一篇建議：${report.nextSteps.join(" / ")}`,
+    ].join("\n");
+    navigator.clipboard?.writeText(summary);
+    postAnalysisOutput = { title: "匯出分析摘要", items: [{ title: "已複製摘要", text: summary }] };
+    render();
+  }
   if (action === "save-post-analysis") {
     if (!postAnalysisResult) return;
-    savedPostAnalyses.unshift({ id: `post-analysis-${Date.now()}`, ...postAnalysisResult });
+    savedPostAnalyses.unshift({ id: `post-analysis-${Date.now()}`, movieId: postAnalysisResult.data.movieId || selectedAnalyticsMovieId || "", ...postAnalysisResult });
     writeStorage(storageKeys.postAnalyses, savedPostAnalyses);
-    postAnalysisOutput = { title: "儲存分析", items: [{ title: "已儲存", text: `「${postAnalysisResult.data.title}」已暫存在瀏覽器，共 ${savedPostAnalyses.length} 筆。` }] };
+    postAnalysisOutput = { title: "儲存分析", items: [{ title: "已儲存", text: `「${postAnalysisResult.data.title}」已儲存到目前電影的分析資料，共 ${postAnalysesForSelectedMovie().length} 筆。` }] };
     render();
   }
   if (action === "generate-copy-preview") {
@@ -2285,7 +2480,7 @@ document.addEventListener("click", async (event) => {
   }
   if (action === "delete-metric") {
     if (!window.confirm("確定要刪除這筆平台數據嗎？")) return;
-    mockData.socialMetrics = mockData.socialMetrics.filter((item) => item.platform !== actionElement.dataset.platform);
+    mockData.socialMetrics = mockData.socialMetrics.filter((item) => !(item.movieId === selectedAnalyticsMovieId && item.platform === actionElement.dataset.platform));
     writeStorage(storageKeys.metrics, mockData.socialMetrics);
     render();
   }
@@ -2327,6 +2522,19 @@ document.addEventListener("submit", async (event) => {
   if (event.target.id === "postAnalysisForm") {
     postAnalysisResult = calculatePostAnalysis(formData);
     postAnalysisOutput = null;
+    upsertSocialMetric({
+      movieId: postAnalysisResult.data.movieId,
+      platform: postAnalysisResult.data.platform,
+      impressions: postAnalysisResult.data.impressions,
+      reach: postAnalysisResult.data.reach,
+      views: postAnalysisResult.data.views,
+      likes: postAnalysisResult.data.likes,
+      comments: postAnalysisResult.data.comments,
+      shares: postAnalysisResult.data.shares,
+      saves: postAnalysisResult.data.saves,
+      newFollowers: postAnalysisResult.data.newFollowers,
+      linkClicks: postAnalysisResult.data.linkClicks,
+    });
     render();
     return;
   }
@@ -2361,7 +2569,7 @@ document.addEventListener("submit", async (event) => {
       if (payload.mode === "manual") {
         analyticsError = payload.message || "目前使用手動數據分析模式，未串接外部社群數據服務。";
       } else {
-        upsertSocialMetric(payload.metric);
+        upsertSocialMetric({ ...payload.metric, movieId: selectedAnalyticsMovieId });
         analyticsReport = payload.report;
       }
     } catch (error) {
@@ -2378,8 +2586,11 @@ document.addEventListener("submit", async (event) => {
         const url = String(formData.get(`url${index}`) || "").trim();
         const platformInput = String(formData.get(`platform${index}`) || "").trim();
         const metric = {
+          movieId: selectedAnalyticsMovieId,
           url,
           platform: platformInput || detectPlatformFromUrl(url, `手動連結 ${index + 1}`),
+          impressions: Number(formData.get(`impressions${index}`) || 0),
+          views: Number(formData.get(`views${index}`) || 0),
           reach: Number(formData.get(`reach${index}`) || 0),
           likes: Number(formData.get(`likes${index}`) || 0),
           comments: Number(formData.get(`comments${index}`) || 0),
@@ -2388,7 +2599,7 @@ document.addEventListener("submit", async (event) => {
           newFollowers: Number(formData.get(`newFollowers${index}`) || 0),
           linkClicks: Number(formData.get(`linkClicks${index}`) || 0),
         };
-        const hasData = metric.url || metric.reach || metric.likes || metric.comments || metric.shares || metric.saves || metric.newFollowers || metric.linkClicks;
+        const hasData = metric.url || metric.impressions || metric.reach || metric.views || metric.likes || metric.comments || metric.shares || metric.saves || metric.newFollowers || metric.linkClicks;
         return hasData ? metric : null;
       })
       .filter(Boolean);
@@ -2515,8 +2726,11 @@ document.addEventListener("submit", async (event) => {
   }
   if (event.target.id === "metricForm") {
     const metricData = {
+      movieId: formData.get("movieId") || selectedAnalyticsMovieId || "",
       platform: String(formData.get("platform") || "未命名平台").trim(),
+      impressions: Number(formData.get("impressions") || 0),
       reach: Number(formData.get("reach") || 0),
+      views: Number(formData.get("views") || 0),
       likes: Number(formData.get("likes") || 0),
       comments: Number(formData.get("comments") || 0),
       shares: Number(formData.get("shares") || 0),
@@ -2524,7 +2738,7 @@ document.addEventListener("submit", async (event) => {
       newFollowers: Number(formData.get("newFollowers") || 0),
       linkClicks: Number(formData.get("linkClicks") || 0),
     };
-    const editingMetric = mockData.socialMetrics.find((item) => item.platform === editingMetricPlatform);
+    const editingMetric = mockData.socialMetrics.find((item) => item.movieId === metricData.movieId && item.platform === editingMetricPlatform);
     if (editingMetric) Object.assign(editingMetric, metricData);
     else mockData.socialMetrics.push(metricData);
     writeStorage(storageKeys.metrics, mockData.socialMetrics);
