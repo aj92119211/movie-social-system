@@ -892,9 +892,18 @@ async function saveMovieToServer(movieData) {
       movieReleaseStatusOverrides[movieId] = movieData.releaseStatus || "未上映";
       writeStorage(storageKeys.movieReleaseStatuses, movieReleaseStatusOverrides);
     }
+    if (payload.movie) {
+      replaceMovieInState(payload.movie);
+    }
     await loadMoviesFromServer(true);
   } catch (error) {
-    moviesError = error?.message ? `${movieSupabaseErrorMessage}（${error.message}）` : movieSupabaseErrorMessage;
+    const detail = String(error?.message || "");
+    const releaseDateHint = detail.includes("release_date")
+      ? "Supabase 的 release_date 欄位目前可能還不允許空值，請先執行 supabase/movies_release_date_nullable.sql。"
+      : "";
+    moviesError = detail
+      ? `${movieSupabaseErrorMessage}（${[detail, releaseDateHint].filter(Boolean).join(" ")})`
+      : movieSupabaseErrorMessage;
     throw new Error(moviesError);
   }
 }
@@ -956,6 +965,22 @@ function saveMovieLocally(movieData, editingMovie) {
   writeStorage(storageKeys.movies, mockData.movies);
   moviesLoadedFromServer = true;
   moviesError = movieDemoModeMessage;
+  ensureSelectedMovies();
+}
+
+function replaceMovieInState(movie) {
+  const normalizedMovie = {
+    ...normalizeMovieRecord(movie),
+    releaseStatus: movieReleaseStatusOverrides[movie.id] || movie.releaseStatus || "未上映",
+  };
+  const index = mockData.movies.findIndex((item) => item.id === normalizedMovie.id);
+  if (index >= 0) mockData.movies[index] = normalizedMovie;
+  else mockData.movies.unshift(normalizedMovie);
+  if (normalizedMovie.coverUrl) movieCoverPreviews[normalizedMovie.id] = normalizedMovie.coverUrl;
+  writeLocalStorageOnly(storageKeys.movies, mockData.movies);
+  writeLocalStorageOnly(storageKeys.covers, movieCoverPreviews);
+  moviesLoadedFromServer = true;
+  moviesLastLoadedAt = Date.now();
   ensureSelectedMovies();
 }
 
