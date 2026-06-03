@@ -269,6 +269,7 @@ function mapMovieToDb(movie) {
 }
 
 function mapStyleExampleFromDb(row) {
+  const score = Math.min(5, Math.max(1, Math.round(Number(row.score || 3))));
   return {
     id: row.id,
     type: row.type || "",
@@ -282,7 +283,7 @@ function mapStyleExampleFromDb(row) {
     qualityTags: Array.isArray(row.quality_tags) ? row.quality_tags : [],
     useCase: row.use_case || "",
     isActive: row.is_active !== false,
-    score: Number(row.score || 3),
+    score,
     aiInstruction: row.ai_instruction || "",
   };
 }
@@ -302,7 +303,7 @@ function mapStyleExampleToDb(example, includeAdvancedFields = true) {
     payload.quality_tags = Array.isArray(example.qualityTags) ? example.qualityTags : [];
     payload.use_case = String(example.useCase || "").trim();
     payload.is_active = example.isActive !== false;
-    payload.score = Math.min(5, Math.max(1, Number(example.score || 3)));
+    payload.score = Math.min(5, Math.max(1, Math.round(Number(example.score || 3))));
     payload.ai_instruction = String(example.aiInstruction || "").trim();
   }
   return payload;

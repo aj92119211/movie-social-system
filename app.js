@@ -267,6 +267,7 @@ let styleExamplesLoadedFromServer = false;
 let styleExamplesError = "";
 let isStyleExampleModalOpen = false;
 let editingStyleExampleId = null;
+let isTextComposing = false;
 let authChecked = false;
 let authRequired = false;
 let isAuthenticated = false;
@@ -1572,9 +1573,16 @@ function styleExampleStats() {
   ];
 }
 
+function styleExampleScore(example) {
+  const score = Number(example?.score);
+  if (!Number.isFinite(score)) return 3;
+  return Math.min(5, Math.max(1, Math.round(score)));
+}
+
 function styleExampleCard(example) {
   const tags = Array.isArray(example.qualityTags) ? example.qualityTags : parseList(example.qualityTags);
   const active = example.isActive !== false;
+  const score = styleExampleScore(example);
   return `
     <article class="card style-example-card">
       <div class="card-body">
@@ -1589,7 +1597,7 @@ function styleExampleCard(example) {
               ${status(example.tone || "參考")}
             </div>
             <h3>${escapeHtml(example.type || "未分類")}｜${escapeHtml(example.platform || "未指定平台")}</h3>
-            <span class="muted">${escapeHtml(example.useCase || "尚未設定適用任務")}｜推薦 ${"★".repeat(Number(example.score || 3))}${"☆".repeat(5 - Number(example.score || 3))}</span>
+            <span class="muted">${escapeHtml(example.useCase || "尚未設定適用任務")}｜推薦 ${"★".repeat(score)}${"☆".repeat(5 - score)}</span>
           </div>
           <div class="meta-row">
             <button class="secondary-button" type="button" data-action="copy-style-example" data-style-id="${example.id}">複製內容</button>
@@ -1624,7 +1632,7 @@ function styleExampleModal() {
           <div class="field"><label>語氣 tone</label><input class="input" name="tone" required value="${escapeHtml(example?.tone || "")}" placeholder="例如：神祕、熱血、感性、幽默、專業白話" /></div>
           <div class="field"><label>品質標籤 quality_tags</label><textarea name="qualityTags" placeholder="例如：有記憶點、適合互動、適合轉粉">${escapeHtml((example?.qualityTags || []).join ? example.qualityTags.join(", ") : example?.qualityTags || "")}</textarea></div>
           <div class="field"><label>適用任務 use_case</label><input class="input" name="useCase" value="${escapeHtml(example?.useCase || "")}" placeholder="例如：產生 IG 貼文、產生負評回覆" /></div>
-          <div class="field"><label>推薦程度 score</label><select class="select" name="score" style="width:100%">${[1, 2, 3, 4, 5].map((item) => option(String(item), String(example?.score || 3), `${item} 分`)).join("")}</select></div>
+          <div class="field"><label>推薦程度 score</label><select class="select" name="score" style="width:100%">${[1, 2, 3, 4, 5].map((item) => option(String(item), String(styleExampleScore(example)), `${item} 分`)).join("")}</select></div>
           <div class="field"><label>是否啟用 is_active</label><label class="toggle-row"><input type="checkbox" name="isActive" ${example?.isActive === false ? "" : "checked"} /> 啟用，讓 OpenAI 可以參考這則範例</label></div>
           <div class="field"><label>範例內容 example_content</label><textarea name="exampleContent" required>${escapeHtml(example?.exampleContent || "")}</textarea></div>
           <div class="field"><label>為什麼這則好 why_it_works</label><textarea name="whyItWorks">${escapeHtml(example?.whyItWorks || "")}</textarea></div>
@@ -2460,6 +2468,7 @@ document.addEventListener("input", (event) => {
     input?.setSelectionRange(cursorPosition, cursorPosition);
   }
   if (event.target.classList.contains("style-filter-input")) {
+    if (isTextComposing || event.isComposing) return;
     const filterName = event.target.dataset.filter;
     const cursorPosition = event.target.selectionStart;
     styleExampleFilters[filterName] = event.target.value;
@@ -2467,6 +2476,23 @@ document.addEventListener("input", (event) => {
     const input = document.querySelector(`.style-filter-input[data-filter="${filterName}"]`);
     input?.focus();
     input?.setSelectionRange(cursorPosition, cursorPosition);
+  }
+});
+
+document.addEventListener("compositionstart", (event) => {
+  if (event.target.classList?.contains("style-filter-input")) {
+    isTextComposing = true;
+  }
+});
+
+document.addEventListener("compositionend", (event) => {
+  if (event.target.classList?.contains("style-filter-input")) {
+    isTextComposing = false;
+    const filterName = event.target.dataset.filter;
+    styleExampleFilters[filterName] = event.target.value;
+    render();
+    const input = document.querySelector(`.style-filter-input[data-filter="${filterName}"]`);
+    input?.focus();
   }
 });
 
