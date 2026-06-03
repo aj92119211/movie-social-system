@@ -1519,7 +1519,7 @@ function copyPage() {
           ${moviesError ? `<p class="status red">${escapeHtml(moviesError)}</p>` : ""}
           ${moviesLoading ? `<p class="muted">正在同步電影資料...</p>` : ""}
           <div class="field"><label>電影</label><select class="select" id="copyMovie" style="width:100%" ${mockData.movies.length ? "" : "disabled"}>${mockData.movies.map((movie) => option(movie.id, selectedMovie?.id, movie.title)).join("") || "<option>尚無電影資料</option>"}</select></div>
-          ${selectedMovie ? `<div class="task-item"><strong>${escapeHtml(selectedMovie.title)}</strong><span class="muted">${escapeHtml(selectedMovie.genre)}｜上映 ${escapeHtml(selectedMovie.releaseDate)}｜${escapeHtml(selectedMovie.socialTone)}</span></div>` : ""}
+          ${selectedMovie ? `<div class="task-item"><span class="muted">${escapeHtml(selectedMovie.genre)}｜上映 ${escapeHtml(movieReleaseDateLabel(selectedMovie.releaseDate))}｜${escapeHtml(selectedMovie.socialTone)}</span></div>` : ""}
           <div class="field"><label>溝通重點</label><textarea id="copyFocus" placeholder="例如：正式預告上線、提醒上映日期、主打懸疑氛圍，語氣要精準但保留神祕感。">${escapeHtml(copyFocusValue)}</textarea></div>
           <button class="primary-button" type="button" data-action="generate-copy-preview" ${isCopyGenerating || !selectedMovie ? "disabled" : ""}>${isCopyGenerating ? "生成中..." : "生成文案"}</button>
           ${copyGeneratorError ? `<p class="status red">${escapeHtml(copyGeneratorError)}</p>` : ""}
