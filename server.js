@@ -256,7 +256,7 @@ function mapMovieToDb(movie) {
   return {
     title: movie.title,
     genre: movie.genre,
-    release_date: normalizeReleaseDateForDb(movie.releaseDate),
+    release_date: normalizeReleaseDateForDb(movieReleaseDateInput(movie)),
     release_status: movie.releaseStatus || "未上映",
     social_tone: movie.socialTone,
     core_selling_points: Array.isArray(movie.coreSellingPoints) ? movie.coreSellingPoints : [],
@@ -273,8 +273,17 @@ function normalizeReleaseDateForDb(value) {
   return releaseDate ? releaseDate.replaceAll("/", "-") : null;
 }
 
+function movieReleaseDateInput(movie) {
+  if (Object.prototype.hasOwnProperty.call(movie, "releaseDate")) return movie.releaseDate;
+  if (Object.prototype.hasOwnProperty.call(movie, "release_date")) return movie.release_date;
+  return null;
+}
+
 function shouldClearReleaseDate(movie) {
-  return Object.prototype.hasOwnProperty.call(movie, "releaseDate") && normalizeReleaseDateForDb(movie.releaseDate) === null;
+  return (
+    (Object.prototype.hasOwnProperty.call(movie, "releaseDate") || Object.prototype.hasOwnProperty.call(movie, "release_date")) &&
+    normalizeReleaseDateForDb(movieReleaseDateInput(movie)) === null
+  );
 }
 
 function mapStyleExampleFromDb(row) {

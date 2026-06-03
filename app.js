@@ -867,10 +867,11 @@ function assetsForSelectedMovie() {
 function moviePayloadFromForm(formData) {
   const editingMovie = mockData.movies.find((movie) => movie.id === editingMovieId);
   const releaseDate = formatDateForDisplay(formData.get("releaseDate")).trim();
+  const releaseDateCleared = formData.get("releaseDateCleared") === "true";
   return {
     title: String(formData.get("title") || "").trim(),
     genre: String(formData.get("genre") || "").trim(),
-    releaseDate: releaseDate || null,
+    releaseDate: releaseDateCleared || !releaseDate ? null : releaseDate,
     releaseStatus: String(formData.get("releaseStatus") || "未上映").trim(),
     socialTone: String(formData.get("socialTone") || "").trim(),
     coreSellingPoints: parseList(formData.get("coreSellingPoints")),
@@ -1195,7 +1196,7 @@ function movieModal() {
         <form id="movieForm" class="modal-form">
           <div class="field"><label for="movieTitle">片名</label><input class="input" id="movieTitle" name="title" required value="${escapeHtml(movie?.title || "")}" /></div>
           <div class="field"><label for="movieGenre">類型</label><input class="input" id="movieGenre" name="genre" required value="${escapeHtml(movie?.genre || "")}" /></div>
-          <div class="field"><label for="movieReleaseDate">上映日期</label><input class="input" id="movieReleaseDate" name="releaseDate" type="date" value="${escapeHtml(formatDateForInput(movie?.releaseDate))}" /><p class="muted">如果上映時間尚未確定，可以先留空，系統會顯示「待確認」。</p></div>
+          <div class="field"><label for="movieReleaseDate">上映日期</label><div class="link-input-row"><input class="input" id="movieReleaseDate" name="releaseDate" type="date" value="${escapeHtml(formatDateForInput(movie?.releaseDate))}" /><button class="secondary-button" type="button" data-action="clear-movie-release-date">清除日期</button></div><input id="movieReleaseDateCleared" name="releaseDateCleared" type="hidden" value="false" /><p class="muted">如果上映時間尚未確定，可以點「清除日期」，系統會顯示「待確認」。</p></div>
           <div class="field"><label for="movieReleaseStatus">上映狀態</label><select class="select" id="movieReleaseStatus" name="releaseStatus" required style="width:100%">${["未上映", "上映中", "下檔"].map((item) => option(item, movie?.releaseStatus || "未上映")).join("")}</select></div>
           <div class="field"><label for="movieSocialTone">社群語氣</label><textarea id="movieSocialTone" name="socialTone" required>${escapeHtml(movie?.socialTone || "")}</textarea></div>
           <div class="field"><label for="movieSellingPoints">核心賣點</label><textarea id="movieSellingPoints" name="coreSellingPoints" required placeholder="請用逗號分隔">${escapeHtml((movie?.coreSellingPoints || []).join(", "))}</textarea></div>
@@ -2549,6 +2550,10 @@ function render() {
 window.addEventListener("hashchange", render);
 
 document.addEventListener("input", (event) => {
+  if (event.target.id === "movieReleaseDate") {
+    const clearedInput = document.getElementById("movieReleaseDateCleared");
+    if (clearedInput) clearedInput.value = event.target.value ? "false" : "true";
+  }
   if (event.target.id === "copyFocus") {
     copyFocusValue = event.target.value;
     localStorage.setItem(storageKeys.copyFocus, copyFocusValue);
@@ -2678,6 +2683,12 @@ document.addEventListener("click", async (event) => {
     isMovieModalOpen = false;
     editingMovieId = null;
     render();
+  }
+  if (action === "clear-movie-release-date") {
+    const dateInput = document.getElementById("movieReleaseDate");
+    const clearedInput = document.getElementById("movieReleaseDateCleared");
+    if (dateInput) dateInput.value = "";
+    if (clearedInput) clearedInput.value = "true";
   }
   if (action === "delete-movie") {
     if (!window.confirm("確定要刪除這部電影嗎？")) return;
