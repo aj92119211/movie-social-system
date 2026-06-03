@@ -123,6 +123,45 @@ APP_AUTH_USERNAME
 APP_AUTH_PASSWORD
 ```
 
+## OpenAI 單篇貼文 AI 分析
+
+Analytics 頁面的「產生 AI 分析報告」會呼叫後端 API：
+
+```text
+POST /api/ai/analyze-post
+```
+
+安全規則：
+
+- `OPENAI_API_KEY` 只放在後端環境變數。
+- 前端不使用 `VITE_OPENAI_API_KEY`。
+- 前端只呼叫自己的後端 `/api/ai/analyze-post`。
+- API key 不會寫進前端、GitHub、console.log 或 response。
+
+Render 後台需要設定：
+
+```text
+OPENAI_API_KEY=你的 OpenAI API Key
+```
+
+本機測試時，請在 `.env.local` 放：
+
+```text
+OPENAI_API_KEY=你的 OpenAI API Key
+```
+
+如果沒有設定 `OPENAI_API_KEY`，畫面會顯示：
+
+```text
+OPENAI_API_KEY is not configured
+```
+
+如果要調整 AI 分析模型，可以選擇性設定：
+
+```text
+OPENAI_ANALYSIS_MODEL=gpt-5.5
+```
+
 設定完成後按 Save，接著 Manual Deploy -> Deploy latest commit。之後使用 Render 網址時，系統會先顯示登入框，登入成功才會看到資料。
 
 注意：GitHub Pages 是純前端展示頁，無法做安全的後端登入保護；正式保護請使用 Render 網址。

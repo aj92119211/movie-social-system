@@ -214,6 +214,9 @@ let analyticsError = "目前使用手動數據分析模式，未串接外部社�
 let savedPostAnalyses = [];
 let postAnalysisResult = null;
 let postAnalysisOutput = null;
+let aiPostAnalysisText = "";
+let aiPostAnalysisError = "";
+let isAiPostAnalyzing = false;
 let questionFilters = {
   search: "",
   movieId: "全部",
@@ -1841,6 +1844,63 @@ function buildMovieAnalyticsReport() {
   };
 }
 
+function aiPostAnalysisPayload() {
+  if (!postAnalysisResult) return null;
+  const movie = mockData.movies.find((item) => item.id === postAnalysisResult.data.movieId) || getSelectedAnalyticsMovie();
+  const { data, metrics } = postAnalysisResult;
+  return {
+    movieTitle: movie ? movieDisplayName(movie) : "未提供",
+    platform: data.platform,
+    postUrl: data.postUrl,
+    title: data.title,
+    postType: data.postType,
+    campaignStage: data.campaignStage,
+    impressions: data.impressions,
+    reach: data.reach,
+    views: data.views,
+    likes: data.likes,
+    comments: data.comments,
+    shares: data.shares,
+    saves: data.saves,
+    newFollowers: data.newFollowers,
+    linkClicks: data.linkClicks,
+    totalEngagements: metrics.totalEngagements,
+    engagementRate: Number((metrics.engagementRate * 100).toFixed(2)),
+    shareRate: Number((metrics.shareRate * 100).toFixed(2)),
+    saveRate: Number((metrics.saveRate * 100).toFixed(2)),
+    commentRate: Number((metrics.commentRate * 100).toFixed(2)),
+    followerConversionRate: Number((metrics.followerConversionRate * 100).toFixed(2)),
+    clickRate: Number((metrics.clickRate * 100).toFixed(2)),
+  };
+}
+
+async function generateAIAnalysis() {
+  const payload = aiPostAnalysisPayload();
+  if (!payload) {
+    aiPostAnalysisError = "請先輸入貼文數據並按「分析貼文數據」。";
+    render();
+    return;
+  }
+  isAiPostAnalyzing = true;
+  aiPostAnalysisError = "";
+  render();
+  try {
+    const response = await fetch("/api/ai/analyze-post", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || "AI 分析產生失敗");
+    aiPostAnalysisText = result.analysis || "";
+  } catch (error) {
+    aiPostAnalysisError = error.message || "AI 分析產生失敗";
+  } finally {
+    isAiPostAnalyzing = false;
+    render();
+  }
+}
+
 function metricModal() {
   const metric = analyticsMetricsForSelectedMovie().find((item) => item.platform === editingMetricPlatform) || {};
   return `
@@ -1964,6 +2024,12 @@ function analyticsPage() {
   const selectedMovie = getSelectedAnalyticsMovie();
   const movieReport = buildMovieAnalyticsReport();
   const today = new Date().toISOString().slice(0, 10);
+  const aiAnalysisHtml = aiPostAnalysisText
+    ? `<div class="copy-card"><strong>OpenAI 分析報告</strong><p>${escapeHtml(aiPostAnalysisText).replaceAll("\n", "<br>")}</p></div>`
+    : `<div class="analytics-report-grid">
+          <div><h3>整體解讀</h3>${movieReport.insights.map((item) => `<p>${escapeHtml(item)}</p>`).join("")}</div>
+          <div><h3>下一篇建議</h3>${movieReport.actions.map((item) => `<p>${escapeHtml(item)}</p>`).join("")}</div>
+        </div>`;
   return `
     <section class="page-hero">
       <div>
@@ -2022,13 +2088,12 @@ function analyticsPage() {
 
     ${postAnalysisReportHtml()}
     <section class="card analytics-report">
-      <div class="card-header"><div><h2>AI 分析報告</h2><p>先用程式邏輯產生，尚未串接 OpenAI。</p></div></div>
+      <div class="card-header"><div><h2>AI 分析報告</h2><p>${aiPostAnalysisText ? "由 OpenAI 依目前單篇貼文數據生成。" : "尚未產生 OpenAI 報告時，先顯示系統邏輯分析。"}</p></div></div>
       <div class="card-body">
+        ${aiPostAnalysisError ? `<p class="status red">${escapeHtml(aiPostAnalysisError)}</p>` : ""}
+        ${isAiPostAnalyzing ? `<p class="status blue">AI 分析中...</p>` : ""}
         <div class="grid three-col">${movieReport.highlights.map((item) => `<div class="task-item"><div><strong>${escapeHtml(item.title)}</strong><span class="muted">${escapeHtml(item.text)}</span></div></div>`).join("")}</div>
-        <div class="analytics-report-grid">
-          <div><h3>整體解讀</h3>${movieReport.insights.map((item) => `<p>${escapeHtml(item)}</p>`).join("")}</div>
-          <div><h3>下一篇建議</h3>${movieReport.actions.map((item) => `<p>${escapeHtml(item)}</p>`).join("")}</div>
-        </div>
+        ${aiAnalysisHtml}
       </div>
     </section>
     ${postAnalysisGeneratedOutputHtml()}
@@ -2037,6 +2102,7 @@ function analyticsPage() {
       <div class="card-header"><div><h2>後續操作</h2><p>依目前分析結果產生下一步內容方向。</p></div></div>
       <div class="card-body post-action-row">
         <button class="secondary-button" type="button" data-action="generate-next-post-direction" ${result ? "" : "disabled"}>產生下一篇貼文方向</button>
+        <button class="primary-button" type="button" data-action="generate-ai-post-analysis" ${result && !isAiPostAnalyzing ? "" : "disabled"}>${isAiPostAnalyzing ? "AI 分析中..." : "產生 AI 分析報告"}</button>
         <button class="secondary-button" type="button" data-action="generate-comment-question" ${result ? "" : "disabled"}>產生留言互動題</button>
         <button class="secondary-button" type="button" data-action="generate-cta-copy" ${result ? "" : "disabled"}>產生 CTA 文案</button>
         <button class="secondary-button" type="button" data-action="generate-review-report" ${result ? "" : "disabled"}>產生檢討報告</button>
@@ -2136,6 +2202,8 @@ document.addEventListener("change", (event) => {
     localStorage.setItem(storageKeys.analyticsMovie, selectedAnalyticsMovieId);
     postAnalysisResult = null;
     postAnalysisOutput = null;
+    aiPostAnalysisText = "";
+    aiPostAnalysisError = "";
     analyticsReport = null;
     render();
     return;
@@ -2325,6 +2393,9 @@ document.addEventListener("click", async (event) => {
       ],
     };
     render();
+  }
+  if (action === "generate-ai-post-analysis") {
+    generateAIAnalysis();
   }
   if (action === "generate-comment-question") {
     if (!postAnalysisResult) return;
@@ -2522,6 +2593,8 @@ document.addEventListener("submit", async (event) => {
   if (event.target.id === "postAnalysisForm") {
     postAnalysisResult = calculatePostAnalysis(formData);
     postAnalysisOutput = null;
+    aiPostAnalysisText = "";
+    aiPostAnalysisError = "";
     upsertSocialMetric({
       movieId: postAnalysisResult.data.movieId,
       platform: postAnalysisResult.data.platform,

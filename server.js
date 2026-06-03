@@ -2,6 +2,7 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const crypto = require("node:crypto");
+const { analyzePost } = require("./server/routes/ai");
 
 const rootDir = __dirname;
 const port = Number(process.env.PORT || 5173);
@@ -799,8 +800,6 @@ function configStatus(request, response) {
     supabaseUrlSet: Boolean(supabaseUrl),
     supabaseKeySet: Boolean(supabaseKey),
     openaiKeySet: Boolean(openaiApiKey),
-    openaiKeyPrefix: openaiApiKey ? openaiApiKey.slice(0, 8) : "",
-    openaiKeyLength: openaiApiKey.length,
     openaiModel: envValue("OPENAI_MODEL") || "gpt-4.1-mini",
   });
 }
@@ -1017,6 +1016,11 @@ const server = http.createServer((request, response) => {
 
   if (request.method === "POST" && url.pathname === "/api/generate-question-batch") {
     generateQuestionBatch(request, response);
+    return;
+  }
+
+  if (request.method === "POST" && url.pathname === "/api/ai/analyze-post") {
+    analyzePost(request, response, { readJsonBody, sendJson, envValue });
     return;
   }
 

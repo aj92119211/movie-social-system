@@ -5,7 +5,9 @@
     "preview": "vite preview",
     "start": "node server.js"
   },
-  "dependencies": {},
+  "dependencies": {
+    "openai": "^6.41.0"
+  },
   "devDependencies": {
     "vite": "^5.4.11"
   }
