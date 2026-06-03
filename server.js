@@ -231,9 +231,10 @@ function requireSupabaseConfig() {
 }
 
 function mapMovieFromDb(row) {
+  const title = row.title || row.name || row.movie_title || row.movieTitle || "";
   return {
     id: row.id,
-    title: row.title,
+    title: String(title).trim() || "未命名電影",
     genre: row.genre,
     releaseDate: row.release_date?.replaceAll("-", "/") || "",
     releaseStatus: row.release_status || "未上映",

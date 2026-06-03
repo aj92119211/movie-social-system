@@ -305,6 +305,18 @@ function option(value, currentValue, label = value) {
   return `<option value="${escapeHtml(value)}" ${value === currentValue ? "selected" : ""}>${escapeHtml(label)}</option>`;
 }
 
+function movieDisplayName(movie) {
+  const name = movie?.title || movie?.name || movie?.movie_title || movie?.movieTitle || "";
+  return String(name).trim() || "未命名電影";
+}
+
+function normalizeMovieRecord(movie) {
+  return {
+    ...movie,
+    title: movieDisplayName(movie),
+  };
+}
+
 function status(text) {
   return `<span class="status ${statusClass[text] || "blue"}">${escapeHtml(text)}</span>`;
 }
@@ -514,7 +526,7 @@ function isGitHubPagesMode() {
 
 function loadMoviesFromLocalStorage() {
   mockData.movies = readStorage(storageKeys.movies, mockData.movies).map((movie) => ({
-    ...movie,
+    ...normalizeMovieRecord(movie),
     releaseStatus: movieReleaseStatusOverrides[movie.id] || movie.releaseStatus || "未上映",
   }));
   moviesLoadedFromServer = true;
@@ -527,7 +539,7 @@ function loadMoviesFromLocalStorage() {
 
 function loadMoviesFallback(message) {
   mockData.movies = readStorage(storageKeys.movies, mockData.movies).map((movie) => ({
-    ...movie,
+    ...normalizeMovieRecord(movie),
     releaseStatus: movieReleaseStatusOverrides[movie.id] || movie.releaseStatus || "未上映",
   }));
   moviesLoadedFromServer = true;
@@ -562,7 +574,7 @@ async function loadMoviesFromServer(force = false) {
   try {
     const payload = await requestJson("/api/movies");
     mockData.movies = (payload.movies || []).map((movie) => ({
-      ...movie,
+      ...normalizeMovieRecord(movie),
       releaseStatus: movieReleaseStatusOverrides[movie.id] || movie.releaseStatus || "未上映",
     }));
     mockData.movies.forEach((movie) => {
@@ -608,7 +620,8 @@ function getSelectedScheduleMovie() {
 }
 
 function movieName(movieId) {
-  return mockData.movies.find((movie) => movie.id === movieId)?.title || "未指定電影";
+  const movie = mockData.movies.find((item) => String(item.id) === String(movieId));
+  return movie ? movieDisplayName(movie) : "未指定電影";
 }
 
 function assetName(assetId) {
@@ -1376,6 +1389,14 @@ function questionSelect(name, value, options, label) {
   return `<label class="filter-field"><span>${label}</span><select class="select question-filter" data-filter="${name}">${options.map((item) => option(item, value)).join("")}</select></label>`;
 }
 
+function questionMovieSelect(value) {
+  const options = [
+    option("全部", value, "全部電影"),
+    ...mockData.movies.map((movie) => option(movie.id, value, movieDisplayName(movie))),
+  ];
+  return `<label class="filter-field"><span>電影專案</span><select class="select question-filter" data-filter="movieId">${options.join("")}</select></label>`;
+}
+
 function questionCard(question) {
   const highClass = question.performance === "高" ? " question-card-high" : "";
   const usedButtonText = question.status === "已使用" ? "取消已使用" : "標記已使用";
@@ -1419,7 +1440,7 @@ function questionCard(question) {
 
 function questionModal() {
   const question = mockData.questions.find((item) => item.id === editingQuestionId);
-  const movieOptions = [option("", question?.movieId || "", "通用題目"), ...mockData.movies.map((movie) => option(movie.id, question?.movieId || "", movie.title))].join("");
+  const movieOptions = [option("", question?.movieId || "", "通用題目"), ...mockData.movies.map((movie) => option(movie.id, question?.movieId || "", movieDisplayName(movie)))].join("");
   return `
     <div class="modal-backdrop" role="presentation"><section class="modal" role="dialog" aria-modal="true">
       <div class="modal-header"><div><h2>${question ? "編輯題目" : "新增題目"}</h2><p>管理小編每天可使用的社群互動題。</p></div><button class="icon-button modal-close" type="button" data-action="close-question-modal">×</button></div>
@@ -1462,7 +1483,6 @@ function questionAiPanel() {
 
 function reviewPage() {
   const visibleQuestions = mockData.questions.filter(questionMatchesFilters);
-  const movieFilterOptions = ["全部", ...mockData.movies.map((movie) => movie.id)];
   return `
     <section class="review-hero">
       <div>
@@ -1475,7 +1495,7 @@ function reviewPage() {
     <section class="card question-filter-card"><div class="card-body">
       <div class="question-filter-grid">
         <label class="filter-field filter-wide"><span>搜尋題目關鍵字</span><input class="input question-filter-input" data-filter="search" value="${escapeHtml(questionFilters.search)}" placeholder="輸入題目、CTA、素材或備註" /></label>
-        ${questionSelect("movieId", questionFilters.movieId, movieFilterOptions, "電影專案").replace(/<option value="([^"]+)">([^<]+)<\/option>/g, (match, value) => value === "全部" ? match : option(value, questionFilters.movieId, movieName(value)))}
+        ${questionMovieSelect(questionFilters.movieId)}
         ${questionSelect("platform", questionFilters.platform, uniqueQuestionOptions("platform"), "平台")}
         ${questionSelect("type", questionFilters.type, uniqueQuestionOptions("type"), "題型")}
         ${questionSelect("tone", questionFilters.tone, uniqueQuestionOptions("tone"), "語氣")}
@@ -2445,9 +2465,10 @@ document.addEventListener("submit", async (event) => {
     render();
   }
   if (event.target.id === "questionForm") {
+    const selectedQuestionMovieId = String(formData.get("movieId") || "");
     const questionData = {
       content: formData.get("content") || "未命名題目",
-      movieId: formData.get("movieId") || "",
+      movieId: mockData.movies.some((movie) => String(movie.id) === selectedQuestionMovieId) ? selectedQuestionMovieId : "",
       type: formData.get("type") || "開放問答",
       platform: formData.get("platform") || "IG 限動",
       tone: formData.get("tone") || "親切",
