@@ -506,6 +506,10 @@ async function loadMoviesFromServer(force = false) {
       ...movie,
       releaseStatus: movieReleaseStatusOverrides[movie.id] || movie.releaseStatus || "未上映",
     }));
+    mockData.movies.forEach((movie) => {
+      if (movie.coverUrl) movieCoverPreviews[movie.id] = movie.coverUrl;
+    });
+    writeLocalStorageOnly(storageKeys.covers, movieCoverPreviews);
     writeStorage(storageKeys.movies, mockData.movies);
     moviesLoadedFromServer = true;
     moviesLastLoadedAt = Date.now();
@@ -680,7 +684,7 @@ function renderNav(activeId) {
 }
 
 function movieCover(movie) {
-  const url = movieCoverPreviews[movie.id] || movie.coverUrl;
+  const url = isGitHubPagesMode() ? (movieCoverPreviews[movie.id] || movie.coverUrl) : (movie.coverUrl || movieCoverPreviews[movie.id]);
   return url ? `<img class="movie-cover-image" src="${url}" alt="${escapeHtml(movie.title)} 封面" />` : `<div class="poster large" style="--poster-color:${movie.color || "#234a8f"}"></div>`;
 }
 
