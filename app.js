@@ -2664,6 +2664,9 @@ function periodInsightErrorMessage(error) {
   if (message.includes("OPENAI_API_KEY is not configured") || message.includes("尚未設定 OpenAI")) {
     return "AI 結論生成失敗：尚未設定 OpenAI API Key。";
   }
+  if (message) {
+    return `AI 結論生成失敗：${message}`;
+  }
   return "AI 結論生成失敗，請稍後再試，或先手動輸入結論。";
 }
 
