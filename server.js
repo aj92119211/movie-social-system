@@ -983,6 +983,19 @@ function normalizeGeneratedConclusion(text) {
     .trim();
 }
 
+function fallbackPeriodConclusion(data) {
+  const reach = Number(data.totalReach || 0);
+  const views = Number(data.totalViews || 0);
+  const engagement = Number(data.totalEngagement || 0);
+  const followers = Number(data.newFollowers || 0);
+  const engagementRate = reach ? ((engagement / reach) * 100) : 0;
+  const reachText = reach >= 10000 ? "觸及具備一定規模" : reach > 0 ? "觸及仍在累積" : "目前觸及資料不足";
+  const interactionText = engagementRate >= 6 ? "互動率表現不錯" : engagementRate >= 3 ? "互動率屬於可觀察水準" : "互動表現仍偏保守";
+  const followerText = followers > 0 ? "仍需觀察互動是否能穩定轉為追蹤" : "新增追蹤有限，轉粉誘因仍可加強";
+  const nextStep = data.nextWeekSuggestion || "加強 CTA、素材鉤子與高互動題材延伸";
+  return `${data.weekLabel || "本區間"}在${data.platform || "社群平台"}的${reachText}，總瀏覽 ${views}、總互動 ${engagement}，${interactionText}。${followerText}。後續建議以${nextStep}為主，並持續比較最佳與最弱貼文的內容差異。`;
+}
+
 function openAiErrorMessage(statusCode, data) {
   if (statusCode === 401) {
     const code = data?.error?.code || data?.error?.type || "unauthorized";
@@ -1068,14 +1081,18 @@ CTA：${body.cta || "未提供"}
 
     const data = await openaiResponse.json();
     if (!openaiResponse.ok) {
+      if (openaiResponse.status !== 401) {
+        sendJson(response, 200, { conclusion: fallbackPeriodConclusion(body), fallback: true });
+        return;
+      }
       sendJson(response, openaiResponse.status, { error: openAiErrorMessage(openaiResponse.status, data) });
       return;
     }
 
     const outputText = data.output_text || data.output?.flatMap((item) => item.content || []).find((item) => item.text)?.text;
-    sendJson(response, 200, { conclusion: normalizeGeneratedConclusion(outputText) });
+    sendJson(response, 200, { conclusion: normalizeGeneratedConclusion(outputText) || fallbackPeriodConclusion(body) });
   } catch (error) {
-    sendJson(response, error.statusCode || 500, { error: "AI 結論生成失敗，請稍後再試。" });
+    sendJson(response, 200, { conclusion: fallbackPeriodConclusion(body), fallback: true });
   }
 }
 
@@ -1157,6 +1174,83 @@ async function generatePeriodInsight(request, response) {
     sendJson(response, 200, { conclusion: normalizeGeneratedConclusion(outputText) });
   } catch (error) {
     sendJson(response, error.statusCode || 500, { error: "AI 結論生成失敗，請稍後再試。" });
+  }
+}
+
+async function generatePostInsightStrict(request, response) {
+  return generatePostInsight(request, response);
+}
+
+async function generatePeriodInsightSafe(request, response) {
+  let body;
+  try {
+    body = await readJsonBody(request);
+  } catch (error) {
+    sendJson(response, 400, { error: error.message });
+    return;
+  }
+
+  const hasBasicData = body?.movieName && body?.platform && (body?.weekLabel || body?.dateRange) && (
+    Number(body.totalReach || 0) || Number(body.totalViews || 0) || Number(body.totalEngagement || 0)
+  );
+  if (!hasBasicData) {
+    sendJson(response, 400, { error: "請先填寫基本區間數據，再生成結論。" });
+    return;
+  }
+
+  const openaiApiKey = envValue("OPENAI_API_KEY");
+  if (!openaiApiKey) {
+    sendJson(response, 200, { conclusion: fallbackPeriodConclusion(body), fallback: true });
+    return;
+  }
+
+  const prompt = [
+    "你是一位資深影視社群數據分析師，請根據以下電影社群區間統計資料，產出一段適合放進週報的繁體中文本週結論。",
+    "請使用繁體中文，80 到 120 字，語氣專業但自然，不要條列，不要誇大數據；如果數據不足，請保守分析。",
+    "需要包含：本區間主要表現、可能原因、下週優化方向。",
+    `電影名稱：${body.movieName || "未提供"}`,
+    `週次：${body.weekLabel || "未提供"}`,
+    `日期區間：${body.dateRange || "未提供"}`,
+    `平台：${body.platform || "未提供"}`,
+    `宣傳階段：${body.phase || "未提供"}`,
+    `總觸及：${body.totalReach ?? 0}`,
+    `總瀏覽：${body.totalViews ?? 0}`,
+    `總互動：${body.totalEngagement ?? 0}`,
+    `新增追蹤：${body.newFollowers ?? 0}`,
+    `非粉絲比例：${body.nonFollowerRate ?? 0}`,
+    `互動率：${body.engagementRate ?? 0}`,
+    `最佳貼文：${body.bestPost || "未提供"}`,
+    `最差貼文：${body.worstPost || "未提供"}`,
+    `下週調整建議：${body.nextWeekSuggestion || "未提供"}`,
+    "請只回傳結論文字，不要加標題。",
+  ].join("\n");
+
+  try {
+    const openaiResponse = await fetch("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${openaiApiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: envValue("OPENAI_MODEL") || "gpt-4.1-mini",
+        instructions: "你是影視社群數據分析師。請只輸出一段繁體中文週報結論，不要條列、不要加標題。",
+        input: prompt,
+      }),
+    });
+    const data = await openaiResponse.json();
+    if (!openaiResponse.ok) {
+      if (openaiResponse.status === 401) {
+        sendJson(response, 401, { error: openAiErrorMessage(openaiResponse.status, data) });
+        return;
+      }
+      sendJson(response, 200, { conclusion: fallbackPeriodConclusion(body), fallback: true });
+      return;
+    }
+    const outputText = data.output_text || data.output?.flatMap((item) => item.content || []).find((item) => item.text)?.text;
+    sendJson(response, 200, { conclusion: normalizeGeneratedConclusion(outputText) || fallbackPeriodConclusion(body) });
+  } catch {
+    sendJson(response, 200, { conclusion: fallbackPeriodConclusion(body), fallback: true });
   }
 }
 
@@ -1679,12 +1773,12 @@ const server = http.createServer((request, response) => {
   }
 
   if (request.method === "POST" && url.pathname === "/api/generate-post-insight") {
-    generatePostInsight(request, response);
+    generatePostInsightStrict(request, response);
     return;
   }
 
   if (request.method === "POST" && url.pathname === "/api/generate-period-insight") {
-    generatePeriodInsight(request, response);
+    generatePeriodInsightSafe(request, response);
     return;
   }
 
