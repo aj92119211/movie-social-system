@@ -2692,6 +2692,12 @@ async function requestAnalyticsConclusion(type, data) {
   return body;
 }
 
+function clearInsightError(errorElement) {
+  if (!errorElement) return;
+  errorElement.hidden = true;
+  errorElement.textContent = "";
+}
+
 async function generatePostInsightFromForm() {
   const form = document.getElementById("postMetricForm");
   if (!form) return;
@@ -2707,13 +2713,11 @@ async function generatePostInsightFromForm() {
     button.disabled = true;
     button.textContent = "生成中...";
   }
-  if (errorElement) {
-    errorElement.hidden = true;
-    errorElement.textContent = "";
-  }
+  clearInsightError(errorElement);
   try {
     const result = await requestAnalyticsConclusion("post", payload);
     if (textarea) textarea.value = result.conclusion || "";
+    clearInsightError(errorElement);
   } catch (error) {
     if (errorElement) {
       errorElement.hidden = false;
@@ -2744,16 +2748,14 @@ async function generatePeriodInsightFromForm() {
     button.disabled = true;
     button.textContent = "生成中...";
   }
-  if (errorElement) {
-    errorElement.hidden = true;
-    errorElement.textContent = "";
-  }
+  clearInsightError(errorElement);
   try {
     const result = await requestAnalyticsConclusion("period", payload);
     if (!result.conclusion) {
       throw new Error("API 沒有回傳 conclusion。");
     }
     if (textarea) textarea.value = result.conclusion;
+    clearInsightError(errorElement);
   } catch (error) {
     console.error("Period insight generation failed", { error, payload });
     if (errorElement) {
