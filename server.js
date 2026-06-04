@@ -3,6 +3,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const crypto = require("node:crypto");
 const XLSX = require("xlsx");
+const OpenAI = require("openai");
 const { analyzePost, runMovieEditorApi } = require("./server/routes/ai");
 const { MOVIE_EDITOR_SYSTEM_PROMPT } = require("./server/ai/movieEditorPrompt");
 
@@ -57,6 +58,15 @@ function sendBuffer(response, statusCode, buffer, headers = {}) {
 
 function envValue(key) {
   return String(process.env[key] || "").trim();
+}
+
+function previewSecret(value) {
+  if (!value) {
+    return "";
+  }
+  const cleanValue = String(value).trim();
+  const tail = cleanValue.slice(-4);
+  return `${cleanValue.slice(0, 3)}...${tail}`;
 }
 
 function authConfig() {
@@ -1007,6 +1017,60 @@ function openAiErrorMessage(statusCode, data) {
   return data?.error?.message || "OpenAI API 請求失敗。";
 }
 
+async function testOpenAI(response) {
+  const openaiApiKey = envValue("OPENAI_API_KEY");
+  const model = "gpt-4o-mini";
+
+  if (!openaiApiKey) {
+    sendJson(response, 503, {
+      ok: false,
+      stage: "env",
+      error: "OPENAI_API_KEY is missing",
+    });
+    return;
+  }
+
+  const keyPreview = previewSecret(openaiApiKey);
+  try {
+    const openai = new OpenAI({ apiKey: openaiApiKey });
+    const completion = await openai.chat.completions.create({
+      model,
+      messages: [
+        { role: "system", content: "你是一位測試助手，請使用繁體中文。" },
+        { role: "user", content: "請只回覆：OpenAI 測試成功" },
+      ],
+      temperature: 0,
+    });
+    const result = completion.choices?.[0]?.message?.content?.trim() || "";
+    console.log("[TEST_OPENAI_SUCCESS] OpenAI test route succeeded");
+    sendJson(response, 200, {
+      ok: true,
+      stage: "openai",
+      hasOpenAIKey: true,
+      keyPreview,
+      model,
+      result,
+    });
+  } catch (error) {
+    console.error("[TEST_OPENAI_ERROR]", {
+      message: error?.message,
+      status: error?.status,
+      code: error?.code,
+      name: error?.name,
+    });
+    sendJson(response, 500, {
+      ok: false,
+      stage: "openai",
+      hasOpenAIKey: true,
+      keyPreview,
+      model,
+      error: error?.message || "OpenAI test failed",
+      status: error?.status || null,
+      code: error?.code || null,
+    });
+  }
+}
+
 async function generatePostInsight(request, response) {
   const openaiApiKey = envValue("OPENAI_API_KEY");
   if (!openaiApiKey) {
@@ -1751,6 +1815,11 @@ const server = http.createServer((request, response) => {
 
   if (request.method === "POST" && url.pathname === "/api/logout") {
     handleAuthLogout(request, response);
+    return;
+  }
+
+  if (request.method === "GET" && url.pathname === "/api/test-openai") {
+    testOpenAI(response);
     return;
   }
 
