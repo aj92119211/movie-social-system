@@ -2696,6 +2696,16 @@ function clearInsightError(errorElement) {
   if (!errorElement) return;
   errorElement.hidden = true;
   errorElement.textContent = "";
+  errorElement.style.display = "none";
+  errorElement.setAttribute("aria-hidden", "true");
+}
+
+function showInsightError(errorElement, message) {
+  if (!errorElement) return;
+  errorElement.textContent = message;
+  errorElement.hidden = false;
+  errorElement.style.display = "";
+  errorElement.removeAttribute("aria-hidden");
 }
 
 async function generatePostInsightFromForm() {
@@ -2720,8 +2730,7 @@ async function generatePostInsightFromForm() {
     clearInsightError(errorElement);
   } catch (error) {
     if (errorElement) {
-      errorElement.hidden = false;
-      errorElement.textContent = error.message || "AI 結論生成失敗，請稍後再試。";
+      showInsightError(errorElement, error.message || "AI 結論生成失敗，請稍後再試。");
     } else {
       window.alert(error.message || "AI 結論生成失敗，請稍後再試。");
     }
@@ -2759,8 +2768,7 @@ async function generatePeriodInsightFromForm() {
   } catch (error) {
     console.error("Period insight generation failed", { error, payload });
     if (errorElement) {
-      errorElement.hidden = false;
-      errorElement.textContent = periodInsightErrorMessage(error);
+      showInsightError(errorElement, periodInsightErrorMessage(error));
     } else {
       window.alert(periodInsightErrorMessage(error));
     }

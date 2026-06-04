@@ -386,6 +386,12 @@ tr:last-child td {
   white-space: nowrap;
 }
 
+.status[hidden],
+.tag[hidden],
+[hidden] {
+  display: none !important;
+}
+
 .status.green {
   color: #0b6b4f;
   background: #dcfce7;
