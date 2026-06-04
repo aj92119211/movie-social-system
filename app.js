@@ -1315,16 +1315,31 @@ function scheduleModal() {
 
 function cleanGeneratedCopyText(value) {
   return String(value || "")
-    .replace(/"\],\s*"(igPosts|threadsPosts|storyQuestions|replySuggestions)"[\s\S]*$/u, "")
+    .replace(/"\],\s*"(igPosts|threadsPosts|storyQuestions|replySuggestions|copies)"[\s\S]*$/u, "")
     .replace(/\}\s*Reviewing the content:[\s\S]*$/u, "")
     .replace(/\s*# Done\.[\s\S]*$/u, "")
     .replace(/\s*\(END\)[\s\S]*$/u, "")
     .trim();
 }
 
-function renderCopySection(title, values) {
-  const cleanValues = Array.isArray(values) ? values.map(cleanGeneratedCopyText).filter(Boolean).slice(0, 5) : [];
-  return `<div class="copy-card"><strong>${escapeHtml(title)}</strong>${cleanValues.map((item) => `<p>${escapeHtml(item)}</p>`).join("") || `<p class="muted">尚未產生內容</p>`}</div>`;
+function copyResultItems(result) {
+  const values = Array.isArray(result?.copies)
+    ? result.copies
+    : [
+        ...(result?.facebookPosts || []),
+        ...(result?.igPosts || []),
+        ...(result?.threadsPosts || []),
+      ];
+  return values.map(cleanGeneratedCopyText).filter(Boolean).slice(0, 10);
+}
+
+function renderCopyList(result) {
+  const cleanValues = copyResultItems(result);
+  return `<div class="copy-card"><strong>通用文案</strong>${cleanValues.map((item, index) => `
+    <div class="copy-list-item">
+      <p><strong>${index + 1}.</strong> ${escapeHtml(item)}</p>
+      <button class="secondary-button" type="button" data-action="copy-generated-copy" data-copy-index="${index}">複製</button>
+    </div>`).join("") || `<p class="muted">尚未產生內容</p>`}</div>`;
 }
 
 function buildMockCopyResult(movie, focus) {
@@ -1333,40 +1348,17 @@ function buildMockCopyResult(movie, focus) {
   const sellingPoint = (movie?.coreSellingPoints || [])[0] || "故事張力";
   const cleanFocus = focus || "正式宣傳上線，提醒觀眾關注故事氛圍與角色亮點。";
   return {
-    facebookPosts: [
+    copies: [
       `【${title}】即將帶來全新的觀影體驗。這次我們想用${tone}的方式，和你一起靠近${sellingPoint}。${cleanFocus}`,
       `${title} 的故事已經準備好和大家見面。從角色、情緒到每一個轉折，都值得在大銀幕慢慢感受。`,
       `如果你喜歡有記憶點的電影，這次請把 ${title} 放進片單。更多幕後與角色內容會陸續公開。`,
       `一部電影最迷人的地方，往往藏在細節裡。${title} 想和你一起看見那些不能錯過的瞬間。`,
       `本週宣傳重點：${cleanFocus}。歡迎分享給也在等這部片的朋友。`,
-    ],
-    igPosts: [
       `${title}｜${sellingPoint}\n用${tone}的節奏，慢慢靠近故事核心。\n#電影推薦 #${title}`,
       `有些故事，看完會留在心裡。\n${title} 的情緒正在慢慢靠近。`,
       `正式宣傳啟動。\n${cleanFocus}\n你最期待哪一個橋段？`,
       `一張海報、一句台詞、一個眼神。\n${title} 的情緒正在靠近。`,
       `給正在找下一部電影的你：${title} 值得放進清單。`,
-    ],
-    threadsPosts: [
-      `如果只能用一句話形容 ${title}，你會怎麼說？`,
-      `${title} 的宣傳重點是「${cleanFocus}」，我覺得最適合先丟給觀眾討論的是角色動機。`,
-      `有些電影不是看完就結束，而是會讓你想和朋友聊很久。${title} 可能就是這種。`,
-      `你看電影最在意什麼？劇情、演員、節奏，還是看完後留下來的感覺？`,
-      `${title} 上映前，我們想先問：你最期待看到哪一種情緒？`,
-    ],
-    storyQuestions: [
-      `看完 ${title} 的預告，你第一個感覺是什麼？`,
-      `如果只能選一個關鍵字形容 ${title}，你會選哪個？`,
-      `你會約誰一起看 ${title}？`,
-      `你最期待 ${title} 的哪個元素：角色、劇情、畫面、音樂？`,
-      `上映後你想先看口碑再進場，還是第一時間衝？`,
-    ],
-    replySuggestions: [
-      `謝謝你的分享，這個角度很適合延伸成下一篇互動題。`,
-      `你提到的重點很棒，我們後續也會釋出更多相關內容。`,
-      `這個期待值收到，正式上映時一定要一起來聊。`,
-      `你的留言很有畫面感，感覺會是很好的觀影切入點。`,
-      `感謝支持，更多 ${title} 的宣傳內容會陸續更新。`,
     ],
   };
 }
@@ -1537,31 +1529,23 @@ async function generateQuestionAiResult(question, mode) {
 
 function copyPage() {
   const selectedMovie = getSelectedCopyMovie();
-  const generatedHtml = generatedCopyResult
-    ? [
-        renderCopySection("FACEBOOK", generatedCopyResult.facebookPosts),
-        renderCopySection("IG", generatedCopyResult.igPosts),
-        renderCopySection("Threads", generatedCopyResult.threadsPosts),
-        renderCopySection("限時互動題", generatedCopyResult.storyQuestions),
-        renderCopySection("留言回覆建議", generatedCopyResult.replySuggestions),
-      ].join("")
-    : "";
+  const generatedHtml = generatedCopyResult ? renderCopyList(generatedCopyResult) : "";
   return `
     <div class="generator-layout">
       <section class="card">
-        <div class="card-header"><div><h2>文案設定</h2><p>選擇電影並填入溝通重點，一次產生三個平台的社群文案。</p></div></div>
+        <div class="card-header"><div><h2>文案設定</h2><p>選擇電影並填入溝通重點，一次產生 10 則通用社群文案。</p></div></div>
         <div class="card-body form-stack">
           ${moviesError ? `<p class="status red">${escapeHtml(moviesError)}</p>` : ""}
           ${moviesLoading ? `<p class="muted">正在同步電影資料...</p>` : ""}
           <div class="field"><label>電影</label><select class="select" id="copyMovie" style="width:100%" ${mockData.movies.length ? "" : "disabled"}>${mockData.movies.map((movie) => option(movie.id, selectedMovie?.id, movie.title)).join("") || "<option>尚無電影資料</option>"}</select></div>
           ${selectedMovie ? `<div class="task-item"><span class="muted">${escapeHtml(selectedMovie.genre)}｜${escapeHtml(selectedMovie.socialTone)}</span></div>` : ""}
           <div class="field"><label>溝通重點</label><textarea id="copyFocus" placeholder="例如：正式預告上線、主打懸疑氛圍，語氣要精準但保留神祕感。">${escapeHtml(copyFocusValue)}</textarea></div>
-          <button class="primary-button" type="button" data-action="generate-copy-preview" ${isCopyGenerating || !selectedMovie ? "disabled" : ""}>${isCopyGenerating ? "生成中..." : "生成文案"}</button>
+          <button class="primary-button" type="button" data-action="generate-copy-preview" ${isCopyGenerating || !selectedMovie ? "disabled" : ""}>${isCopyGenerating ? "AI 生成中..." : "產生文案"}</button>
           ${copyGeneratorError ? `<p class="status red">${escapeHtml(copyGeneratorError)}</p>` : ""}
         </div>
       </section>
       <section class="card">
-        <div class="card-header"><div><h2>文案預覽</h2><p>一次顯示 Facebook、IG、Threads 可使用的文章。</p></div></div>
+        <div class="card-header"><div><h2>文案預覽</h2><p>一次顯示 10 則可用於 FB、IG、Threads 的通用文案。</p></div></div>
         <div class="card-body list">${generatedHtml || `<div class="copy-card"><strong>尚未產生文案</strong><p class="muted">請填寫溝通重點後點擊「生成文案」。</p></div>`}</div>
       </section>
     </div>`;
@@ -1593,7 +1577,6 @@ async function generateCopyPreview() {
             socialTone: movie.socialTone,
             coreSellingPoints: movie.coreSellingPoints || [],
           },
-          platforms: ["Facebook", "Instagram", "Threads"],
           focus: copyFocusValue,
         }),
       });
@@ -2899,6 +2882,12 @@ document.addEventListener("click", async (event) => {
   }
   if (action === "generate-copy-preview") {
     generateCopyPreview();
+  }
+  if (action === "copy-generated-copy") {
+    const copyText = copyResultItems(generatedCopyResult)[Number(actionElement.dataset.copyIndex)];
+    if (!copyText) return;
+    await navigator.clipboard?.writeText(copyText);
+    window.alert("文案已複製。");
   }
   if (action === "open-style-example-modal") {
     isStyleExampleModalOpen = true;

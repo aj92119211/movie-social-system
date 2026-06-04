@@ -661,20 +661,22 @@ function normalizeCopyPayload(value) {
   const cleanCopyList = (items) => Array.isArray(items)
     ? items
         .map((item) => String(item || "")
-          .replace(/"\],\s*"(igPosts|threadsPosts|storyQuestions|replySuggestions)"[\s\S]*$/u, "")
+          .replace(/"\],\s*"(igPosts|threadsPosts|storyQuestions|replySuggestions|copies)"[\s\S]*$/u, "")
           .replace(/\}\s*Reviewing the content:[\s\S]*$/u, "")
           .replace(/\s*# Done\.[\s\S]*$/u, "")
           .replace(/\s*\(END\)[\s\S]*$/u, "")
           .trim())
         .filter((item) => item && !/^(Reviewing the content|Final answer|No extra text|JSON only)/i.test(item))
-        .slice(0, 5)
+        .slice(0, 10)
     : [];
+  const copies = cleanCopyList(value?.copies);
+  const legacyCopies = [
+    ...cleanCopyList(value?.facebookPosts),
+    ...cleanCopyList(value?.igPosts),
+    ...cleanCopyList(value?.threadsPosts),
+  ].slice(0, 10);
   return {
-    facebookPosts: cleanCopyList(value?.facebookPosts),
-    igPosts: cleanCopyList(value?.igPosts),
-    threadsPosts: cleanCopyList(value?.threadsPosts),
-    storyQuestions: cleanCopyList(value?.storyQuestions),
-    replySuggestions: cleanCopyList(value?.replySuggestions),
+    copies: copies.length ? copies : legacyCopies,
   };
 }
 
@@ -750,7 +752,7 @@ async function generateCopy(request, response) {
   const sellingPoints = Array.isArray(movie.coreSellingPoints) ? movie.coreSellingPoints.join("、") : "";
   const styleExamples = await loadRelevantStyleExamples({
     type: "貼文",
-    platform: "Facebook",
+    platform: "通用",
     movieGenre: movie.genre,
     campaignStage: body.focus,
     tone: movie.socialTone,
@@ -760,7 +762,7 @@ async function generateCopy(request, response) {
     `類型：${movie.genre || "未提供"}`,
     `社群語氣：${movie.socialTone || "未提供"}`,
     `核心賣點：${sellingPoints || "未提供"}`,
-    `目標平台：Facebook、Instagram、Threads`,
+    `文案用途：通用社群文案，適合 FB、IG、Threads 使用`,
     `溝通重點：${body.focus || "請依電影資料產生社群宣傳文案"}`,
     styleExamplesPromptBlock(styleExamples),
   ].join("\n");
@@ -776,9 +778,9 @@ async function generateCopy(request, response) {
         model: envValue("OPENAI_MODEL") || "gpt-4.1-mini",
         instructions: [
           MOVIE_EDITOR_SYSTEM_PROMPT,
-          "這次任務是產生電影社群貼文。請根據電影資料、溝通重點與風格範例，一次產生 Facebook、IG、Threads 三個平台可使用的文章，並保留限時互動題與留言回覆建議。",
+          "這次任務是產生電影社群貼文。請根據電影資料、溝通重點與風格範例，產生 10 則通用社群文案，適合用於 FB、IG、Threads。每則文案需有不同角度，不要重複。",
           "不要自行加入上映日期、上映時間、檔期或任何未在溝通重點中明確提供的日期資訊。社群語氣只代表文字風格，不代表日期資訊。",
-          "每一則只放可直接發布或可直接使用的內容，不要放 JSON key、格式符號、分析說明、Reviewing、Final answer、END 或任何系統文字。",
+          "文案請使用繁體中文、自然、有小編感，不要太像新聞稿，文字不要太長。每一則只放可直接發布或可直接使用的內容，不要放 JSON key、格式符號、分析說明、Reviewing、Final answer、END 或任何系統文字。",
           "只回傳符合 schema 的 JSON。",
         ].join("\n\n"),
         input: prompt,
@@ -791,38 +793,14 @@ async function generateCopy(request, response) {
               type: "object",
               additionalProperties: false,
               properties: {
-                facebookPosts: {
+                copies: {
                   type: "array",
-                  minItems: 5,
-                  maxItems: 5,
-                  items: { type: "string" },
-                },
-                igPosts: {
-                  type: "array",
-                  minItems: 5,
-                  maxItems: 5,
-                  items: { type: "string" },
-                },
-                threadsPosts: {
-                  type: "array",
-                  minItems: 5,
-                  maxItems: 5,
-                  items: { type: "string" },
-                },
-                storyQuestions: {
-                  type: "array",
-                  minItems: 5,
-                  maxItems: 5,
-                  items: { type: "string" },
-                },
-                replySuggestions: {
-                  type: "array",
-                  minItems: 5,
-                  maxItems: 5,
+                  minItems: 10,
+                  maxItems: 10,
                   items: { type: "string" },
                 },
               },
-              required: ["facebookPosts", "igPosts", "threadsPosts", "storyQuestions", "replySuggestions"],
+              required: ["copies"],
             },
           },
         },

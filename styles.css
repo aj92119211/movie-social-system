@@ -469,6 +469,20 @@ tr:last-child td {
   margin-bottom: 4px;
 }
 
+.copy-list-item {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  align-items: start;
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+  margin-top: 12px;
+}
+
+.copy-list-item p {
+  margin: 0;
+}
+
 .progress {
   height: 8px;
   border-radius: 999px;
