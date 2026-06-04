@@ -238,6 +238,26 @@ let postAnalysisOutput = null;
 let aiPostAnalysisText = "";
 let aiPostAnalysisError = "";
 let isAiPostAnalyzing = false;
+let analyticsPeriods = [];
+let socialPostMetrics = [];
+let analyticsDataLoadedMovieId = "";
+let analyticsDataLoading = false;
+let analyticsDataError = "";
+let analyticsNotice = "";
+let isAnalyticsPeriodModalOpen = false;
+let editingAnalyticsPeriodId = null;
+let isPostMetricModalOpen = false;
+let editingPostMetricId = null;
+let analyticsFilters = {
+  search: "",
+  platform: "全部",
+  phase: "全部",
+  contentType: "全部",
+  observationPeriod: "全部",
+  startDate: "",
+  endDate: "",
+  sort: "date_desc",
+};
 let questionFilters = {
   search: "",
   movieId: "全部",
@@ -807,7 +827,7 @@ async function loadMoviesFromServer(force = false) {
 function ensureSelectedMovies() {
   if (!mockData.movies.some((movie) => movie.id === selectedAssetMovieId)) selectedAssetMovieId = mockData.movies[0]?.id || "";
   if (!mockData.movies.some((movie) => movie.id === selectedScheduleMovieId)) selectedScheduleMovieId = mockData.movies[0]?.id || "";
-  if (!mockData.movies.some((movie) => movie.id === selectedAnalyticsMovieId)) selectedAnalyticsMovieId = mockData.movies[0]?.id || "";
+  if (!mockData.movies.some((movie) => movie.id === selectedAnalyticsMovieId)) selectedAnalyticsMovieId = "";
   if (!mockData.movies.some((movie) => movie.id === selectedCopyMovieId)) selectedCopyMovieId = mockData.movies[0]?.id || "";
   if (selectedAssetMovieId) localStorage.setItem(storageKeys.assetMovie, selectedAssetMovieId);
   if (selectedScheduleMovieId) localStorage.setItem(storageKeys.scheduleMovie, selectedScheduleMovieId);
@@ -2395,97 +2415,384 @@ function manualAnalyticsRows() {
     .join("");
 }
 
-function analyticsPage() {
-  const result = postAnalysisResult;
-  const selectedMovie = getSelectedAnalyticsMovie();
-  const movieReport = buildMovieAnalyticsReport();
+const analyticsPlatforms = ["Facebook", "Instagram", "Threads", "YouTube", "TikTok", "Dcard", "其他"];
+const analyticsPhases = ["前期", "上映首週", "中期", "後期", "下片後"];
+const analyticsContentTypes = ["上映公告", "預告", "劇照", "Reels", "限動", "梗圖", "觀眾口碑", "KOL 評價", "媒體好評", "場次提醒", "QA 活動", "FOMO", "結案收尾", "其他"];
+const analyticsObservationPeriods = ["發文後 24 小時", "發文後 3 天", "發文後 7 天", "自訂區間"];
+
+function percentFromRatio(value) {
+  return `${Number(value || 0).toFixed(2)}%`;
+}
+
+function analyticsDateValue(value) {
+  return value ? String(value).slice(0, 10) : "";
+}
+
+function analyticsMovieSelectedMessage() {
+  return `<section class="card"><div class="card-body"><h3>請先選擇電影專案，以查看對應的社群數據。</h3><p class="muted">所有區間統計與貼文成效都會依電影專案分開管理，不會混在一起。</p></div></section>`;
+}
+
+async function loadAnalyticsDataForMovie(force = false) {
+  if (isGitHubPagesMode() || !selectedAnalyticsMovieId) return;
+  if (analyticsDataLoading) return;
+  if (!force && analyticsDataLoadedMovieId === selectedAnalyticsMovieId) return;
+  analyticsDataLoading = true;
+  analyticsDataError = "";
+  render();
+  try {
+    const payload = await requestJson(`/api/social-analytics?movieId=${encodeURIComponent(selectedAnalyticsMovieId)}`);
+    analyticsPeriods = Array.isArray(payload.periods) ? payload.periods : [];
+    socialPostMetrics = Array.isArray(payload.posts) ? payload.posts : [];
+    analyticsDataLoadedMovieId = selectedAnalyticsMovieId;
+  } catch (error) {
+    analyticsDataError = error.message || "數據分析資料讀取失敗，請確認 Supabase SQL 是否已建立。";
+  } finally {
+    analyticsDataLoading = false;
+    render();
+  }
+}
+
+function analyticsFilterMatch(item, dateKey = "postDate", scope = "post") {
+  const keyword = analyticsFilters.search.trim().toLowerCase();
+  const keywordMatch = !keyword || [
+    item.weekLabel,
+    item.dateRange,
+    item.platform,
+    item.phase,
+    item.bestPost,
+    item.worstPost,
+    item.weeklyConclusion,
+    item.nextWeekSuggestion,
+    item.postTitle,
+    item.contentType,
+    item.postUrl,
+    item.cta,
+    item.conclusion,
+  ].some((value) => String(value || "").toLowerCase().includes(keyword));
+  const dateValue = analyticsDateValue(item[dateKey] || item.recordedDate);
+  const inStart = !analyticsFilters.startDate || !dateValue || dateValue >= analyticsFilters.startDate;
+  const inEnd = !analyticsFilters.endDate || !dateValue || dateValue <= analyticsFilters.endDate;
+  return keywordMatch &&
+    (analyticsFilters.platform === "全部" || item.platform === analyticsFilters.platform) &&
+    (analyticsFilters.phase === "全部" || item.phase === analyticsFilters.phase) &&
+    (scope === "period" || analyticsFilters.contentType === "全部" || item.contentType === analyticsFilters.contentType) &&
+    (scope === "period" || analyticsFilters.observationPeriod === "全部" || item.observationPeriod === analyticsFilters.observationPeriod) &&
+    inStart &&
+    inEnd;
+}
+
+function filteredAnalyticsPeriods() {
+  return analyticsPeriods.filter((item) => analyticsFilterMatch(item, "createdAt", "period"));
+}
+
+function filteredSocialPostMetrics() {
+  const items = socialPostMetrics.filter((item) => analyticsFilterMatch(item, "postDate"));
+  return [...items].sort((a, b) => {
+    if (analyticsFilters.sort === "engagement_desc") return Number(b.engagementRate || 0) - Number(a.engagementRate || 0);
+    if (analyticsFilters.sort === "reach_desc") return Number(b.reach || 0) - Number(a.reach || 0);
+    if (analyticsFilters.sort === "date_asc") return String(a.postDate || "").localeCompare(String(b.postDate || ""));
+    return String(b.postDate || "").localeCompare(String(a.postDate || ""));
+  });
+}
+
+function analyticsDashboardStats(posts = filteredSocialPostMetrics()) {
+  const totals = posts.reduce((acc, item) => ({
+    reach: acc.reach + Number(item.reach || 0),
+    views: acc.views + Number(item.views || 0),
+    engagement: acc.engagement + Number(item.engagement || 0),
+    newFollowers: acc.newFollowers + Number(item.newFollowers || 0),
+    nonFollowerWeighted: acc.nonFollowerWeighted + (Number(item.nonFollowerRate || 0) * Number(item.reach || 0)),
+  }), { reach: 0, views: 0, engagement: 0, newFollowers: 0, nonFollowerWeighted: 0 });
+  const avgEngagementRate = totals.reach ? (totals.engagement / totals.reach) * 100 : 0;
+  const nonFollowerRate = totals.reach ? totals.nonFollowerWeighted / totals.reach : 0;
+  const bestBy = (key) => Object.entries(posts.reduce((acc, item) => {
+    const value = item[key] || "未指定";
+    acc[value] = (acc[value] || 0) + Number(item.engagement || 0);
+    return acc;
+  }, {})).sort((a, b) => b[1] - a[1])[0]?.[0] || "尚無資料";
+  return [
+    ["總觸及", formatNumber(totals.reach), "目前篩選下的總 reach"],
+    ["總瀏覽", formatNumber(totals.views), "目前篩選下的總 views"],
+    ["總互動", formatNumber(totals.engagement), "目前篩選下的互動總和"],
+    ["平均互動率", percentFromRatio(avgEngagementRate), "總互動 / 總觸及"],
+    ["新增追蹤", formatNumber(totals.newFollowers), "目前篩選下新增追蹤"],
+    ["非粉絲比例", percentFromRatio(nonFollowerRate), "依觸及加權平均"],
+    ["最佳平台", bestBy("platform"), "依互動數排序"],
+    ["最佳內容類型", bestBy("contentType"), "依互動數排序"],
+  ];
+}
+
+function analyticsOptionList(options, value) {
+  return options.map((item) => typeof item === "object" ? option(item.value, value, item.label) : option(item, value)).join("");
+}
+
+function analyticsFilterSelect(name, label, options) {
+  return `<label class="filter-field"><span>${label}</span><select class="select analytics-filter" data-filter="${name}">${analyticsOptionList(options, analyticsFilters[name])}</select></label>`;
+}
+
+function analyticsFiltersHtml() {
+  return `<section class="card question-filter-card"><div class="card-body">
+    <div class="question-filter-grid">
+      <label class="filter-field filter-wide"><span>搜尋</span><input class="input analytics-filter-input" data-filter="search" value="${escapeHtml(analyticsFilters.search)}" placeholder="搜尋週次、貼文主題、結論、CTA" /></label>
+      ${analyticsFilterSelect("platform", "平台", ["全部", ...analyticsPlatforms])}
+      ${analyticsFilterSelect("phase", "宣傳階段", ["全部", ...analyticsPhases])}
+      ${analyticsFilterSelect("contentType", "內容類型", ["全部", ...analyticsContentTypes])}
+      ${analyticsFilterSelect("observationPeriod", "觀察週期", ["全部", ...analyticsObservationPeriods])}
+      <label class="filter-field"><span>開始日期</span><input class="input analytics-filter-date" data-filter="startDate" type="date" value="${escapeHtml(analyticsFilters.startDate)}" /></label>
+      <label class="filter-field"><span>結束日期</span><input class="input analytics-filter-date" data-filter="endDate" type="date" value="${escapeHtml(analyticsFilters.endDate)}" /></label>
+      ${analyticsFilterSelect("sort", "貼文排序", [{ value: "date_desc", label: "發文日期新到舊" }, { value: "date_asc", label: "發文日期舊到新" }, { value: "engagement_desc", label: "互動率高到低" }, { value: "reach_desc", label: "觸及高到低" }])}
+    </div>
+  </div></section>`;
+}
+
+function analyticsPeriodPayload(formData) {
+  return {
+    movieId: selectedAnalyticsMovieId,
+    weekLabel: formData.get("weekLabel") || "",
+    dateRange: formData.get("dateRange") || "",
+    platform: formData.get("platform") || "Instagram",
+    phase: formData.get("phase") || "上映首週",
+    totalReach: Number(formData.get("totalReach") || 0),
+    totalViews: Number(formData.get("totalViews") || 0),
+    totalEngagement: Number(formData.get("totalEngagement") || 0),
+    newFollowers: Number(formData.get("newFollowers") || 0),
+    nonFollowerRate: Number(formData.get("nonFollowerRate") || 0),
+    bestPost: formData.get("bestPost") || "",
+    worstPost: formData.get("worstPost") || "",
+    weeklyConclusion: formData.get("weeklyConclusion") || "",
+    nextWeekSuggestion: formData.get("nextWeekSuggestion") || "",
+  };
+}
+
+function postMetricPayload(formData) {
+  return {
+    movieId: selectedAnalyticsMovieId,
+    platform: formData.get("platform") || "Instagram",
+    phase: formData.get("phase") || "上映首週",
+    postDate: formData.get("postDate") || null,
+    recordedDate: formData.get("recordedDate") || null,
+    observationPeriod: formData.get("observationPeriod") || "發文後 7 天",
+    postTitle: formData.get("postTitle") || "未命名貼文",
+    contentType: formData.get("contentType") || "其他",
+    postUrl: formData.get("postUrl") || "",
+    reach: Number(formData.get("reach") || 0),
+    views: Number(formData.get("views") || 0),
+    engagement: Number(formData.get("engagement") || 0),
+    shares: Number(formData.get("shares") || 0),
+    saves: Number(formData.get("saves") || 0),
+    comments: Number(formData.get("comments") || 0),
+    newFollowers: Number(formData.get("newFollowers") || 0),
+    nonFollowerRate: Number(formData.get("nonFollowerRate") || 0),
+    cta: formData.get("cta") || "",
+    conclusion: formData.get("conclusion") || "",
+  };
+}
+
+async function saveAnalyticsPeriod(formData) {
+  const method = editingAnalyticsPeriodId ? "PATCH" : "POST";
+  const url = editingAnalyticsPeriodId ? `/api/social-analytics/periods/${encodeURIComponent(editingAnalyticsPeriodId)}` : "/api/social-analytics/periods";
+  await requestJson(url, { method, body: JSON.stringify(analyticsPeriodPayload(formData)) });
+  isAnalyticsPeriodModalOpen = false;
+  editingAnalyticsPeriodId = null;
+  analyticsNotice = "區間統計已儲存。";
+  analyticsDataLoadedMovieId = "";
+  await loadAnalyticsDataForMovie(true);
+}
+
+async function savePostMetric(formData) {
+  const method = editingPostMetricId ? "PATCH" : "POST";
+  const url = editingPostMetricId ? `/api/social-analytics/posts/${encodeURIComponent(editingPostMetricId)}` : "/api/social-analytics/posts";
+  await requestJson(url, { method, body: JSON.stringify(postMetricPayload(formData)) });
+  isPostMetricModalOpen = false;
+  editingPostMetricId = null;
+  analyticsNotice = "貼文成效已儲存。";
+  analyticsDataLoadedMovieId = "";
+  await loadAnalyticsDataForMovie(true);
+}
+
+function safeExcelFileName(value) {
+  return String(value || "電影").replace(/[\\/:*?"<>|]/g, "").replace(/\s+/g, "");
+}
+
+async function exportAnalyticsExcel() {
+  const movie = getSelectedAnalyticsMovie();
+  if (!movie) return;
+  const periods = filteredAnalyticsPeriods();
+  const posts = filteredSocialPostMetrics();
+  const XLSXModule = await import("xlsx");
+  const workbook = XLSXModule.utils.book_new();
+  const periodRows = periods.length ? periods.map((item) => ({
+    電影名稱: movieDisplayName(movie),
+    週次: item.weekLabel,
+    日期區間: item.dateRange,
+    平台: item.platform,
+    宣傳階段: item.phase,
+    總觸及: item.totalReach,
+    總瀏覽: item.totalViews,
+    總互動: item.totalEngagement,
+    新增追蹤: item.newFollowers,
+    非粉絲比例: `${Number(item.nonFollowerRate || 0).toFixed(2)}%`,
+    互動率: `${Number(item.engagementRate || 0).toFixed(2)}%`,
+    最佳貼文: item.bestPost,
+    最差貼文: item.worstPost,
+    本週結論: item.weeklyConclusion,
+    下週調整建議: item.nextWeekSuggestion,
+  })) : [{ 提示: "目前沒有資料" }];
+  const postRows = posts.length ? posts.map((item) => ({
+    電影名稱: movieDisplayName(movie),
+    平台: item.platform,
+    宣傳階段: item.phase,
+    發文日期: item.postDate,
+    數據記錄日: item.recordedDate,
+    觀察週期: item.observationPeriod,
+    貼文主題: item.postTitle,
+    內容類型: item.contentType,
+    貼文連結: item.postUrl,
+    觸及: item.reach,
+    瀏覽: item.views,
+    互動: item.engagement,
+    分享: item.shares,
+    收藏: item.saves,
+    留言: item.comments,
+    新增追蹤: item.newFollowers,
+    非粉絲比例: `${Number(item.nonFollowerRate || 0).toFixed(2)}%`,
+    互動率: `${Number(item.engagementRate || 0).toFixed(2)}%`,
+    CTA: item.cta,
+    結論: item.conclusion,
+  })) : [{ 提示: "目前沒有資料" }];
+  XLSXModule.utils.book_append_sheet(workbook, XLSXModule.utils.json_to_sheet(periodRows), "區間統計");
+  XLSXModule.utils.book_append_sheet(workbook, XLSXModule.utils.json_to_sheet(postRows), "貼文成效");
   const today = new Date().toISOString().slice(0, 10);
-  const aiAnalysisHtml = aiPostAnalysisText
-    ? `<div class="copy-card"><strong>OpenAI 分析報告</strong><p>${escapeHtml(aiPostAnalysisText).replaceAll("\n", "<br>")}</p></div>`
-    : `<div class="analytics-report-grid">
-          <div><h3>整體解讀</h3>${movieReport.insights.map((item) => `<p>${escapeHtml(item)}</p>`).join("")}</div>
-          <div><h3>下一篇建議</h3>${movieReport.actions.map((item) => `<p>${escapeHtml(item)}</p>`).join("")}</div>
-        </div>`;
+  XLSXModule.writeFile(workbook, `${safeExcelFileName(movieDisplayName(movie))}_社群數據分析_${today}.xlsx`);
+}
+
+function analyticsPeriodTable(periods) {
+  if (!periods.length) return `<div class="task-item"><span class="muted">目前沒有區間統計資料。</span></div>`;
+  return `<div class="table-wrap"><table>
+    <thead><tr><th>週次</th><th>日期區間</th><th>平台</th><th>宣傳階段</th><th class="number-cell">總觸及</th><th class="number-cell">總瀏覽</th><th class="number-cell">總互動</th><th class="number-cell">新增追蹤</th><th class="number-cell">非粉絲比例</th><th class="number-cell">互動率</th><th>最佳貼文</th><th>本週結論</th><th>操作</th></tr></thead>
+    <tbody>${periods.map((item) => `<tr>
+      <td>${escapeHtml(item.weekLabel || "-")}</td>
+      <td>${escapeHtml(item.dateRange || "-")}</td>
+      <td>${escapeHtml(item.platform || "-")}</td>
+      <td>${escapeHtml(item.phase || "-")}</td>
+      <td class="number-cell">${formatNumber(item.totalReach || 0)}</td>
+      <td class="number-cell">${formatNumber(item.totalViews || 0)}</td>
+      <td class="number-cell">${formatNumber(item.totalEngagement || 0)}</td>
+      <td class="number-cell">${formatNumber(item.newFollowers || 0)}</td>
+      <td class="number-cell">${percentFromRatio(item.nonFollowerRate || 0)}</td>
+      <td class="number-cell">${percentFromRatio(item.engagementRate || 0)}</td>
+      <td>${escapeHtml(item.bestPost || "-")}</td>
+      <td>${escapeHtml(item.weeklyConclusion || "-")}</td>
+      <td><div class="meta-row"><button class="secondary-button" type="button" data-action="edit-analytics-period" data-id="${item.id}">編輯</button><button class="secondary-button" type="button" data-action="delete-analytics-period" data-id="${item.id}">刪除</button></div></td>
+    </tr>`).join("")}</tbody>
+  </table></div>`;
+}
+
+function socialPostMetricTable(posts) {
+  if (!posts.length) return `<div class="task-item"><span class="muted">目前沒有貼文成效資料。</span></div>`;
+  return `<div class="table-wrap"><table>
+    <thead><tr><th>平台</th><th>發文日期</th><th>記錄日</th><th>觀察週期</th><th>貼文主題</th><th>內容類型</th><th class="number-cell">觸及</th><th class="number-cell">瀏覽</th><th class="number-cell">互動</th><th class="number-cell">分享</th><th class="number-cell">收藏</th><th class="number-cell">留言</th><th class="number-cell">新增追蹤</th><th class="number-cell">非粉絲比例</th><th class="number-cell">互動率</th><th>結論</th><th>操作</th></tr></thead>
+    <tbody>${posts.map((item) => `<tr>
+      <td>${escapeHtml(item.platform || "-")}</td>
+      <td>${escapeHtml(item.postDate || "-")}</td>
+      <td>${escapeHtml(item.recordedDate || "-")}</td>
+      <td>${escapeHtml(item.observationPeriod || "-")}</td>
+      <td>${item.postUrl ? `<a href="${escapeHtml(item.postUrl)}" target="_blank" rel="noreferrer">${escapeHtml(item.postTitle || "未命名貼文")}</a>` : escapeHtml(item.postTitle || "未命名貼文")}</td>
+      <td>${escapeHtml(item.contentType || "-")}</td>
+      <td class="number-cell">${formatNumber(item.reach || 0)}</td>
+      <td class="number-cell">${formatNumber(item.views || 0)}</td>
+      <td class="number-cell">${formatNumber(item.engagement || 0)}</td>
+      <td class="number-cell">${formatNumber(item.shares || 0)}</td>
+      <td class="number-cell">${formatNumber(item.saves || 0)}</td>
+      <td class="number-cell">${formatNumber(item.comments || 0)}</td>
+      <td class="number-cell">${formatNumber(item.newFollowers || 0)}</td>
+      <td class="number-cell">${percentFromRatio(item.nonFollowerRate || 0)}</td>
+      <td class="number-cell">${percentFromRatio(item.engagementRate || 0)}</td>
+      <td>${escapeHtml(item.conclusion || "-")}</td>
+      <td><div class="meta-row"><button class="secondary-button" type="button" data-action="edit-post-metric" data-id="${item.id}">編輯</button><button class="secondary-button" type="button" data-action="delete-post-metric" data-id="${item.id}">刪除</button></div></td>
+    </tr>`).join("")}</tbody>
+  </table></div>`;
+}
+
+function analyticsPeriodModal() {
+  const item = analyticsPeriods.find((period) => String(period.id) === String(editingAnalyticsPeriodId)) || {};
+  return `<div class="modal-backdrop" role="presentation"><section class="modal" role="dialog" aria-modal="true">
+    <div class="modal-header"><div><h2>${item.id ? "編輯區間統計" : "新增區間統計"}</h2><p>資料會綁定目前選擇的電影專案。</p></div><button class="icon-button modal-close" type="button" data-action="close-analytics-period-modal">×</button></div>
+    <form id="analyticsPeriodForm" class="modal-form">
+      <div class="field"><label>週次</label><input class="input" name="weekLabel" value="${escapeHtml(item.weekLabel || "")}" placeholder="例如：上映首週" required /></div>
+      <div class="field"><label>日期區間</label><input class="input" name="dateRange" value="${escapeHtml(item.dateRange || "")}" placeholder="例如：2026/06/01-2026/06/07" /></div>
+      <div class="field"><label>平台</label><select class="select" name="platform">${analyticsPlatforms.map((value) => option(value, item.platform || "Instagram")).join("")}</select></div>
+      <div class="field"><label>宣傳階段</label><select class="select" name="phase">${analyticsPhases.map((value) => option(value, item.phase || "上映首週")).join("")}</select></div>
+      ${[["totalReach", "總觸及"], ["totalViews", "總瀏覽"], ["totalEngagement", "總互動"], ["newFollowers", "新增追蹤"], ["nonFollowerRate", "非粉絲比例 %"]].map(([name, label]) => `<div class="field"><label>${label}</label><input class="input" name="${name}" type="number" min="0" step="0.01" value="${Number(item[name] || 0)}" /></div>`).join("")}
+      <div class="field"><label>最佳貼文</label><input class="input" name="bestPost" value="${escapeHtml(item.bestPost || "")}" /></div>
+      <div class="field"><label>最差貼文</label><input class="input" name="worstPost" value="${escapeHtml(item.worstPost || "")}" /></div>
+      <div class="field"><label>本週結論</label><textarea name="weeklyConclusion">${escapeHtml(item.weeklyConclusion || "")}</textarea></div>
+      <div class="field"><label>下週調整建議</label><textarea name="nextWeekSuggestion">${escapeHtml(item.nextWeekSuggestion || "")}</textarea></div>
+      <div class="modal-actions"><button class="secondary-button" type="button" data-action="close-analytics-period-modal">取消</button><button class="primary-button" type="submit">儲存</button></div>
+    </form>
+  </section></div>`;
+}
+
+function postMetricModal() {
+  const item = socialPostMetrics.find((post) => String(post.id) === String(editingPostMetricId)) || {};
+  const today = new Date().toISOString().slice(0, 10);
+  return `<div class="modal-backdrop" role="presentation"><section class="modal" role="dialog" aria-modal="true">
+    <div class="modal-header"><div><h2>${item.id ? "編輯貼文成效" : "新增貼文成效"}</h2><p>每筆貼文成效都會綁定目前選擇的電影專案。</p></div><button class="icon-button modal-close" type="button" data-action="close-post-metric-modal">×</button></div>
+    <form id="postMetricForm" class="modal-form">
+      <div class="field"><label>平台</label><select class="select" name="platform">${analyticsPlatforms.map((value) => option(value, item.platform || "Instagram")).join("")}</select></div>
+      <div class="field"><label>宣傳階段</label><select class="select" name="phase">${analyticsPhases.map((value) => option(value, item.phase || "上映首週")).join("")}</select></div>
+      <div class="field"><label>發文日期</label><input class="input" name="postDate" type="date" value="${escapeHtml(item.postDate || today)}" /></div>
+      <div class="field"><label>數據記錄日</label><input class="input" name="recordedDate" type="date" value="${escapeHtml(item.recordedDate || today)}" /></div>
+      <div class="field"><label>觀察週期</label><select class="select" name="observationPeriod">${analyticsObservationPeriods.map((value) => option(value, item.observationPeriod || "發文後 7 天")).join("")}</select></div>
+      <div class="field"><label>內容類型</label><select class="select" name="contentType">${analyticsContentTypes.map((value) => option(value, item.contentType || "Reels")).join("")}</select></div>
+      <div class="field field-wide"><label>貼文主題</label><input class="input" name="postTitle" value="${escapeHtml(item.postTitle || "")}" required /></div>
+      <div class="field field-wide"><label>貼文連結</label><input class="input" name="postUrl" type="url" value="${escapeHtml(item.postUrl || "")}" placeholder="https://..." /></div>
+      ${[["reach", "觸及"], ["views", "瀏覽"], ["engagement", "互動"], ["shares", "分享"], ["saves", "收藏"], ["comments", "留言"], ["newFollowers", "新增追蹤"], ["nonFollowerRate", "非粉絲比例 %"]].map(([name, label]) => `<div class="field"><label>${label}</label><input class="input" name="${name}" type="number" min="0" step="0.01" value="${Number(item[name] || 0)}" /></div>`).join("")}
+      <div class="field"><label>CTA</label><input class="input" name="cta" value="${escapeHtml(item.cta || "")}" /></div>
+      <div class="field"><label>結論</label><textarea name="conclusion">${escapeHtml(item.conclusion || "")}</textarea></div>
+      <div class="modal-actions"><button class="secondary-button" type="button" data-action="close-post-metric-modal">取消</button><button class="primary-button" type="submit">儲存</button></div>
+    </form>
+  </section></div>`;
+}
+
+function analyticsPage() {
+  const selectedMovie = getSelectedAnalyticsMovie();
+  const periods = filteredAnalyticsPeriods();
+  const posts = filteredSocialPostMetrics();
   return `
     <section class="page-hero">
       <div>
-        <p class="eyebrow">電影社群數據分析工具</p>
-        <h2>數據分析 Analytics</h2>
-        <p>選擇電影後，只顯示該電影的社群平台數據與單篇貼文分析。</p>
+        <p class="eyebrow">電影專案社群數據</p>
+        <h2>數據分析</h2>
+        <p>先選擇電影專案，再查看該電影的區間統計與單篇貼文成效。</p>
       </div>
       <div class="task-item">
         <strong>電影選擇器</strong>
-        <select class="select" id="analyticsMovieSelect" ${mockData.movies.length ? "" : "disabled"}>${mockData.movies.map((movie) => option(movie.id, selectedMovie?.id, movieDisplayName(movie))).join("") || "<option>尚無電影資料</option>"}</select>
-        <span class="muted">${selectedMovie ? `${movieDisplayName(selectedMovie)}｜已儲存 ${postAnalysesForSelectedMovie().length} 筆分析` : "請先新增電影"}</span>
+        <select class="select" id="analyticsMovieSelect" ${mockData.movies.length ? "" : "disabled"}>
+          <option value="">請選擇電影專案</option>
+          ${mockData.movies.map((movie) => option(movie.id, selectedMovie?.id || "", movieDisplayName(movie))).join("")}
+        </select>
+        <span class="muted">${selectedMovie ? `${movieDisplayName(selectedMovie)}｜區間 ${analyticsPeriods.length} 筆｜貼文 ${socialPostMetrics.length} 筆` : "請先選擇電影專案"}</span>
       </div>
     </section>
 
-    <section class="card">
-      <div class="card-header"><div><h2>平台數據總覽</h2><p>${selectedMovie ? `${movieDisplayName(selectedMovie)} 的 Instagram、Facebook、Threads、YouTube 數據` : "請先選擇電影"}</p></div></div>
-      <div class="card-body grid stats-grid">${platformOverviewCards()}</div>
-    </section>
-
-    <form id="postAnalysisForm" class="post-analysis-layout">
+    ${analyticsDataLoading ? `<section class="card"><div class="card-body"><p class="status blue">正在讀取數據分析資料...</p></div></section>` : ""}
+    ${analyticsDataError ? `<section class="card"><div class="card-body"><p class="status red">${escapeHtml(analyticsDataError)}</p></div></section>` : ""}
+    ${analyticsNotice ? `<section class="card"><div class="card-body"><p class="status green">${escapeHtml(analyticsNotice)}</p></div></section>` : ""}
+    ${selectedMovie ? `
+      ${analyticsFiltersHtml()}
+      <div class="grid stats-grid post-analysis-stats">${analyticsDashboardStats(posts).map(([label, value, note]) => `<article class="card stat-card"><span>${label}</span><strong>${escapeHtml(String(value))}</strong><small>${escapeHtml(note)}</small></article>`).join("")}</div>
       <section class="card">
-        <div class="card-header"><div><h2>貼文基本資料</h2><p>建立這篇貼文的分析背景。</p></div></div>
-        <div class="card-body post-form-grid">
-          <input type="hidden" name="movieId" value="${escapeHtml(selectedMovie?.id || "")}" />
-          <div class="field"><label>平台</label><select class="select" name="platform" required>${["Instagram", "Facebook", "Threads", "YouTube"].map((item) => option(item, result?.data.platform || "Instagram")).join("")}</select></div>
-          <div class="field"><label>貼文連結</label><input class="input" name="post_url" type="url" value="${escapeHtml(result?.data.postUrl || "")}" placeholder="https://..." /></div>
-          <div class="field field-wide"><label>貼文標題</label><input class="input" name="title" required value="${escapeHtml(result?.data.title || "")}" placeholder="例如：正式預告上線主貼文" /></div>
-          <div class="field"><label>發文日期</label><input class="input" name="post_date" type="date" value="${escapeHtml(result?.data.postDate || today)}" /></div>
-          <div class="field"><label>貼文類型</label><select class="select" name="post_type">${["圖文", "Reels", "短影音", "文字貼文"].map((item) => option(item, result?.data.postType || "圖文")).join("")}</select></div>
-          <div class="field"><label>宣傳階段</label><select class="select" name="campaign_stage">${["上映前", "上映中", "下檔前", "口碑期"].map((item) => option(item, result?.data.campaignStage || "上映前")).join("")}</select></div>
-        </div>
+        <div class="card-header"><div><h2>區間統計</h2><p>${escapeHtml(movieDisplayName(selectedMovie))} 的週次、日期區間與平台總表現。</p></div><button class="primary-button" type="button" data-action="open-analytics-period-modal">新增區間統計</button></div>
+        <div class="card-body">${analyticsPeriodTable(periods)}</div>
       </section>
-
       <section class="card">
-        <div class="card-header"><div><h2>貼文數據</h2><p>填入後會自動計算互動率、轉粉率與點擊率。</p></div></div>
-        <div class="card-body post-metric-grid">
-          ${[
-            ["impressions", "曝光數", result?.data.impressions],
-            ["reach", "觸及數", result?.data.reach],
-            ["views", "觀看數", result?.data.views],
-            ["likes", "按讚數", result?.data.likes],
-            ["comments", "留言數", result?.data.comments],
-            ["shares", "分享數", result?.data.shares],
-            ["saves", "收藏數", result?.data.saves],
-            ["new_followers", "新增追蹤數", result?.data.newFollowers],
-            ["link_clicks", "連結點擊數", result?.data.linkClicks],
-          ].map(([name, label, value]) => `<div class="field"><label>${label}</label><input class="input" name="${name}" type="number" min="0" value="${Number(value || 0)}" /></div>`).join("")}
-          <div class="modal-actions field-wide"><button class="primary-button" type="submit">分析貼文數據</button></div>
-        </div>
+        <div class="card-header"><div><h2>貼文成效</h2><p>只顯示目前電影與篩選條件下的單篇貼文數據。</p></div><div class="meta-row"><button class="secondary-button" type="button" data-action="export-analytics-excel">匯出 Excel</button><button class="primary-button" type="button" data-action="open-post-metric-modal">新增貼文成效</button></div></div>
+        <div class="card-body">${socialPostMetricTable(posts)}</div>
       </section>
-    </form>
-
-    <div class="grid stats-grid post-analysis-stats">
-      ${postAnalysisMetricCards(result).map(([label, value, note]) => `<article class="card stat-card"><span>${label}</span><strong>${value}</strong><small>${note}</small></article>`).join("")}
-    </div>
-
-    ${postAnalysisReportHtml()}
-    <section class="card analytics-report">
-      <div class="card-header"><div><h2>AI 分析報告</h2><p>${aiPostAnalysisText ? "由 OpenAI 依目前單篇貼文數據生成。" : "尚未產生 OpenAI 報告時，先顯示系統邏輯分析。"}</p></div></div>
-      <div class="card-body">
-        ${aiPostAnalysisError ? `<p class="status red">${escapeHtml(aiPostAnalysisError)}</p>` : ""}
-        ${isAiPostAnalyzing ? `<p class="status blue">AI 分析中...</p>` : ""}
-        <div class="grid three-col">${movieReport.highlights.map((item) => `<div class="task-item"><div><strong>${escapeHtml(item.title)}</strong><span class="muted">${escapeHtml(item.text)}</span></div></div>`).join("")}</div>
-        ${aiAnalysisHtml}
-      </div>
-    </section>
-    ${postAnalysisGeneratedOutputHtml()}
-
-    <section class="card">
-      <div class="card-header"><div><h2>後續操作</h2><p>依目前分析結果產生下一步內容方向。</p></div></div>
-      <div class="card-body post-action-row">
-        <button class="secondary-button" type="button" data-action="generate-next-post-direction" ${result ? "" : "disabled"}>產生下一篇貼文方向</button>
-        <button class="primary-button" type="button" data-action="generate-ai-post-analysis" ${result && !isAiPostAnalyzing ? "" : "disabled"}>${isAiPostAnalyzing ? "AI 分析中..." : "產生 AI 分析報告"}</button>
-        <button class="secondary-button" type="button" data-action="generate-comment-question" ${result ? "" : "disabled"}>產生留言互動題</button>
-        <button class="secondary-button" type="button" data-action="generate-cta-copy" ${result ? "" : "disabled"}>產生 CTA 文案</button>
-        <button class="secondary-button" type="button" data-action="generate-review-report" ${result ? "" : "disabled"}>產生檢討報告</button>
-        <button class="secondary-button" type="button" data-action="export-analysis-summary" ${result ? "" : "disabled"}>匯出分析摘要</button>
-        <button class="primary-button" type="button" data-action="save-post-analysis" ${result ? "" : "disabled"}>儲存分析</button>
-      </div>
-    </section>
+    ` : analyticsMovieSelectedMessage()}
+    ${isAnalyticsPeriodModalOpen ? analyticsPeriodModal() : ""}
+    ${isPostMetricModalOpen ? postMetricModal() : ""}
   `;
 }
 const renderers = { dashboard, movies: moviesPage, assets: assetsPage, schedule: schedulePage, copy: copyPage, style: styleExamplesPage, review: reviewPage, analytics: analyticsPage };
@@ -2534,6 +2841,10 @@ function render() {
   if (page.id !== "analytics") {
     isMetricModalOpen = false;
     editingMetricPlatform = null;
+    isAnalyticsPeriodModalOpen = false;
+    editingAnalyticsPeriodId = null;
+    isPostMetricModalOpen = false;
+    editingPostMetricId = null;
   }
   document.querySelector("#pageTitle").textContent = page.title;
   document.querySelector("#pageContent").innerHTML = renderers[page.id]();
@@ -2541,6 +2852,7 @@ function render() {
   if (["movies", "assets", "schedule", "copy", "review", "analytics"].includes(page.id) && Date.now() - moviesLastLoadedAt > 5000) loadMoviesFromServer(true);
   if (["assets", "schedule", "review", "analytics", "dashboard"].includes(page.id) && Date.now() - workflowLastLoadedAt > 5000) loadWorkflowDataFromServer();
   if (page.id === "style" && !styleExamplesLoadedFromServer) loadStyleExamplesFromServer(true);
+  if (page.id === "analytics" && selectedAnalyticsMovieId) loadAnalyticsDataForMovie();
 }
 
 window.addEventListener("hashchange", render);
@@ -2570,6 +2882,15 @@ document.addEventListener("input", (event) => {
     styleExampleFilters[filterName] = event.target.value;
     render();
     const input = document.querySelector(`.style-filter-input[data-filter="${filterName}"]`);
+    input?.focus();
+    input?.setSelectionRange(cursorPosition, cursorPosition);
+  }
+  if (event.target.classList.contains("analytics-filter-input")) {
+    const filterName = event.target.dataset.filter;
+    const cursorPosition = event.target.selectionStart;
+    analyticsFilters[filterName] = event.target.value;
+    render();
+    const input = document.querySelector(`.analytics-filter-input[data-filter="${filterName}"]`);
     input?.focus();
     input?.setSelectionRange(cursorPosition, cursorPosition);
   }
@@ -2612,11 +2933,22 @@ document.addEventListener("change", (event) => {
   if (event.target.id === "analyticsMovieSelect") {
     selectedAnalyticsMovieId = event.target.value;
     localStorage.setItem(storageKeys.analyticsMovie, selectedAnalyticsMovieId);
+    analyticsDataLoadedMovieId = "";
+    analyticsPeriods = [];
+    socialPostMetrics = [];
+    analyticsDataError = "";
+    analyticsNotice = "";
     postAnalysisResult = null;
     postAnalysisOutput = null;
     aiPostAnalysisText = "";
     aiPostAnalysisError = "";
     analyticsReport = null;
+    render();
+    loadAnalyticsDataForMovie(true);
+    return;
+  }
+  if (event.target.classList.contains("analytics-filter") || event.target.classList.contains("analytics-filter-date")) {
+    analyticsFilters[event.target.dataset.filter] = event.target.value;
     render();
     return;
   }
@@ -3051,10 +3383,59 @@ document.addEventListener("click", async (event) => {
     analyticsReport = null;
     render();
   }
+  if (action === "open-analytics-period-modal") {
+    if (!selectedAnalyticsMovieId) return window.alert("請先選擇電影專案。");
+    editingAnalyticsPeriodId = null;
+    isAnalyticsPeriodModalOpen = true;
+    render();
+  }
+  if (action === "edit-analytics-period") {
+    editingAnalyticsPeriodId = actionElement.dataset.id;
+    isAnalyticsPeriodModalOpen = true;
+    render();
+  }
+  if (action === "close-analytics-period-modal") {
+    editingAnalyticsPeriodId = null;
+    isAnalyticsPeriodModalOpen = false;
+    render();
+  }
+  if (action === "delete-analytics-period") {
+    if (!window.confirm("確定要刪除這筆區間統計嗎？")) return;
+    await requestJson(`/api/social-analytics/periods/${encodeURIComponent(actionElement.dataset.id)}`, { method: "DELETE" });
+    analyticsNotice = "區間統計已刪除。";
+    analyticsDataLoadedMovieId = "";
+    await loadAnalyticsDataForMovie(true);
+  }
+  if (action === "open-post-metric-modal") {
+    if (!selectedAnalyticsMovieId) return window.alert("請先選擇電影專案。");
+    editingPostMetricId = null;
+    isPostMetricModalOpen = true;
+    render();
+  }
+  if (action === "edit-post-metric") {
+    editingPostMetricId = actionElement.dataset.id;
+    isPostMetricModalOpen = true;
+    render();
+  }
+  if (action === "close-post-metric-modal") {
+    editingPostMetricId = null;
+    isPostMetricModalOpen = false;
+    render();
+  }
+  if (action === "delete-post-metric") {
+    if (!window.confirm("確定要刪除這筆貼文成效嗎？")) return;
+    await requestJson(`/api/social-analytics/posts/${encodeURIComponent(actionElement.dataset.id)}`, { method: "DELETE" });
+    analyticsNotice = "貼文成效已刪除。";
+    analyticsDataLoadedMovieId = "";
+    await loadAnalyticsDataForMovie(true);
+  }
+  if (action === "export-analytics-excel") {
+    await exportAnalyticsExcel();
+  }
 });
 
 document.addEventListener("submit", async (event) => {
-  if (!["authForm", "movieForm", "assetForm", "scheduleForm", "activityForm", "styleExampleForm", "questionForm", "questionScheduleForm", "metricForm", "analyticsLinkForm", "manualAnalyticsForm", "postAnalysisForm"].includes(event.target.id)) return;
+  if (!["authForm", "movieForm", "assetForm", "scheduleForm", "activityForm", "styleExampleForm", "questionForm", "questionScheduleForm", "metricForm", "analyticsLinkForm", "manualAnalyticsForm", "postAnalysisForm", "analyticsPeriodForm", "postMetricForm"].includes(event.target.id)) return;
   event.preventDefault();
   const formData = new FormData(event.target);
 
@@ -3077,6 +3458,26 @@ document.addEventListener("submit", async (event) => {
     } catch (error) {
       isAuthSubmitting = false;
       authError = error.message || "登入失敗，請確認帳號密碼。";
+      render();
+    }
+    return;
+  }
+
+  if (event.target.id === "analyticsPeriodForm") {
+    try {
+      await saveAnalyticsPeriod(formData);
+    } catch (error) {
+      analyticsDataError = error.message || "區間統計儲存失敗。";
+      render();
+    }
+    return;
+  }
+
+  if (event.target.id === "postMetricForm") {
+    try {
+      await savePostMetric(formData);
+    } catch (error) {
+      analyticsDataError = error.message || "貼文成效儲存失敗。";
       render();
     }
     return;

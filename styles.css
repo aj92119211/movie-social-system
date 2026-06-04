@@ -368,6 +368,12 @@ tr:last-child td {
   border-bottom: 0;
 }
 
+.number-cell {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 .status,
 .tag {
   display: inline-flex;

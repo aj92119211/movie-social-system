@@ -652,6 +652,205 @@ async function handleStyleExamplesApi(request, response, exampleId) {
   }
 }
 
+function percentRate(numerator, denominator) {
+  const top = Number(numerator || 0);
+  const bottom = Number(denominator || 0);
+  return bottom ? Number(((top / bottom) * 100).toFixed(2)) : 0;
+}
+
+function mapAnalyticsPeriodFromDb(row) {
+  return {
+    id: row.id,
+    movieId: row.movie_id || "",
+    weekLabel: row.week_label || "",
+    dateRange: row.date_range || "",
+    platform: row.platform || "",
+    phase: row.phase || "",
+    totalReach: Number(row.total_reach || 0),
+    totalViews: Number(row.total_views || 0),
+    totalEngagement: Number(row.total_engagement || 0),
+    newFollowers: Number(row.new_followers || 0),
+    nonFollowerRate: Number(row.non_follower_rate || 0),
+    engagementRate: Number(row.engagement_rate || 0),
+    bestPost: row.best_post || "",
+    worstPost: row.worst_post || "",
+    weeklyConclusion: row.weekly_conclusion || "",
+    nextWeekSuggestion: row.next_week_suggestion || "",
+    createdAt: row.created_at || "",
+    updatedAt: row.updated_at || "",
+  };
+}
+
+function mapAnalyticsPeriodToDb(item) {
+  const totalReach = Number(item.totalReach || 0);
+  const totalEngagement = Number(item.totalEngagement || 0);
+  return {
+    movie_id: String(item.movieId || "").trim(),
+    week_label: String(item.weekLabel || "").trim(),
+    date_range: String(item.dateRange || "").trim(),
+    platform: String(item.platform || "").trim(),
+    phase: String(item.phase || "").trim(),
+    total_reach: totalReach,
+    total_views: Number(item.totalViews || 0),
+    total_engagement: totalEngagement,
+    new_followers: Number(item.newFollowers || 0),
+    non_follower_rate: Number(item.nonFollowerRate || 0),
+    engagement_rate: percentRate(totalEngagement, totalReach),
+    best_post: String(item.bestPost || "").trim(),
+    worst_post: String(item.worstPost || "").trim(),
+    weekly_conclusion: String(item.weeklyConclusion || "").trim(),
+    next_week_suggestion: String(item.nextWeekSuggestion || "").trim(),
+  };
+}
+
+function mapSocialPostMetricFromDb(row) {
+  return {
+    id: row.id,
+    movieId: row.movie_id || "",
+    platform: row.platform || "",
+    phase: row.phase || "",
+    postDate: row.post_date || "",
+    recordedDate: row.recorded_date || "",
+    observationPeriod: row.observation_period || "",
+    postTitle: row.post_title || "",
+    contentType: row.content_type || "",
+    postUrl: row.post_url || "",
+    reach: Number(row.reach || 0),
+    views: Number(row.views || 0),
+    engagement: Number(row.engagement || 0),
+    shares: Number(row.shares || 0),
+    saves: Number(row.saves || 0),
+    comments: Number(row.comments || 0),
+    newFollowers: Number(row.new_followers || 0),
+    nonFollowerRate: Number(row.non_follower_rate || 0),
+    engagementRate: Number(row.engagement_rate || 0),
+    cta: row.cta || "",
+    conclusion: row.conclusion || "",
+    createdAt: row.created_at || "",
+    updatedAt: row.updated_at || "",
+  };
+}
+
+function mapSocialPostMetricToDb(item) {
+  const reach = Number(item.reach || 0);
+  const engagement = Number(item.engagement || 0);
+  return {
+    movie_id: String(item.movieId || "").trim(),
+    platform: String(item.platform || "").trim(),
+    phase: String(item.phase || "").trim(),
+    post_date: item.postDate || null,
+    recorded_date: item.recordedDate || null,
+    observation_period: String(item.observationPeriod || "發文後 7 天").trim(),
+    post_title: String(item.postTitle || "").trim(),
+    content_type: String(item.contentType || "").trim(),
+    post_url: String(item.postUrl || "").trim(),
+    reach,
+    views: Number(item.views || 0),
+    engagement,
+    shares: Number(item.shares || 0),
+    saves: Number(item.saves || 0),
+    comments: Number(item.comments || 0),
+    new_followers: Number(item.newFollowers || 0),
+    non_follower_rate: Number(item.nonFollowerRate || 0),
+    engagement_rate: percentRate(engagement, reach),
+    cta: String(item.cta || "").trim(),
+    conclusion: String(item.conclusion || "").trim(),
+  };
+}
+
+async function handleSocialAnalyticsApi(request, response, url) {
+  try {
+    if (request.method === "GET" && url.pathname === "/api/social-analytics") {
+      const movieId = String(url.searchParams.get("movieId") || "").trim();
+      if (!movieId) {
+        sendJson(response, 400, { error: "請先選擇電影專案。" });
+        return;
+      }
+      const queryMovieId = encodeURIComponent(movieId);
+      const [periods, posts] = await Promise.all([
+        supabaseRequest(`/social_analytics_periods?movie_id=eq.${queryMovieId}&select=*&order=created_at.desc`),
+        supabaseRequest(`/social_post_metrics?movie_id=eq.${queryMovieId}&select=*&order=post_date.desc`),
+      ]);
+      sendJson(response, 200, {
+        periods: (periods || []).map(mapAnalyticsPeriodFromDb),
+        posts: (posts || []).map(mapSocialPostMetricFromDb),
+      });
+      return;
+    }
+
+    const periodId = url.pathname.startsWith("/api/social-analytics/periods/")
+      ? decodeURIComponent(url.pathname.replace("/api/social-analytics/periods/", ""))
+      : "";
+    const postId = url.pathname.startsWith("/api/social-analytics/posts/")
+      ? decodeURIComponent(url.pathname.replace("/api/social-analytics/posts/", ""))
+      : "";
+
+    if (url.pathname === "/api/social-analytics/periods" && request.method === "POST") {
+      const body = await readJsonBody(request);
+      const rows = await supabaseRequest("/social_analytics_periods?select=*", {
+        method: "POST",
+        headers: { Prefer: "return=representation" },
+        body: JSON.stringify(mapAnalyticsPeriodToDb(body)),
+      });
+      sendJson(response, 201, { period: mapAnalyticsPeriodFromDb(rows[0]) });
+      return;
+    }
+
+    if (periodId && request.method === "PATCH") {
+      const body = await readJsonBody(request);
+      const rows = await supabaseRequest(`/social_analytics_periods?id=eq.${encodeURIComponent(periodId)}&select=*`, {
+        method: "PATCH",
+        headers: { Prefer: "return=representation" },
+        body: JSON.stringify(mapAnalyticsPeriodToDb(body)),
+      });
+      sendJson(response, 200, { period: mapAnalyticsPeriodFromDb(rows[0]) });
+      return;
+    }
+
+    if (periodId && request.method === "DELETE") {
+      await supabaseRequest(`/social_analytics_periods?id=eq.${encodeURIComponent(periodId)}`, { method: "DELETE" });
+      sendJson(response, 200, { ok: true });
+      return;
+    }
+
+    if (url.pathname === "/api/social-analytics/posts" && request.method === "POST") {
+      const body = await readJsonBody(request);
+      const rows = await supabaseRequest("/social_post_metrics?select=*", {
+        method: "POST",
+        headers: { Prefer: "return=representation" },
+        body: JSON.stringify(mapSocialPostMetricToDb(body)),
+      });
+      sendJson(response, 201, { post: mapSocialPostMetricFromDb(rows[0]) });
+      return;
+    }
+
+    if (postId && request.method === "PATCH") {
+      const body = await readJsonBody(request);
+      const rows = await supabaseRequest(`/social_post_metrics?id=eq.${encodeURIComponent(postId)}&select=*`, {
+        method: "PATCH",
+        headers: { Prefer: "return=representation" },
+        body: JSON.stringify(mapSocialPostMetricToDb(body)),
+      });
+      sendJson(response, 200, { post: mapSocialPostMetricFromDb(rows[0]) });
+      return;
+    }
+
+    if (postId && request.method === "DELETE") {
+      await supabaseRequest(`/social_post_metrics?id=eq.${encodeURIComponent(postId)}`, { method: "DELETE" });
+      sendJson(response, 200, { ok: true });
+      return;
+    }
+
+    sendJson(response, 405, { error: "Method not allowed" });
+  } catch (error) {
+    const message = String(error.message || "");
+    const setupHint = message.includes("social_analytics_periods") || message.includes("social_post_metrics")
+      ? "請先在 Supabase SQL Editor 執行 supabase/social_analytics_tables.sql。"
+      : "";
+    sendJson(response, error.statusCode || 500, { error: `${message || "數據分析 API 失敗。"}${setupHint ? ` ${setupHint}` : ""}` });
+  }
+}
+
 const workflowCollectionKinds = new Set(["assets", "schedules", "activities", "questions", "socialMetrics", "postAnalyses"]);
 
 async function handleWorkflowDataApi(request, response, kind) {
@@ -1309,6 +1508,11 @@ const server = http.createServer((request, response) => {
   if (url.pathname.startsWith("/api/movies/")) {
     const movieId = decodeURIComponent(url.pathname.replace("/api/movies/", ""));
     handleMoviesApi(request, response, movieId);
+    return;
+  }
+
+  if (url.pathname === "/api/social-analytics" || url.pathname.startsWith("/api/social-analytics/")) {
+    handleSocialAnalyticsApi(request, response, url);
     return;
   }
 
