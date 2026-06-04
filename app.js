@@ -1,6 +1,4 @@
-﻿import * as XLSX from "xlsx";
-
-const storageKeys = {
+﻿const storageKeys = {
   covers: "movieSocialOps.movieCovers",
   movies: "movieSocialOps.movies",
   movieReleaseStatuses: "movieSocialOps.movieReleaseStatuses",
@@ -2625,7 +2623,6 @@ async function exportAnalyticsExcel() {
   const periods = filteredAnalyticsPeriods();
   const posts = filteredSocialPostMetrics();
   try {
-    const workbook = XLSX.utils.book_new();
     const periodRows = periods.length ? periods.map((item) => ({
       電影名稱: movieDisplayName(movie),
       週次: item.weekLabel,
@@ -2665,10 +2662,26 @@ async function exportAnalyticsExcel() {
       CTA: item.cta,
       結論: item.conclusion,
     })) : [{ 提示: "目前沒有資料" }];
-    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(periodRows), "區間統計");
-    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(postRows), "貼文成效");
     const today = new Date().toISOString().slice(0, 10);
-    XLSX.writeFile(workbook, `${safeExcelFileName(movieDisplayName(movie))}_社群數據分析_${today}.xlsx`);
+    const fileName = `${safeExcelFileName(movieDisplayName(movie))}_社群數據分析_${today}.xlsx`;
+    const response = await fetch("/api/social-analytics/export", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ fileName, periodRows, postRows }),
+    });
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      throw new Error(payload.error || "Excel 匯出失敗。");
+    }
+    const blob = await response.blob();
+    const downloadUrl = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = downloadUrl;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(downloadUrl);
     analyticsNotice = periods.length || posts.length ? "Excel 已匯出。" : "Excel 已匯出，工作表內會顯示目前沒有資料。";
     render();
   } catch (error) {
@@ -3763,6 +3776,7 @@ mockData.aiStyleExamples = readStorage(storageKeys.styleExamples, mockData.aiSty
 movieReleaseStatusOverrides = readStorage(storageKeys.movieReleaseStatuses, movieReleaseStatusOverrides);
 render();
 checkAuthStatus();
+
 
 
 

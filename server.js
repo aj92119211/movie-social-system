@@ -2,6 +2,7 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const crypto = require("node:crypto");
+const XLSX = require("xlsx");
 const { analyzePost, runMovieEditorApi } = require("./server/routes/ai");
 const { MOVIE_EDITOR_SYSTEM_PROMPT } = require("./server/ai/movieEditorPrompt");
 
@@ -44,6 +45,14 @@ function sendJson(response, statusCode, payload) {
     "Cache-Control": "no-store",
   });
   response.end(JSON.stringify(payload));
+}
+
+function sendBuffer(response, statusCode, buffer, headers = {}) {
+  response.writeHead(statusCode, {
+    "Cache-Control": "no-store",
+    ...headers,
+  });
+  response.end(buffer);
 }
 
 function envValue(key) {
@@ -760,6 +769,24 @@ function mapSocialPostMetricToDb(item) {
 
 async function handleSocialAnalyticsApi(request, response, url) {
   try {
+    if (request.method === "POST" && url.pathname === "/api/social-analytics/export") {
+      const body = await readJsonBody(request);
+      const workbook = XLSX.utils.book_new();
+      const periodRows = Array.isArray(body.periodRows) && body.periodRows.length ? body.periodRows : [{ 提示: "目前沒有資料" }];
+      const postRows = Array.isArray(body.postRows) && body.postRows.length ? body.postRows : [{ 提示: "目前沒有資料" }];
+      XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(periodRows), "區間統計");
+      XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(postRows), "貼文成效");
+      const buffer = XLSX.write(workbook, { bookType: "xlsx", type: "buffer" });
+      const safeFileName = String(body.fileName || `社群數據分析_${new Date().toISOString().slice(0, 10)}.xlsx`)
+        .replace(/[\\/:*?"<>|]/g, "")
+        .replace(/[\r\n]/g, "");
+      sendBuffer(response, 200, buffer, {
+        "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(safeFileName)}`,
+      });
+      return;
+    }
+
     if (request.method === "GET" && url.pathname === "/api/social-analytics") {
       const movieId = String(url.searchParams.get("movieId") || "").trim();
       if (!movieId) {
