@@ -2916,13 +2916,13 @@ function analyticsPeriodModal() {
       ${[["totalReach", "總觸及"], ["totalViews", "總瀏覽"], ["totalEngagement", "總互動"], ["newFollowers", "新增追蹤"], ["nonFollowerRate", "非粉絲比例 %"]].map(([name, label]) => `<div class="field"><label>${label}</label><input class="input" name="${name}" type="number" min="0" step="0.01" value="${Number(item[name] || 0)}" /></div>`).join("")}
       <div class="field"><label>最佳貼文</label><input class="input" name="bestPost" value="${escapeHtml(item.bestPost || "")}" /></div>
       <div class="field"><label>最差貼文</label><input class="input" name="worstPost" value="${escapeHtml(item.worstPost || "")}" /></div>
+      <div class="field field-wide"><label>下週調整建議</label><textarea name="nextWeekSuggestion">${escapeHtml(item.nextWeekSuggestion || "")}</textarea></div>
       <div class="field field-wide post-conclusion-field">
-        <div class="field-label-row"><label for="periodWeeklyConclusion">本週結論</label><button class="secondary-button" type="button" data-action="generate-period-insight">結論</button></div>
+        <div class="field-label-row"><label for="periodWeeklyConclusion">結論</label><button class="secondary-button" type="button" data-action="generate-period-insight">結論</button></div>
         <textarea id="periodWeeklyConclusion" name="weeklyConclusion" class="large-textarea" placeholder="可手動輸入，或點擊結論後再微調。">${escapeHtml(item.weeklyConclusion || "")}</textarea>
         <p class="status red period-insight-error" hidden>AI 結論生成失敗，請稍後再試，或先手動輸入結論。</p>
       </div>
-      <div class="field"><label>下週調整建議</label><textarea name="nextWeekSuggestion">${escapeHtml(item.nextWeekSuggestion || "")}</textarea></div>
-      <div class="modal-actions"><button class="secondary-button" type="button" data-action="close-analytics-period-modal">取消</button><button class="primary-button" type="submit">儲存</button></div>
+      <div class="modal-actions modal-footer-actions"><button class="secondary-button" type="button" data-action="close-analytics-period-modal">取消</button><button class="primary-button" type="submit">儲存</button></div>
     </form>
   </section></div>`;
 }
