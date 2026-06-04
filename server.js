@@ -1071,6 +1071,185 @@ async function testOpenAI(response) {
   }
 }
 
+function safeNumber(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : 0;
+}
+
+function analyticsConclusionPrompt(type, data) {
+  if (type === "period") {
+    return [
+      "你是一位資深影視社群數據分析師，請根據以下「區間社群統計資料」產出一段適合放進週報的繁體中文分析結論。",
+      "",
+      "請遵守：",
+      "- 使用繁體中文",
+      "- 80 到 120 字",
+      "- 語氣專業但自然",
+      "- 不要條列",
+      "- 不要加標題",
+      "- 不要誇大數據",
+      "- 如果數據不足，請保守分析",
+      "- 需要包含：本期整體表現、可能原因、下週優化方向",
+      "",
+      "資料如下：",
+      `電影名稱：${data.movieName || "未提供"}`,
+      `週次：${data.weekLabel || "未提供"}`,
+      `日期區間：${data.dateRange || "未提供"}`,
+      `平台：${data.platform || "未提供"}`,
+      `宣傳階段：${data.phase || "未提供"}`,
+      `總觸及：${data.totalReach}`,
+      `總瀏覽：${data.totalViews}`,
+      `總互動：${data.totalEngagement}`,
+      `新增追蹤：${data.newFollowers}`,
+      `非粉絲比例：${data.nonFollowerRate}`,
+      `互動率：${data.engagementRate}`,
+      `最佳貼文：${data.bestPost || "未提供"}`,
+      `最差貼文：${data.worstPost || "未提供"}`,
+      "",
+      "請只回傳結論文字。",
+    ].join("\n");
+  }
+
+  return [
+    "你是一位資深影視社群數據分析師，請根據以下「單篇貼文成效資料」產出一段適合放進週報的繁體中文分析結論。",
+    "",
+    "請遵守：",
+    "- 使用繁體中文",
+    "- 80 到 120 字",
+    "- 語氣專業但自然",
+    "- 不要條列",
+    "- 不要加標題",
+    "- 不要誇大數據",
+    "- 如果數據不足，請保守分析",
+    "- 需要包含：主要表現、可能原因、下一步建議",
+    "",
+    "資料如下：",
+    `電影名稱：${data.movieName || "未提供"}`,
+    `平台：${data.platform || "未提供"}`,
+    `宣傳階段：${data.phase || "未提供"}`,
+    `貼文主題：${data.postTitle || "未提供"}`,
+    `內容類型：${data.contentType || "未提供"}`,
+    `觀察週期：${data.observationPeriod || "未提供"}`,
+    `觸及：${data.reach}`,
+    `瀏覽：${data.views}`,
+    `互動：${data.engagement}`,
+    `分享：${data.shares}`,
+    `收藏：${data.saves}`,
+    `留言：${data.comments}`,
+    `新增追蹤：${data.newFollowers}`,
+    `非粉絲比例：${data.nonFollowerRate}`,
+    `互動率：${data.engagementRate}`,
+    `CTA：${data.cta || "未提供"}`,
+    "",
+    "請只回傳結論文字。",
+  ].join("\n");
+}
+
+function normalizeAnalyticsConclusionData(type, rawData = {}) {
+  if (type === "period") {
+    const totalReach = safeNumber(rawData.totalReach);
+    const totalEngagement = safeNumber(rawData.totalEngagement);
+    return {
+      movieName: String(rawData.movieName || "").trim(),
+      weekLabel: String(rawData.weekLabel || "").trim(),
+      dateRange: String(rawData.dateRange || "").trim(),
+      platform: String(rawData.platform || "").trim(),
+      phase: String(rawData.phase || "").trim(),
+      totalReach,
+      totalViews: safeNumber(rawData.totalViews),
+      totalEngagement,
+      newFollowers: safeNumber(rawData.newFollowers),
+      nonFollowerRate: safeNumber(rawData.nonFollowerRate),
+      engagementRate: totalReach > 0 ? Number((totalEngagement / totalReach).toFixed(4)) : 0,
+      bestPost: String(rawData.bestPost || "").trim(),
+      worstPost: String(rawData.worstPost || "").trim(),
+    };
+  }
+
+  const reach = safeNumber(rawData.reach);
+  const engagement = safeNumber(rawData.engagement);
+  return {
+    movieName: String(rawData.movieName || "").trim(),
+    platform: String(rawData.platform || "").trim(),
+    phase: String(rawData.phase || "").trim(),
+    postDate: String(rawData.postDate || "").trim(),
+    recordedDate: String(rawData.recordedDate || "").trim(),
+    observationPeriod: String(rawData.observationPeriod || "").trim(),
+    postTitle: String(rawData.postTitle || "").trim(),
+    contentType: String(rawData.contentType || "").trim(),
+    reach,
+    views: safeNumber(rawData.views),
+    engagement,
+    shares: safeNumber(rawData.shares),
+    saves: safeNumber(rawData.saves),
+    comments: safeNumber(rawData.comments),
+    newFollowers: safeNumber(rawData.newFollowers),
+    nonFollowerRate: safeNumber(rawData.nonFollowerRate),
+    engagementRate: reach > 0 ? Number((engagement / reach).toFixed(4)) : 0,
+    cta: String(rawData.cta || "").trim(),
+  };
+}
+
+async function generateAnalyticsConclusion(request, response) {
+  let body;
+  try {
+    body = await readJsonBody(request);
+  } catch (error) {
+    sendJson(response, 400, { error: error.message });
+    return;
+  }
+
+  const type = body?.type === "period" ? "period" : body?.type === "post" ? "post" : "";
+  const data = type ? normalizeAnalyticsConclusionData(type, body?.data || {}) : null;
+  console.log("[AI_CONCLUSION_REQUEST]", {
+    type,
+    hasData: Boolean(data),
+    keys: data ? Object.keys(data) : [],
+  });
+
+  if (!type || !data) {
+    sendJson(response, 400, { error: "Invalid analytics conclusion type." });
+    return;
+  }
+  if (!data.movieName || !data.platform) {
+    sendJson(response, 400, { error: "請先填寫電影名稱與平台，再生成結論。" });
+    return;
+  }
+
+  const openaiApiKey = envValue("OPENAI_API_KEY");
+  if (!openaiApiKey) {
+    sendJson(response, 503, { error: "OPENAI_API_KEY is missing" });
+    return;
+  }
+
+  try {
+    const openai = new OpenAI({ apiKey: openaiApiKey });
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        { role: "system", content: "你是一位資深影視社群數據分析師，請使用繁體中文，回覆要專業但自然。" },
+        { role: "user", content: analyticsConclusionPrompt(type, data) },
+      ],
+      temperature: 0.4,
+    });
+    const conclusion = normalizeGeneratedConclusion(completion.choices?.[0]?.message?.content || "");
+    if (!conclusion) {
+      sendJson(response, 502, { error: "OpenAI 回傳空白內容，請稍後再試。" });
+      return;
+    }
+    sendJson(response, 200, { conclusion });
+  } catch (error) {
+    console.error("[AI_CONCLUSION_ERROR]", {
+      type,
+      message: error?.message,
+      status: error?.status,
+      code: error?.code,
+      name: error?.name,
+    });
+    sendJson(response, 500, { error: error?.message || "AI 結論生成失敗，請稍後再試。" });
+  }
+}
+
 async function generatePostInsight(request, response) {
   const openaiApiKey = envValue("OPENAI_API_KEY");
   if (!openaiApiKey) {
@@ -1860,6 +2039,11 @@ const server = http.createServer((request, response) => {
 
   if (request.method === "POST" && url.pathname === "/api/generate-question-batch") {
     generateQuestionBatch(request, response);
+    return;
+  }
+
+  if (request.method === "POST" && url.pathname === "/api/generate-analytics-conclusion") {
+    generateAnalyticsConclusion(request, response);
     return;
   }
 

@@ -2591,8 +2591,8 @@ function postMetricPayload(formData) {
 function postMetricInsightPayload(form) {
   const formData = new FormData(form);
   const movie = getSelectedAnalyticsMovie();
-  const reach = Number(formData.get("reach") || 0);
-  const engagement = Number(formData.get("engagement") || 0);
+  const reach = safeAnalyticsNumber(formData.get("reach"));
+  const engagement = safeAnalyticsNumber(formData.get("engagement"));
   return {
     movieName: movie ? movieDisplayName(movie) : "",
     platform: formData.get("platform") || "",
@@ -2603,13 +2603,13 @@ function postMetricInsightPayload(form) {
     postTitle: formData.get("postTitle") || "",
     contentType: formData.get("contentType") || "",
     reach,
-    views: Number(formData.get("views") || 0),
+    views: safeAnalyticsNumber(formData.get("views")),
     engagement,
-    shares: Number(formData.get("shares") || 0),
-    saves: Number(formData.get("saves") || 0),
-    comments: Number(formData.get("comments") || 0),
-    newFollowers: Number(formData.get("newFollowers") || 0),
-    nonFollowerRate: Number(formData.get("nonFollowerRate") || 0),
+    shares: safeAnalyticsNumber(formData.get("shares")),
+    saves: safeAnalyticsNumber(formData.get("saves")),
+    comments: safeAnalyticsNumber(formData.get("comments")),
+    newFollowers: safeAnalyticsNumber(formData.get("newFollowers")),
+    nonFollowerRate: safeAnalyticsNumber(formData.get("nonFollowerRate")),
     cta: formData.get("cta") || "",
     engagementRate: reach ? Number((engagement / reach).toFixed(4)) : 0,
   };
@@ -2618,8 +2618,8 @@ function postMetricInsightPayload(form) {
 function periodInsightPayload(form) {
   const formData = new FormData(form);
   const movie = getSelectedAnalyticsMovie();
-  const totalReach = Number(formData.get("totalReach") || 0);
-  const totalEngagement = Number(formData.get("totalEngagement") || 0);
+  const totalReach = safeAnalyticsNumber(formData.get("totalReach"));
+  const totalEngagement = safeAnalyticsNumber(formData.get("totalEngagement"));
   return {
     movieName: movie ? movieDisplayName(movie) : "",
     weekLabel: formData.get("weekLabel") || "",
@@ -2627,15 +2627,20 @@ function periodInsightPayload(form) {
     platform: formData.get("platform") || "",
     phase: formData.get("phase") || "",
     totalReach,
-    totalViews: Number(formData.get("totalViews") || 0),
+    totalViews: safeAnalyticsNumber(formData.get("totalViews")),
     totalEngagement,
-    newFollowers: Number(formData.get("newFollowers") || 0),
-    nonFollowerRate: Number(formData.get("nonFollowerRate") || 0),
+    newFollowers: safeAnalyticsNumber(formData.get("newFollowers")),
+    nonFollowerRate: safeAnalyticsNumber(formData.get("nonFollowerRate")),
     engagementRate: totalReach ? Number((totalEngagement / totalReach).toFixed(4)) : 0,
     bestPost: formData.get("bestPost") || "",
     worstPost: formData.get("worstPost") || "",
     nextWeekSuggestion: formData.get("nextWeekSuggestion") || "",
   };
+}
+
+function safeAnalyticsNumber(value) {
+  const number = Number(value || 0);
+  return Number.isFinite(number) ? number : 0;
 }
 
 function hasBasicPostMetricData(payload) {
@@ -2670,6 +2675,23 @@ function periodInsightErrorMessage(error) {
   return "AI 結論生成失敗，請稍後再試，或先手動輸入結論。";
 }
 
+async function requestAnalyticsConclusion(type, data) {
+  const response = await fetch("/api/generate-analytics-conclusion", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ type, data }),
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    console.error("[GENERATE_ANALYTICS_CONCLUSION_FAILED]", {
+      status: response.status,
+      body,
+    });
+    throw new Error(body.error || "AI 結論生成失敗，請稍後再試。");
+  }
+  return body;
+}
+
 async function generatePostInsightFromForm() {
   const form = document.getElementById("postMetricForm");
   if (!form) return;
@@ -2690,10 +2712,7 @@ async function generatePostInsightFromForm() {
     errorElement.textContent = "";
   }
   try {
-    const result = await requestJson("/api/generate-post-insight", {
-      method: "POST",
-      body: JSON.stringify(payload),
-    });
+    const result = await requestAnalyticsConclusion("post", payload);
     if (textarea) textarea.value = result.conclusion || "";
   } catch (error) {
     if (errorElement) {
@@ -2730,10 +2749,7 @@ async function generatePeriodInsightFromForm() {
     errorElement.textContent = "";
   }
   try {
-    const result = await requestJson("/api/generate-period-insight", {
-      method: "POST",
-      body: JSON.stringify(payload),
-    });
+    const result = await requestAnalyticsConclusion("period", payload);
     if (!result.conclusion) {
       throw new Error("API 沒有回傳 conclusion。");
     }
