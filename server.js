@@ -737,6 +737,7 @@ function normalizeQuestionBatchPayload(value) {
     questions: Array.isArray(value?.questions)
       ? value.questions.map((item) => ({
           content: String(item?.content || "").trim(),
+          movieGenre: String(item?.movieGenre || item?.movie_genre || ""),
           type: String(item?.type || "開放問答"),
           platform: String(item?.platform || "IG 限動"),
           tone: String(item?.tone || "親切"),
@@ -995,7 +996,7 @@ async function generateQuestionBatch(request, response) {
       body: JSON.stringify({
         model: envValue("OPENAI_MODEL") || "gpt-4.1-mini",
         instructions:
-          "你是影視社群互動題企劃。請使用繁體中文，根據電影資料產生 10 題新的互動問答題。題目要適合小編直接使用、不劇透、角度多元，並提供題型、平台、語氣、宣傳階段、CTA、建議素材與備註。只回傳符合 schema 的 JSON。",
+          "你是影視社群互動題企劃。請使用繁體中文，根據電影資料產生 10 題新的互動問答題。題目要適合小編直接使用、不劇透、角度多元，並提供電影類型、題型、平台、語氣、宣傳階段、CTA、建議素材與備註。只回傳符合 schema 的 JSON。",
         input: prompt,
         text: {
           format: {
@@ -1015,6 +1016,7 @@ async function generateQuestionBatch(request, response) {
                     additionalProperties: false,
                     properties: {
                       content: { type: "string" },
+                      movieGenre: { type: "string" },
                       type: { type: "string" },
                       platform: { type: "string" },
                       tone: { type: "string" },
@@ -1023,7 +1025,7 @@ async function generateQuestionBatch(request, response) {
                       asset: { type: "string" },
                       note: { type: "string" },
                     },
-                    required: ["content", "type", "platform", "tone", "phase", "cta", "asset", "note"],
+                    required: ["content", "movieGenre", "type", "platform", "tone", "phase", "cta", "asset", "note"],
                   },
                 },
               },

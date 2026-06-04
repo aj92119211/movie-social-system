@@ -241,6 +241,7 @@ let isAiPostAnalyzing = false;
 let questionFilters = {
   search: "",
   movieId: "全部",
+  movieGenre: "全部",
   platform: "全部",
   type: "全部",
   tone: "全部",
@@ -248,6 +249,7 @@ let questionFilters = {
   status: "全部",
   performance: "全部",
 };
+const movieGenreOptions = ["通用", "恐怖", "愛情", "喜劇", "劇情", "動作", "懸疑"];
 let styleExampleFilters = {
   search: "",
   type: "全部",
@@ -1395,12 +1397,14 @@ function questionBatchMovie() {
 
 function fallbackQuestionBatch(movie) {
   const title = movie?.title || "電影專案";
+  const movieGenre = movie?.genre || "通用";
   const tones = ["親切", "神祕", "感性", "幽默", "懸疑"];
   const platforms = ["IG 限動", "Threads", "Facebook", "Reels"];
   const types = ["開放問答", "投票", "二選一", "留言引導", "測驗"];
   const phases = ["前導期", "預告上線", "上映倒數", "上映中", "口碑擴散"];
   return Array.from({ length: 10 }, (_, index) => ({
     content: `看完《${title}》這個線索後，你最想知道哪個角色的下一步？`,
+    movieGenre,
     type: types[index % types.length],
     platform: platforms[index % platforms.length],
     tone: tones[index % tones.length],
@@ -1414,10 +1418,12 @@ function fallbackQuestionBatch(movie) {
 function appendQuestionBatch(questions, movie) {
   const now = Date.now();
   const createdAt = formatWeekDate(new Date());
+  const movieGenre = movie?.genre || "通用";
   const nextQuestions = questions.map((question, index) => ({
     id: `q-ai-${now}-${index}`,
     content: question.content || "未命名題目",
     movieId: movie?.id || "",
+    movieGenre: question.movieGenre || movieGenre,
     type: question.type || "開放問答",
     platform: question.platform || "IG 限動",
     tone: question.tone || "親切",
@@ -1772,10 +1778,11 @@ function uniqueQuestionOptions(key) {
 
 function questionMatchesFilters(question) {
   const keyword = questionFilters.search.trim().toLowerCase();
-  const keywordMatch = !keyword || [question.content, question.cta, question.asset, question.note]
+  const keywordMatch = !keyword || [question.content, question.movieGenre, question.cta, question.asset, question.note]
     .some((value) => String(value || "").toLowerCase().includes(keyword));
   return keywordMatch &&
     (questionFilters.movieId === "全部" || question.movieId === questionFilters.movieId) &&
+    (questionFilters.movieGenre === "全部" || (question.movieGenre || "通用") === questionFilters.movieGenre) &&
     (questionFilters.platform === "全部" || question.platform === questionFilters.platform) &&
     (questionFilters.type === "全部" || question.type === questionFilters.type) &&
     (questionFilters.tone === "全部" || question.tone === questionFilters.tone) &&
@@ -1818,6 +1825,7 @@ function questionCard(question) {
             <p class="question-content">${escapeHtml(question.content)}</p>
             <div class="meta-row">
               <span class="tag">${escapeHtml(question.type)}</span>
+              <span class="tag">${escapeHtml(question.movieGenre || "通用")}</span>
               <span class="tag">${escapeHtml(question.platform)}</span>
               <span class="tag">${escapeHtml(question.tone)}</span>
               <span class="tag">${escapeHtml(question.phase)}</span>
@@ -1829,6 +1837,7 @@ function questionCard(question) {
         </div>
         <div class="question-detail-grid">
           <div><span class="muted">電影專案</span><strong>${escapeHtml(questionMovieName(question.movieId))}</strong></div>
+          <div><span class="muted">電影類型</span><strong>${escapeHtml(question.movieGenre || "通用")}</strong></div>
           <div><span class="muted">建議 CTA</span><strong>${escapeHtml(question.cta)}</strong></div>
           <div><span class="muted">建議搭配素材</span><strong>${escapeHtml(question.asset)}</strong></div>
           <div><span class="muted">使用狀態</span><strong>${question.uses} 次｜${escapeHtml(question.lastUsed || "尚未使用")}</strong></div>
@@ -1857,6 +1866,7 @@ function questionModal() {
       <form id="questionForm" class="modal-form">
         <div class="field"><label>題目內容</label><textarea name="content" required>${escapeHtml(question?.content || "")}</textarea></div>
         <div class="field"><label>電影專案</label><select class="select" name="movieId" style="width:100%">${movieOptions}</select></div>
+        <div class="field"><label>電影類型</label><select class="select" name="movieGenre" style="width:100%">${movieGenreOptions.map((item) => option(item, question?.movieGenre || "通用")).join("")}</select></div>
         <div class="field"><label>題型</label><select class="select" name="type" style="width:100%">${["開放問答", "二選一", "投票", "測驗", "留言引導", "Reels 字卡"].map((item) => option(item, question?.type || "開放問答")).join("")}</select></div>
         <div class="field"><label>平台</label><select class="select" name="platform" style="width:100%">${["IG 限動", "Threads", "Facebook", "Reels"].map((item) => option(item, question?.platform || "IG 限動")).join("")}</select></div>
         <div class="field"><label>語氣</label><select class="select" name="tone" style="width:100%">${["親切", "神祕", "熱血", "幽默", "感性", "懸疑"].map((item) => option(item, question?.tone || "親切")).join("")}</select></div>
@@ -1906,6 +1916,7 @@ function reviewPage() {
       <div class="question-filter-grid">
         <label class="filter-field filter-wide"><span>搜尋題目關鍵字</span><input class="input question-filter-input" data-filter="search" value="${escapeHtml(questionFilters.search)}" placeholder="輸入題目、CTA、素材或備註" /></label>
         ${questionMovieSelect(questionFilters.movieId)}
+        ${questionSelect("movieGenre", questionFilters.movieGenre, ["全部", ...movieGenreOptions], "電影類型")}
         ${questionSelect("platform", questionFilters.platform, uniqueQuestionOptions("platform"), "平台")}
         ${questionSelect("type", questionFilters.type, uniqueQuestionOptions("type"), "題型")}
         ${questionSelect("tone", questionFilters.tone, uniqueQuestionOptions("tone"), "語氣")}
@@ -3259,6 +3270,7 @@ document.addEventListener("submit", async (event) => {
     const questionData = {
       content: formData.get("content") || "未命名題目",
       movieId: mockData.movies.some((movie) => String(movie.id) === selectedQuestionMovieId) ? selectedQuestionMovieId : "",
+      movieGenre: formData.get("movieGenre") || "通用",
       type: formData.get("type") || "開放問答",
       platform: formData.get("platform") || "IG 限動",
       tone: formData.get("tone") || "親切",
