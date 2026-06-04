@@ -2659,6 +2659,14 @@ function fallbackPeriodConclusionText(data) {
   return `${data.weekLabel || "本區間"}在${data.platform || "社群平台"}的${reachText}，總瀏覽 ${views}、總互動 ${engagement}，${interactionText}。${followerText}。後續建議以${nextStep}為主，並持續比較最佳與最弱貼文的內容差異。`;
 }
 
+function periodInsightErrorMessage(error) {
+  const message = String(error?.message || "");
+  if (message.includes("OPENAI_API_KEY is not configured") || message.includes("尚未設定 OpenAI")) {
+    return "AI 結論生成失敗：尚未設定 OpenAI API Key。";
+  }
+  return "AI 結論生成失敗，請稍後再試，或先手動輸入結論。";
+}
+
 async function generatePostInsightFromForm() {
   const form = document.getElementById("postMetricForm");
   if (!form) return;
@@ -2723,10 +2731,18 @@ async function generatePeriodInsightFromForm() {
       method: "POST",
       body: JSON.stringify(payload),
     });
-    if (textarea) textarea.value = result.conclusion || fallbackPeriodConclusionText(payload);
+    if (!result.conclusion) {
+      throw new Error("API 沒有回傳 conclusion。");
+    }
+    if (textarea) textarea.value = result.conclusion;
   } catch (error) {
-    if (textarea) textarea.value = fallbackPeriodConclusionText(payload);
-    if (errorElement) errorElement.hidden = true;
+    console.error("Period insight generation failed", { error, payload });
+    if (errorElement) {
+      errorElement.hidden = false;
+      errorElement.textContent = periodInsightErrorMessage(error);
+    } else {
+      window.alert(periodInsightErrorMessage(error));
+    }
   } finally {
     if (button) {
       button.disabled = false;
@@ -2900,7 +2916,7 @@ function analyticsPeriodModal() {
       <div class="field field-wide post-conclusion-field">
         <div class="field-label-row"><label for="periodWeeklyConclusion">本週結論</label><button class="secondary-button" type="button" data-action="generate-period-insight">結論</button></div>
         <textarea id="periodWeeklyConclusion" name="weeklyConclusion" class="large-textarea" placeholder="可手動輸入，或點擊結論後再微調。">${escapeHtml(item.weeklyConclusion || "")}</textarea>
-        <p class="status red period-insight-error" hidden>AI 結論生成失敗，請稍後再試。</p>
+        <p class="status red period-insight-error" hidden>AI 結論生成失敗，請稍後再試，或先手動輸入結論。</p>
       </div>
       <div class="field"><label>下週調整建議</label><textarea name="nextWeekSuggestion">${escapeHtml(item.nextWeekSuggestion || "")}</textarea></div>
       <div class="modal-actions"><button class="secondary-button" type="button" data-action="close-analytics-period-modal">取消</button><button class="primary-button" type="submit">儲存</button></div>

@@ -1190,7 +1190,29 @@ async function generatePeriodInsightSafe(request, response) {
     return;
   }
 
-  const hasBasicData = body?.movieName && body?.platform;
+  const numberValue = (value) => {
+    const number = Number(value);
+    return Number.isFinite(number) ? number : 0;
+  };
+  const totalReach = numberValue(body.totalReach);
+  const totalEngagement = numberValue(body.totalEngagement);
+  const payload = {
+    movieName: String(body.movieName || "").trim(),
+    weekLabel: String(body.weekLabel || "").trim(),
+    dateRange: String(body.dateRange || "").trim(),
+    platform: String(body.platform || "").trim(),
+    phase: String(body.phase || "").trim(),
+    totalReach,
+    totalViews: numberValue(body.totalViews),
+    totalEngagement,
+    newFollowers: numberValue(body.newFollowers),
+    nonFollowerRate: numberValue(body.nonFollowerRate),
+    engagementRate: totalReach > 0 ? Number((totalEngagement / totalReach).toFixed(4)) : 0,
+    bestPost: String(body.bestPost || "").trim(),
+    worstPost: String(body.worstPost || "").trim(),
+  };
+
+  const hasBasicData = payload.movieName && payload.platform;
   if (!hasBasicData) {
     sendJson(response, 400, { error: "請先填寫基本區間數據，再生成結論。" });
     return;
@@ -1198,28 +1220,28 @@ async function generatePeriodInsightSafe(request, response) {
 
   const openaiApiKey = envValue("OPENAI_API_KEY");
   if (!openaiApiKey) {
-    sendJson(response, 200, { conclusion: fallbackPeriodConclusion(body), fallback: true });
+    sendJson(response, 500, { error: "OPENAI_API_KEY is not configured" });
     return;
   }
 
   const prompt = [
-    "你是一位資深影視社群數據分析師，請根據以下電影社群區間統計資料，產出一段適合放進週報的繁體中文本週結論。",
-    "請使用繁體中文，80 到 120 字，語氣專業但自然，不要條列，不要誇大數據；如果數據不足，請保守分析。",
-    "需要包含：本區間主要表現、可能原因、下週優化方向。",
-    `電影名稱：${body.movieName || "未提供"}`,
-    `週次：${body.weekLabel || "未提供"}`,
-    `日期區間：${body.dateRange || "未提供"}`,
-    `平台：${body.platform || "未提供"}`,
-    `宣傳階段：${body.phase || "未提供"}`,
-    `總觸及：${body.totalReach ?? 0}`,
-    `總瀏覽：${body.totalViews ?? 0}`,
-    `總互動：${body.totalEngagement ?? 0}`,
-    `新增追蹤：${body.newFollowers ?? 0}`,
-    `非粉絲比例：${body.nonFollowerRate ?? 0}`,
-    `互動率：${body.engagementRate ?? 0}`,
-    `最佳貼文：${body.bestPost || "未提供"}`,
-    `最差貼文：${body.worstPost || "未提供"}`,
-    `下週調整建議：${body.nextWeekSuggestion || "未提供"}`,
+    "你是一位資深影視社群數據分析師，請根據以下「區間社群統計資料」產出一段適合放進週報的繁體中文分析結論。",
+    "請遵守：使用繁體中文，80 到 120 字，語氣專業但自然，不要條列，不要加標題，不要誇大數據。",
+    "如果數據不足，請保守分析；內容需要包含本期整體表現、可能原因、下週優化方向。",
+    "資料如下：",
+    `電影名稱：${payload.movieName || "未提供"}`,
+    `週次：${payload.weekLabel || "未提供"}`,
+    `日期區間：${payload.dateRange || "未提供"}`,
+    `平台：${payload.platform || "未提供"}`,
+    `宣傳階段：${payload.phase || "未提供"}`,
+    `總觸及：${payload.totalReach}`,
+    `總瀏覽：${payload.totalViews}`,
+    `總互動：${payload.totalEngagement}`,
+    `新增追蹤：${payload.newFollowers}`,
+    `非粉絲比例：${payload.nonFollowerRate}`,
+    `互動率：${payload.engagementRate}`,
+    `最佳貼文：${payload.bestPost || "未提供"}`,
+    `最差貼文：${payload.worstPost || "未提供"}`,
     "請只回傳結論文字，不要加標題。",
   ].join("\n");
 
@@ -1238,17 +1260,19 @@ async function generatePeriodInsightSafe(request, response) {
     });
     const data = await openaiResponse.json();
     if (!openaiResponse.ok) {
-      if (openaiResponse.status === 401) {
-        sendJson(response, 401, { error: openAiErrorMessage(openaiResponse.status, data) });
-        return;
-      }
-      sendJson(response, 200, { conclusion: fallbackPeriodConclusion(body), fallback: true });
+      sendJson(response, openaiResponse.status, { error: openAiErrorMessage(openaiResponse.status, data) });
       return;
     }
     const outputText = data.output_text || data.output?.flatMap((item) => item.content || []).find((item) => item.text)?.text;
-    sendJson(response, 200, { conclusion: normalizeGeneratedConclusion(outputText) || fallbackPeriodConclusion(body) });
-  } catch {
-    sendJson(response, 200, { conclusion: fallbackPeriodConclusion(body), fallback: true });
+    const conclusion = normalizeGeneratedConclusion(outputText);
+    if (!conclusion) {
+      sendJson(response, 502, { error: "OpenAI 回傳空白內容，請稍後再試。" });
+      return;
+    }
+    sendJson(response, 200, { conclusion });
+  } catch (error) {
+    console.error("Period insight OpenAI error:", error);
+    sendJson(response, 500, { error: "AI 結論生成失敗，請稍後再試。" });
   }
 }
 
