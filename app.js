@@ -2615,8 +2615,35 @@ function postMetricInsightPayload(form) {
   };
 }
 
+function periodInsightPayload(form) {
+  const formData = new FormData(form);
+  const movie = getSelectedAnalyticsMovie();
+  const totalReach = Number(formData.get("totalReach") || 0);
+  const totalEngagement = Number(formData.get("totalEngagement") || 0);
+  return {
+    movieName: movie ? movieDisplayName(movie) : "",
+    weekLabel: formData.get("weekLabel") || "",
+    dateRange: formData.get("dateRange") || "",
+    platform: formData.get("platform") || "",
+    phase: formData.get("phase") || "",
+    totalReach,
+    totalViews: Number(formData.get("totalViews") || 0),
+    totalEngagement,
+    newFollowers: Number(formData.get("newFollowers") || 0),
+    nonFollowerRate: Number(formData.get("nonFollowerRate") || 0),
+    engagementRate: totalReach ? Number((totalEngagement / totalReach).toFixed(4)) : 0,
+    bestPost: formData.get("bestPost") || "",
+    worstPost: formData.get("worstPost") || "",
+    nextWeekSuggestion: formData.get("nextWeekSuggestion") || "",
+  };
+}
+
 function hasBasicPostMetricData(payload) {
   return Boolean(payload.movieName && payload.platform && payload.postTitle && (payload.reach || payload.views || payload.engagement));
+}
+
+function hasBasicPeriodData(payload) {
+  return Boolean(payload.movieName && payload.platform && (payload.weekLabel || payload.dateRange) && (payload.totalReach || payload.totalViews || payload.totalEngagement));
 }
 
 async function generatePostInsightFromForm() {
@@ -2654,7 +2681,47 @@ async function generatePostInsightFromForm() {
   } finally {
     if (button) {
       button.disabled = false;
-      button.textContent = "AI 生成結論";
+      button.textContent = "結論";
+    }
+  }
+}
+
+async function generatePeriodInsightFromForm() {
+  const form = document.getElementById("analyticsPeriodForm");
+  if (!form) return;
+  const button = form.querySelector('[data-action="generate-period-insight"]');
+  const textarea = form.querySelector('[name="weeklyConclusion"]');
+  const errorElement = form.querySelector(".period-insight-error");
+  const payload = periodInsightPayload(form);
+  if (!hasBasicPeriodData(payload)) {
+    window.alert("請先填寫基本區間數據，再生成結論。");
+    return;
+  }
+  if (button) {
+    button.disabled = true;
+    button.textContent = "生成中...";
+  }
+  if (errorElement) {
+    errorElement.hidden = true;
+    errorElement.textContent = "";
+  }
+  try {
+    const result = await requestJson("/api/generate-period-insight", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+    if (textarea) textarea.value = result.conclusion || "";
+  } catch (error) {
+    if (errorElement) {
+      errorElement.hidden = false;
+      errorElement.textContent = error.message || "AI 結論生成失敗，請稍後再試。";
+    } else {
+      window.alert(error.message || "AI 結論生成失敗，請稍後再試。");
+    }
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = "結論";
     }
   }
 }
@@ -2821,7 +2888,11 @@ function analyticsPeriodModal() {
       ${[["totalReach", "總觸及"], ["totalViews", "總瀏覽"], ["totalEngagement", "總互動"], ["newFollowers", "新增追蹤"], ["nonFollowerRate", "非粉絲比例 %"]].map(([name, label]) => `<div class="field"><label>${label}</label><input class="input" name="${name}" type="number" min="0" step="0.01" value="${Number(item[name] || 0)}" /></div>`).join("")}
       <div class="field"><label>最佳貼文</label><input class="input" name="bestPost" value="${escapeHtml(item.bestPost || "")}" /></div>
       <div class="field"><label>最差貼文</label><input class="input" name="worstPost" value="${escapeHtml(item.worstPost || "")}" /></div>
-      <div class="field"><label>本週結論</label><textarea name="weeklyConclusion">${escapeHtml(item.weeklyConclusion || "")}</textarea></div>
+      <div class="field field-wide post-conclusion-field">
+        <div class="field-label-row"><label for="periodWeeklyConclusion">本週結論</label><button class="secondary-button" type="button" data-action="generate-period-insight">結論</button></div>
+        <textarea id="periodWeeklyConclusion" name="weeklyConclusion" class="large-textarea" placeholder="可手動輸入，或點擊結論後再微調。">${escapeHtml(item.weeklyConclusion || "")}</textarea>
+        <p class="status red period-insight-error" hidden>AI 結論生成失敗，請稍後再試。</p>
+      </div>
       <div class="field"><label>下週調整建議</label><textarea name="nextWeekSuggestion">${escapeHtml(item.nextWeekSuggestion || "")}</textarea></div>
       <div class="modal-actions"><button class="secondary-button" type="button" data-action="close-analytics-period-modal">取消</button><button class="primary-button" type="submit">儲存</button></div>
     </form>
@@ -2845,8 +2916,8 @@ function postMetricModal() {
       ${[["reach", "觸及"], ["views", "瀏覽"], ["engagement", "互動"], ["shares", "分享"], ["saves", "收藏"], ["comments", "留言"], ["newFollowers", "新增追蹤"], ["nonFollowerRate", "非粉絲比例 %"]].map(([name, label]) => `<div class="field"><label>${label}</label><input class="input" name="${name}" type="number" min="0" step="0.01" value="${Number(item[name] || 0)}" /></div>`).join("")}
       <div class="field"><label>CTA</label><input class="input" name="cta" value="${escapeHtml(item.cta || "")}" /></div>
       <div class="field field-wide post-conclusion-field">
-        <div class="field-label-row"><label for="postMetricConclusion">結論</label><button class="secondary-button" type="button" data-action="generate-post-insight">AI 生成結論</button></div>
-        <textarea id="postMetricConclusion" name="conclusion" class="large-textarea" placeholder="可手動輸入，或點擊 AI 生成結論後再微調。">${escapeHtml(item.conclusion || "")}</textarea>
+        <div class="field-label-row"><label for="postMetricConclusion">結論</label><button class="secondary-button" type="button" data-action="generate-post-insight">結論</button></div>
+        <textarea id="postMetricConclusion" name="conclusion" class="large-textarea" placeholder="可手動輸入，或點擊結論後再微調。">${escapeHtml(item.conclusion || "")}</textarea>
         <p class="status red post-insight-error" hidden>AI 結論生成失敗，請稍後再試。</p>
       </div>
       <div class="modal-actions modal-footer-actions"><button class="secondary-button" type="button" data-action="close-post-metric-modal">取消</button><button class="primary-button" type="submit">儲存</button></div>
@@ -3533,6 +3604,9 @@ document.addEventListener("click", async (event) => {
   }
   if (action === "generate-post-insight") {
     await generatePostInsightFromForm();
+  }
+  if (action === "generate-period-insight") {
+    await generatePeriodInsightFromForm();
   }
 });
 
