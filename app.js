@@ -1,4 +1,6 @@
-﻿const storageKeys = {
+﻿import * as XLSX from "xlsx";
+
+const storageKeys = {
   covers: "movieSocialOps.movieCovers",
   movies: "movieSocialOps.movies",
   movieReleaseStatuses: "movieSocialOps.movieReleaseStatuses",
@@ -2616,54 +2618,63 @@ function safeExcelFileName(value) {
 
 async function exportAnalyticsExcel() {
   const movie = getSelectedAnalyticsMovie();
-  if (!movie) return;
+  if (!movie) {
+    window.alert("請先選擇電影專案。");
+    return;
+  }
   const periods = filteredAnalyticsPeriods();
   const posts = filteredSocialPostMetrics();
-  const XLSXModule = await import("xlsx");
-  const workbook = XLSXModule.utils.book_new();
-  const periodRows = periods.length ? periods.map((item) => ({
-    電影名稱: movieDisplayName(movie),
-    週次: item.weekLabel,
-    日期區間: item.dateRange,
-    平台: item.platform,
-    宣傳階段: item.phase,
-    總觸及: item.totalReach,
-    總瀏覽: item.totalViews,
-    總互動: item.totalEngagement,
-    新增追蹤: item.newFollowers,
-    非粉絲比例: `${Number(item.nonFollowerRate || 0).toFixed(2)}%`,
-    互動率: `${Number(item.engagementRate || 0).toFixed(2)}%`,
-    最佳貼文: item.bestPost,
-    最差貼文: item.worstPost,
-    本週結論: item.weeklyConclusion,
-    下週調整建議: item.nextWeekSuggestion,
-  })) : [{ 提示: "目前沒有資料" }];
-  const postRows = posts.length ? posts.map((item) => ({
-    電影名稱: movieDisplayName(movie),
-    平台: item.platform,
-    宣傳階段: item.phase,
-    發文日期: item.postDate,
-    數據記錄日: item.recordedDate,
-    觀察週期: item.observationPeriod,
-    貼文主題: item.postTitle,
-    內容類型: item.contentType,
-    貼文連結: item.postUrl,
-    觸及: item.reach,
-    瀏覽: item.views,
-    互動: item.engagement,
-    分享: item.shares,
-    收藏: item.saves,
-    留言: item.comments,
-    新增追蹤: item.newFollowers,
-    非粉絲比例: `${Number(item.nonFollowerRate || 0).toFixed(2)}%`,
-    互動率: `${Number(item.engagementRate || 0).toFixed(2)}%`,
-    CTA: item.cta,
-    結論: item.conclusion,
-  })) : [{ 提示: "目前沒有資料" }];
-  XLSXModule.utils.book_append_sheet(workbook, XLSXModule.utils.json_to_sheet(periodRows), "區間統計");
-  XLSXModule.utils.book_append_sheet(workbook, XLSXModule.utils.json_to_sheet(postRows), "貼文成效");
-  const today = new Date().toISOString().slice(0, 10);
-  XLSXModule.writeFile(workbook, `${safeExcelFileName(movieDisplayName(movie))}_社群數據分析_${today}.xlsx`);
+  try {
+    const workbook = XLSX.utils.book_new();
+    const periodRows = periods.length ? periods.map((item) => ({
+      電影名稱: movieDisplayName(movie),
+      週次: item.weekLabel,
+      日期區間: item.dateRange,
+      平台: item.platform,
+      宣傳階段: item.phase,
+      總觸及: item.totalReach,
+      總瀏覽: item.totalViews,
+      總互動: item.totalEngagement,
+      新增追蹤: item.newFollowers,
+      非粉絲比例: `${Number(item.nonFollowerRate || 0).toFixed(2)}%`,
+      互動率: `${Number(item.engagementRate || 0).toFixed(2)}%`,
+      最佳貼文: item.bestPost,
+      最差貼文: item.worstPost,
+      本週結論: item.weeklyConclusion,
+      下週調整建議: item.nextWeekSuggestion,
+    })) : [{ 提示: "目前沒有資料" }];
+    const postRows = posts.length ? posts.map((item) => ({
+      電影名稱: movieDisplayName(movie),
+      平台: item.platform,
+      宣傳階段: item.phase,
+      發文日期: item.postDate,
+      數據記錄日: item.recordedDate,
+      觀察週期: item.observationPeriod,
+      貼文主題: item.postTitle,
+      內容類型: item.contentType,
+      貼文連結: item.postUrl,
+      觸及: item.reach,
+      瀏覽: item.views,
+      互動: item.engagement,
+      分享: item.shares,
+      收藏: item.saves,
+      留言: item.comments,
+      新增追蹤: item.newFollowers,
+      非粉絲比例: `${Number(item.nonFollowerRate || 0).toFixed(2)}%`,
+      互動率: `${Number(item.engagementRate || 0).toFixed(2)}%`,
+      CTA: item.cta,
+      結論: item.conclusion,
+    })) : [{ 提示: "目前沒有資料" }];
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(periodRows), "區間統計");
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(postRows), "貼文成效");
+    const today = new Date().toISOString().slice(0, 10);
+    XLSX.writeFile(workbook, `${safeExcelFileName(movieDisplayName(movie))}_社群數據分析_${today}.xlsx`);
+    analyticsNotice = periods.length || posts.length ? "Excel 已匯出。" : "Excel 已匯出，工作表內會顯示目前沒有資料。";
+    render();
+  } catch (error) {
+    analyticsDataError = `Excel 匯出失敗：${error.message || "請稍後再試。"}`;
+    render();
+  }
 }
 
 function analyticsPeriodTable(periods) {
@@ -3752,6 +3763,7 @@ mockData.aiStyleExamples = readStorage(storageKeys.styleExamples, mockData.aiSty
 movieReleaseStatusOverrides = readStorage(storageKeys.movieReleaseStatuses, movieReleaseStatusOverrides);
 render();
 checkAuthStatus();
+
 
 
 
