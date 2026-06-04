@@ -1190,9 +1190,7 @@ async function generatePeriodInsightSafe(request, response) {
     return;
   }
 
-  const hasBasicData = body?.movieName && body?.platform && (body?.weekLabel || body?.dateRange) && (
-    Number(body.totalReach || 0) || Number(body.totalViews || 0) || Number(body.totalEngagement || 0)
-  );
+  const hasBasicData = body?.movieName && body?.platform;
   if (!hasBasicData) {
     sendJson(response, 400, { error: "請先填寫基本區間數據，再生成結論。" });
     return;

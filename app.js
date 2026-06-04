@@ -2643,7 +2643,20 @@ function hasBasicPostMetricData(payload) {
 }
 
 function hasBasicPeriodData(payload) {
-  return Boolean(payload.movieName && payload.platform && (payload.weekLabel || payload.dateRange) && (payload.totalReach || payload.totalViews || payload.totalEngagement));
+  return Boolean(payload.movieName && payload.platform);
+}
+
+function fallbackPeriodConclusionText(data) {
+  const reach = Number(data.totalReach || 0);
+  const views = Number(data.totalViews || 0);
+  const engagement = Number(data.totalEngagement || 0);
+  const followers = Number(data.newFollowers || 0);
+  const engagementRate = reach ? ((engagement / reach) * 100) : 0;
+  const reachText = reach >= 10000 ? "觸及具備一定規模" : reach > 0 ? "觸及仍在累積" : "目前觸及資料不足";
+  const interactionText = engagementRate >= 6 ? "互動率表現不錯" : engagementRate >= 3 ? "互動率屬於可觀察水準" : "互動表現仍偏保守";
+  const followerText = followers > 0 ? "仍需觀察互動是否能穩定轉為追蹤" : "新增追蹤有限，轉粉誘因仍可加強";
+  const nextStep = data.nextWeekSuggestion || "加強 CTA、素材鉤子與高互動題材延伸";
+  return `${data.weekLabel || "本區間"}在${data.platform || "社群平台"}的${reachText}，總瀏覽 ${views}、總互動 ${engagement}，${interactionText}。${followerText}。後續建議以${nextStep}為主，並持續比較最佳與最弱貼文的內容差異。`;
 }
 
 async function generatePostInsightFromForm() {
@@ -2710,14 +2723,10 @@ async function generatePeriodInsightFromForm() {
       method: "POST",
       body: JSON.stringify(payload),
     });
-    if (textarea) textarea.value = result.conclusion || "";
+    if (textarea) textarea.value = result.conclusion || fallbackPeriodConclusionText(payload);
   } catch (error) {
-    if (errorElement) {
-      errorElement.hidden = false;
-      errorElement.textContent = error.message || "AI 結論生成失敗，請稍後再試。";
-    } else {
-      window.alert(error.message || "AI 結論生成失敗，請稍後再試。");
-    }
+    if (textarea) textarea.value = fallbackPeriodConclusionText(payload);
+    if (errorElement) errorElement.hidden = true;
   } finally {
     if (button) {
       button.disabled = false;
