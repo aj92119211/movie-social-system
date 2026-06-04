@@ -510,34 +510,61 @@ async function handleMoviesApi(request, response, movieId) {
 
 async function loadRelevantStyleExamples(filters = {}) {
   try {
-    const rows = await supabaseRequest("/ai_style_examples?select=*&limit=200");
+    const rows = await supabaseRequest("/ai_style_examples?select=*&limit=1000");
     const examples = (rows || []).map(mapStyleExampleFromDb).filter((example) => example.isActive !== false);
-    const normalized = {
-      type: String(filters.type || "").toLowerCase(),
-      platform: String(filters.platform || "").toLowerCase(),
-      movieGenre: String(filters.movieGenre || filters.genre || "").toLowerCase(),
-      campaignStage: String(filters.campaignStage || filters.stage || "").toLowerCase(),
-      tone: String(filters.tone || "").toLowerCase(),
+    const normalize = (value) => {
+      const text = String(value || "").trim();
+      const aliases = {
+        Instagram: "IG",
+        Facebook: "FB",
+        "IG 限動": "IG",
+        Reels: "IG",
+        "Instagram Reels": "IG",
+        驚悚: "恐怖",
+        前導期: "上映前",
+        預告上線: "上映前",
+        上映倒數: "上映前",
+        口碑擴散: "口碑期",
+      };
+      return (aliases[text] || text).toLowerCase();
     };
+    const normalized = {
+      type: normalize(filters.type),
+      platform: normalize(filters.platform),
+      movieGenre: normalize(filters.movieGenre || filters.genre),
+      campaignStage: normalize(filters.campaignStage || filters.stage),
+      tone: normalize(filters.tone),
+    };
+    const isGeneric = (value) => normalize(value) === "通用";
+    const matchesExactOrGeneric = (fieldValue, filterValue) => !filterValue || normalize(fieldValue) === filterValue || isGeneric(fieldValue);
 
     return examples
+      .filter((example) => {
+        if (normalized.type && normalize(example.type) !== normalized.type) return false;
+        if (!matchesExactOrGeneric(example.platform, normalized.platform)) return false;
+        if (!matchesExactOrGeneric(example.movieGenre, normalized.movieGenre)) return false;
+        if (!matchesExactOrGeneric(example.campaignStage, normalized.campaignStage)) return false;
+        return true;
+      })
       .map((example) => {
         const fields = {
-          type: String(example.type || "").toLowerCase(),
-          platform: String(example.platform || "").toLowerCase(),
-          movieGenre: String(example.movieGenre || "").toLowerCase(),
-          campaignStage: String(example.campaignStage || "").toLowerCase(),
-          tone: String(example.tone || "").toLowerCase(),
+          platform: normalize(example.platform),
+          movieGenre: normalize(example.movieGenre),
+          campaignStage: normalize(example.campaignStage),
+          tone: normalize(example.tone),
         };
-        const matchScore = Object.entries(normalized).reduce((total, [key, value]) => {
-          if (!value) return total;
-          return total + (fields[key] && (fields[key].includes(value) || value.includes(fields[key])) ? 1 : 0);
-        }, 0);
+        const matchScore = [
+          normalized.platform && fields.platform === normalized.platform ? 1 : 0,
+          normalized.movieGenre && fields.movieGenre === normalized.movieGenre ? 1 : 0,
+          normalized.campaignStage && fields.campaignStage === normalized.campaignStage ? 1 : 0,
+          normalized.tone && fields.tone && (fields.tone.includes(normalized.tone) || normalized.tone.includes(fields.tone)) ? 0.5 : 0,
+        ].reduce((total, value) => total + value, 0);
+        const genericPenalty = [example.platform, example.movieGenre, example.campaignStage].filter(isGeneric).length * 0.25;
         const qualityScore = Number(example.score || 3) / 5;
-        return { example, score: matchScore * 10 + qualityScore };
+        return { example, score: matchScore * 10 + qualityScore - genericPenalty };
       })
       .sort((a, b) => b.score - a.score)
-      .slice(0, 5)
+      .slice(0, 8)
       .map((item) => item.example);
   } catch {
     return [];

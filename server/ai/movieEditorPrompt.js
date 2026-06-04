@@ -9,13 +9,11 @@ const MOVIE_EDITOR_SYSTEM_PROMPT = `
 
 語氣要求：
 - 自然、有社群感、白話、短句、有小編感。
-- 不要太像新聞稿。
-- 不要太 AI。
-- 可以有情緒與節奏，但不要浮誇。
+- 不要太像新聞稿，也不要太 AI。
 
 專業能力：
 - 電影宣傳文案
-- Instagram、Facebook、Threads、YouTube Shorts 文案
+- IG / FB / Threads / YouTube Shorts 文案
 - 留言回覆
 - 負評處理
 - 互動題產生
@@ -33,11 +31,6 @@ const MOVIE_EDITOR_SYSTEM_PROMPT = `
 - 不要攻擊觀眾。
 - 不要保證票房或成效。
 - 不要洩漏內部資料。
-
-工作原則：
-- 若資料不足，請保守處理，不要自行補劇情。
-- 若需要使用角色、劇情、口碑或數據，必須以使用者提供的資料為準。
-- 每次輸出都要讓電影社群小編可以直接拿去使用或微調。
 `.trim();
 
 function getOpenAIClient(apiKey) {
@@ -59,7 +52,7 @@ function buildMovieContext(movie = {}) {
   return [
     "目前電影資料：",
     `電影名稱：${movie.title || movie.name || movie.movieTitle || "未提供"}`,
-    `類型：${movie.genre || movie.movieGenre || "未提供"}`,
+    `電影類型：${movie.genre || movie.movieGenre || "未提供"}`,
     `上映日期：${movie.releaseDate || movie.release_date || "未提供"}`,
     `宣傳階段：${movie.campaignStage || movie.phase || movie.releaseStatus || "未提供"}`,
     `核心賣點：${formatList(movie.coreSellingPoints || movie.core_selling_points)}`,
@@ -70,26 +63,30 @@ function buildMovieContext(movie = {}) {
   ].join("\n");
 }
 
+function exampleValue(example, camelKey, snakeKey) {
+  return example?.[camelKey] || example?.[snakeKey] || "";
+}
+
 function buildStyleExamplesBlock(styleExamples = []) {
   if (!Array.isArray(styleExamples) || !styleExamples.length) return "";
   return [
-    "可參考的風格範例：",
-    ...styleExamples.slice(0, 5).map((example, index) => [
+    "可參考的 AI 風格範例：",
+    ...styleExamples.slice(0, 8).map((example, index) => [
       `範例 ${index + 1}`,
-      `類型：${example.type || "未提供"}`,
-      `平台：${example.platform || "未提供"}`,
-      `電影類型：${example.movieGenre || example.movie_genre || "未提供"}`,
-      `宣傳情境：${example.campaignStage || example.campaign_stage || "未提供"}`,
-      `語氣：${example.tone || "未提供"}`,
-      `範例內容：${example.exampleContent || example.example_content || "未提供"}`,
-      `為什麼這則好：${example.whyItWorks || example.why_it_works || "未提供"}`,
-      `使用建議：${example.usageNote || example.usage_note || "未提供"}`,
-      `品質標籤：${Array.isArray(example.qualityTags || example.quality_tags) ? (example.qualityTags || example.quality_tags).join("、") : "未提供"}`,
-      `適用任務：${example.useCase || example.use_case || "未提供"}`,
-      `推薦分數：${example.score || 3}/5`,
-      `AI 使用提示：${example.aiInstruction || example.ai_instruction || "未提供"}`,
+      `類型：${exampleValue(example, "type", "type") || "未提供"}`,
+      `平台：${exampleValue(example, "platform", "platform") || "未提供"}`,
+      `電影類型：${exampleValue(example, "movieGenre", "movie_genre") || "未提供"}`,
+      `宣傳情境：${exampleValue(example, "campaignStage", "campaign_stage") || "未提供"}`,
+      `語氣：${exampleValue(example, "tone", "tone") || "未提供"}`,
+      `範例內容：${exampleValue(example, "exampleContent", "example_content") || "未提供"}`,
+      `為什麼這則好：${exampleValue(example, "whyItWorks", "why_it_works") || "未提供"}`,
+      `使用建議：${exampleValue(example, "usageNote", "usage_note") || "未提供"}`,
+      `品質標籤：${formatList(exampleValue(example, "qualityTags", "quality_tags"))}`,
+      `適用任務：${exampleValue(example, "useCase", "use_case") || "未提供"}`,
+      `推薦分數：${exampleValue(example, "score", "score") || 3}/5`,
+      `AI 使用提示：${exampleValue(example, "aiInstruction", "ai_instruction") || "未提供"}`,
     ].join("\n")),
-    "請參考以上範例的語氣、節奏與操作邏輯，但不要逐字照抄。",
+    "請只模仿以上範例的語氣、節奏、回覆策略與判斷邏輯，不要直接複製範例原文。每次都要產生新的內容。",
   ].join("\n\n");
 }
 
@@ -98,8 +95,8 @@ function buildTaskInput({ taskName, movie, brief, data, styleExamples }) {
     buildMovieContext(movie),
     buildStyleExamplesBlock(styleExamples),
     `任務：${taskName}`,
-    `需求：${brief || "請依照電影資料完成任務。"}`,
-    data ? `補充資料：\n${typeof data === "string" ? data : JSON.stringify(data, null, 2)}` : "",
+    `任務說明：${brief || "請依照電影資料與需求產生內容。"}`,
+    data ? `使用者輸入資料：\n${typeof data === "string" ? data : JSON.stringify(data, null, 2)}` : "",
   ].filter(Boolean).join("\n\n");
 }
 
@@ -120,16 +117,22 @@ function percent(value) {
 async function generateSocialPost(options) {
   return runMovieEditorTask({
     ...options,
-    taskName: "產生社群貼文",
-    brief: options.brief || "請依平台產生可直接發布的電影社群貼文，避免爆雷，並保留社群感。",
+    taskName: "產生電影社群貼文",
+    brief: options.brief || "請產生適合社群使用的電影宣傳文案，角度要有小編感、自然、不劇透。",
   });
 }
 
 async function generateCommentReply(options) {
   return runMovieEditorTask({
     ...options,
-    taskName: "產生留言回覆",
-    brief: options.brief || "請依留言情境產生自然回覆。若是負評，請冷靜、尊重、不攻擊觀眾。",
+    taskName: "產生小編留言回覆",
+    brief: options.brief || [
+      "請產生適合小編使用的留言回覆。",
+      "請根據使用者留言、平台、電影類型與宣傳情境回覆。",
+      "若有風格範例，請模仿語氣、節奏與回覆策略，但不要直接複製範例原文。",
+      "回覆要自然、有社群感、短句、適合直接貼出。",
+      "不要爆雷，不要攻擊觀眾，不要過度官方。",
+    ].join("\n"),
   });
 }
 
@@ -137,7 +140,7 @@ async function generateQuestionIdeas(options) {
   return runMovieEditorTask({
     ...options,
     taskName: "產生互動問答題",
-    brief: options.brief || "請產生適合 IG 限動、Threads、Facebook 或 Reels 使用的互動題。",
+    brief: options.brief || "請產生適合 IG 限動、Threads、Facebook 或 Reels 使用的互動題，不劇透、可引導留言或投票。",
   });
 }
 
@@ -145,7 +148,7 @@ async function generateCTA(options) {
   return runMovieEditorTask({
     ...options,
     taskName: "產生 CTA 文案",
-    brief: options.brief || "請產生短句 CTA，適合放在 IG、Facebook、Threads 或短影音結尾。",
+    brief: options.brief || "請產生短 CTA，適合 IG、Facebook、Threads 使用，語氣自然，不要過度銷售。",
   });
 }
 
@@ -178,9 +181,9 @@ async function analyzePostData(options) {
     ...options,
     taskName: "分析單篇貼文數據",
     brief: options.brief || [
-      "請產出電影社群小編看得懂的數據分析報告。",
-      "格式包含：一、整體判斷；二、數據解讀；三、可能問題；四、下一篇貼文建議；五、可直接使用的 CTA 文案。",
-      "不要只重複數字，請解釋這些數字代表什麼。",
+      "請產生給電影社群小編看的分析報告。",
+      "不要只重複數字，要說明數字代表什麼。",
+      "請包含整體判斷、數據解讀、可能問題、下一篇建議與 CTA 建議。",
     ].join("\n"),
     data: metricsSummary,
   });
@@ -189,8 +192,8 @@ async function analyzePostData(options) {
 async function generateCampaignSuggestions(options) {
   return runMovieEditorTask({
     ...options,
-    taskName: "產生宣傳節奏建議",
-    brief: options.brief || "請依上映前、上映中、下檔前或口碑期，提出下一波社群宣傳節奏與內容方向。",
+    taskName: "產生宣傳建議",
+    brief: options.brief || "請根據電影資料與目前宣傳階段，提出下一步社群宣傳建議。",
   });
 }
 
