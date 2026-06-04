@@ -976,6 +976,13 @@ function normalizeQuestionBatchPayload(value) {
   };
 }
 
+function normalizeGeneratedConclusion(text) {
+  return String(text || "")
+    .replace(/^["「]|["」]$/g, "")
+    .replace(/^結論[:：]\s*/u, "")
+    .trim();
+}
+
 function openAiErrorMessage(statusCode, data) {
   if (statusCode === 401) {
     const code = data?.error?.code || data?.error?.type || "unauthorized";
@@ -985,6 +992,91 @@ function openAiErrorMessage(statusCode, data) {
     return "OpenAI API 額度不足或付款方案尚未啟用，請到 OpenAI 後台檢查用量與 Billing。";
   }
   return data?.error?.message || "OpenAI API 請求失敗。";
+}
+
+async function generatePostInsight(request, response) {
+  const openaiApiKey = envValue("OPENAI_API_KEY");
+  if (!openaiApiKey) {
+    sendJson(response, 500, { error: "尚未設定 OpenAI API Key，請到 Render Environment Variables 設定 OPENAI_API_KEY。" });
+    return;
+  }
+
+  let body;
+  try {
+    body = await readJsonBody(request);
+  } catch (error) {
+    sendJson(response, 400, { error: error.message });
+    return;
+  }
+
+  const hasBasicData = body?.movieName && body?.platform && body?.postTitle && (
+    Number(body.reach || 0) || Number(body.views || 0) || Number(body.engagement || 0)
+  );
+  if (!hasBasicData) {
+    sendJson(response, 400, { error: "請先填寫基本貼文數據，再生成結論。" });
+    return;
+  }
+
+  const prompt = `
+你是一位資深影視社群數據分析師，請根據以下貼文成效資料，產出一段適合放進週報的繁體中文分析結論。
+
+請遵守：
+- 使用繁體中文
+- 80 到 120 字
+- 語氣專業但自然
+- 不要條列
+- 不要誇大數據
+- 如果數據不足，請保守分析
+- 需要包含：主要表現、可能原因、下一步建議
+
+貼文資料：
+電影名稱：${body.movieName || "未提供"}
+平台：${body.platform || "未提供"}
+宣傳階段：${body.phase || "未提供"}
+發文日期：${body.postDate || "未提供"}
+數據記錄日：${body.recordedDate || "未提供"}
+貼文主題：${body.postTitle || "未提供"}
+內容類型：${body.contentType || "未提供"}
+觀察週期：${body.observationPeriod || "未提供"}
+觸及：${body.reach ?? 0}
+瀏覽：${body.views ?? 0}
+互動：${body.engagement ?? 0}
+分享：${body.shares ?? 0}
+收藏：${body.saves ?? 0}
+留言：${body.comments ?? 0}
+新增追蹤：${body.newFollowers ?? 0}
+非粉絲比例：${body.nonFollowerRate ?? 0}
+互動率：${body.engagementRate ?? 0}
+CTA：${body.cta || "未提供"}
+
+請只回傳結論文字，不要加標題。
+`.trim();
+
+  try {
+    const openaiResponse = await fetch("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${openaiApiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: envValue("OPENAI_MODEL") || "gpt-4.1-mini",
+        instructions: "你是影視社群數據分析師。請只輸出一段繁體中文週報結論，不要條列、不要加標題。",
+        input: prompt,
+      }),
+    });
+
+    const data = await openaiResponse.json();
+    if (!openaiResponse.ok) {
+      sendJson(response, openaiResponse.status, { error: openAiErrorMessage(openaiResponse.status, data) });
+      return;
+    }
+
+    const outputText = data.output_text || data.output?.flatMap((item) => item.content || []).find((item) => item.text)?.text;
+    sendJson(response, 200, { conclusion: normalizeGeneratedConclusion(outputText) });
+  } catch (error) {
+    sendJson(response, error.statusCode || 500, { error: "AI 結論生成失敗，請稍後再試。" });
+  }
 }
 
 async function generateCopy(request, response) {
@@ -1502,6 +1594,11 @@ const server = http.createServer((request, response) => {
 
   if (request.method === "POST" && url.pathname === "/api/generate-question-batch") {
     generateQuestionBatch(request, response);
+    return;
+  }
+
+  if (request.method === "POST" && url.pathname === "/api/generate-post-insight") {
+    generatePostInsight(request, response);
     return;
   }
 

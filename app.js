@@ -2588,6 +2588,77 @@ function postMetricPayload(formData) {
   };
 }
 
+function postMetricInsightPayload(form) {
+  const formData = new FormData(form);
+  const movie = getSelectedAnalyticsMovie();
+  const reach = Number(formData.get("reach") || 0);
+  const engagement = Number(formData.get("engagement") || 0);
+  return {
+    movieName: movie ? movieDisplayName(movie) : "",
+    platform: formData.get("platform") || "",
+    phase: formData.get("phase") || "",
+    postDate: formData.get("postDate") || "",
+    recordedDate: formData.get("recordedDate") || "",
+    observationPeriod: formData.get("observationPeriod") || "",
+    postTitle: formData.get("postTitle") || "",
+    contentType: formData.get("contentType") || "",
+    reach,
+    views: Number(formData.get("views") || 0),
+    engagement,
+    shares: Number(formData.get("shares") || 0),
+    saves: Number(formData.get("saves") || 0),
+    comments: Number(formData.get("comments") || 0),
+    newFollowers: Number(formData.get("newFollowers") || 0),
+    nonFollowerRate: Number(formData.get("nonFollowerRate") || 0),
+    cta: formData.get("cta") || "",
+    engagementRate: reach ? Number((engagement / reach).toFixed(4)) : 0,
+  };
+}
+
+function hasBasicPostMetricData(payload) {
+  return Boolean(payload.movieName && payload.platform && payload.postTitle && (payload.reach || payload.views || payload.engagement));
+}
+
+async function generatePostInsightFromForm() {
+  const form = document.getElementById("postMetricForm");
+  if (!form) return;
+  const button = form.querySelector('[data-action="generate-post-insight"]');
+  const textarea = form.querySelector('[name="conclusion"]');
+  const errorElement = form.querySelector(".post-insight-error");
+  const payload = postMetricInsightPayload(form);
+  if (!hasBasicPostMetricData(payload)) {
+    window.alert("請先填寫基本貼文數據，再生成結論。");
+    return;
+  }
+  if (button) {
+    button.disabled = true;
+    button.textContent = "生成中...";
+  }
+  if (errorElement) {
+    errorElement.hidden = true;
+    errorElement.textContent = "";
+  }
+  try {
+    const result = await requestJson("/api/generate-post-insight", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+    if (textarea) textarea.value = result.conclusion || "";
+  } catch (error) {
+    if (errorElement) {
+      errorElement.hidden = false;
+      errorElement.textContent = error.message || "AI 結論生成失敗，請稍後再試。";
+    } else {
+      window.alert(error.message || "AI 結論生成失敗，請稍後再試。");
+    }
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = "AI 生成結論";
+    }
+  }
+}
+
 async function saveAnalyticsPeriod(formData) {
   const method = editingAnalyticsPeriodId ? "PATCH" : "POST";
   const url = editingAnalyticsPeriodId ? `/api/social-analytics/periods/${encodeURIComponent(editingAnalyticsPeriodId)}` : "/api/social-analytics/periods";
@@ -2773,8 +2844,12 @@ function postMetricModal() {
       <div class="field field-wide"><label>貼文連結</label><input class="input" name="postUrl" type="url" value="${escapeHtml(item.postUrl || "")}" placeholder="https://..." /></div>
       ${[["reach", "觸及"], ["views", "瀏覽"], ["engagement", "互動"], ["shares", "分享"], ["saves", "收藏"], ["comments", "留言"], ["newFollowers", "新增追蹤"], ["nonFollowerRate", "非粉絲比例 %"]].map(([name, label]) => `<div class="field"><label>${label}</label><input class="input" name="${name}" type="number" min="0" step="0.01" value="${Number(item[name] || 0)}" /></div>`).join("")}
       <div class="field"><label>CTA</label><input class="input" name="cta" value="${escapeHtml(item.cta || "")}" /></div>
-      <div class="field"><label>結論</label><textarea name="conclusion">${escapeHtml(item.conclusion || "")}</textarea></div>
-      <div class="modal-actions"><button class="secondary-button" type="button" data-action="close-post-metric-modal">取消</button><button class="primary-button" type="submit">儲存</button></div>
+      <div class="field field-wide post-conclusion-field">
+        <div class="field-label-row"><label for="postMetricConclusion">結論</label><button class="secondary-button" type="button" data-action="generate-post-insight">AI 生成結論</button></div>
+        <textarea id="postMetricConclusion" name="conclusion" class="large-textarea" placeholder="可手動輸入，或點擊 AI 生成結論後再微調。">${escapeHtml(item.conclusion || "")}</textarea>
+        <p class="status red post-insight-error" hidden>AI 結論生成失敗，請稍後再試。</p>
+      </div>
+      <div class="modal-actions modal-footer-actions"><button class="secondary-button" type="button" data-action="close-post-metric-modal">取消</button><button class="primary-button" type="submit">儲存</button></div>
     </form>
   </section></div>`;
 }
@@ -3455,6 +3530,9 @@ document.addEventListener("click", async (event) => {
   }
   if (action === "export-analytics-excel") {
     await exportAnalyticsExcel();
+  }
+  if (action === "generate-post-insight") {
+    await generatePostInsightFromForm();
   }
 });
 

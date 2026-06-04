@@ -1009,6 +1009,36 @@ textarea {
   padding-top: 4px;
 }
 
+.modal-footer-actions {
+  justify-self: end;
+  align-self: end;
+  margin-top: 10px;
+  padding-top: 16px;
+}
+
+.field-label-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+
+.post-conclusion-field {
+  display: grid;
+  gap: 6px;
+}
+
+.large-textarea {
+  width: 100%;
+  min-height: 180px;
+  max-height: 240px;
+  resize: vertical;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  line-height: 1.6;
+}
+
 .review-board {
   display: grid;
   grid-template-columns: repeat(4, minmax(220px, 1fr));
