@@ -468,46 +468,6 @@ function schedulesForCurrentWeek() {
     .sort((a, b) => parseLocalDate(a.date) - parseLocalDate(b.date));
 }
 
-function scheduleAutomationBaseDate(movie) {
-  return parseLocalDate(movie?.releaseDate) || parseLocalDate(movie?.release_date) || addDays(new Date(), 30);
-}
-
-function buildThirtyDayScheduleDrafts(movie) {
-  const baseDate = scheduleAutomationBaseDate(movie);
-  const title = movieDisplayName(movie);
-  const releaseLabel = movieReleaseDateLabel(movie?.releaseDate || movie?.release_date);
-  const tone = movie?.socialTone || "自然、有小編感";
-  const sellingPoint = (movie?.coreSellingPoints || [])[0] || "故事亮點";
-  const owner = movie?.owner || "社群小編";
-  const templates = [
-    [-30, "Facebook", "30 天宣傳啟動", `《${title}》宣傳正式啟動。接下來會慢慢公開角色、故事與上映資訊，先把這部片放進待看片單。上映：${releaseLabel}`],
-    [-24, "Instagram", "主視覺亮點貼文", `第一眼先記住《${title}》的氣氛。這次主打「${sellingPoint}」，會用${tone}的節奏帶大家進入故事。`],
-    [-21, "Threads", "一句話互動", `如果只能用一句話形容你對《${title}》的第一印象，你會怎麼說？`],
-    [-17, "Instagram Reels", "短影音預熱", `用 15 秒靠近《${title}》的核心氛圍。先不爆雷，只留一點讓人想進戲院的線索。`],
-    [-14, "Facebook", "兩週倒數提醒", `倒數兩週，《${title}》即將上映。這次最想讓觀眾感受到的是：${sellingPoint}。`],
-    [-10, "Instagram", "角色或劇照貼文", `這張劇照藏著《${title}》的情緒線索。你覺得下一秒會發生什麼事？`],
-    [-7, "Threads", "上映前一週互動題", `上映前一週，先問大家：看《${title}》你最期待的是角色、劇情，還是氣氛？`],
-    [-5, "Facebook", "口碑期待貼文", `離《${title}》上映越來越近。這次想邀請大家把注意力放在故事細節與角色選擇上。`],
-    [-3, "Instagram", "上映倒數三天", `倒數 3 天。《${title}》準備好和大家見面，先約好一起進戲院的人。`],
-    [-1, "Threads", "上映前一天提醒", `明天就是《${title}》上映日。你會選首日衝，還是週末揪朋友一起看？`],
-    [0, "Facebook", "上映日公告", `《${title}》今日上映。謝謝每一位走進戲院的觀眾，也歡迎看完回來分享不爆雷心得。`],
-    [3, "Instagram", "首週末口碑互動", `首週看完《${title}》的你，最想推薦朋友注意哪一個細節？留言請保持不爆雷。`],
-    [7, "Facebook", "上映首週整理", `《${title}》上映首週，整理幾個觀眾最有感的討論方向。還沒看的朋友，這週可以安排起來。`],
-  ];
-  return templates.map(([offset, platform, topic, copy], index) => ({
-    id: `sch-auto-${Date.now()}-${index}`,
-    movieId: movie.id,
-    date: formatWeekDate(addDays(baseDate, offset)),
-    platform,
-    topic,
-    copy,
-    assetId: "",
-    assetLinkUrl: "",
-    status: "草稿",
-    owner,
-  }));
-}
-
 function normalizeSchedulesWithMovieIds(schedules) {
   const validMovieIds = new Set(mockData.movies.map((movie) => movie.id));
   const fallbackMovieId = selectedScheduleMovieId && validMovieIds.has(selectedScheduleMovieId) ? selectedScheduleMovieId : mockData.movies[0]?.id || "";
@@ -1531,7 +1491,6 @@ function schedulePage() {
       <input class="input" readonly value="${selectedMovie ? `${selectedMovie.title} 的社群排程` : "請先新增電影"}" />
       <button class="secondary-button" type="button" data-action="schedule-week-prev">上一週</button>
       <button class="primary-button" type="button" data-action="open-schedule-modal" ${selectedMovie ? "" : "disabled"}>新增排程</button>
-      <button class="secondary-button" type="button" data-action="generate-thirty-day-schedule" ${selectedMovie ? "" : "disabled"}>產生 30 天草稿</button>
       <button class="secondary-button" type="button" data-action="schedule-week-next">下一週</button>
     </div>
     <div class="task-item" style="margin-bottom:16px"><strong>${escapeHtml(selectedMovie?.title || "尚無電影")}</strong><span class="muted">${formatWeekDate(start)} - ${formatWeekDate(end)}，共 ${visibleSchedules.length} 筆排程</span></div>
@@ -3604,25 +3563,6 @@ document.addEventListener("click", async (event) => {
     isScheduleModalOpen = true;
     editingScheduleId = null;
     render();
-  }
-  if (action === "generate-thirty-day-schedule") {
-    const movie = getSelectedScheduleMovie();
-    if (!movie) return window.alert("請先選擇電影，再產生排程草稿。");
-    const existingCount = mockData.schedules.filter((schedule) => scheduleMovieId(schedule) === movie.id).length;
-    if (existingCount && !window.confirm(`這部電影目前已有 ${existingCount} 筆排程，要追加一組 30 天草稿嗎？`)) return;
-    const drafts = buildThirtyDayScheduleDrafts(movie);
-    const previousSchedules = [...mockData.schedules];
-    try {
-      await saveSchedulesAndSync([...mockData.schedules, ...drafts]);
-      currentScheduleWeekStart = startOfWeek(parseLocalDate(drafts[0].date) || new Date());
-      window.alert(`已為「${movieDisplayName(movie)}」新增 ${drafts.length} 筆 30 天社群排程草稿。`);
-      render();
-    } catch (error) {
-      mockData.schedules = previousSchedules;
-      writeLocalStorageOnly(storageKeys.schedules, mockData.schedules);
-      window.alert(error.message || "產生排程草稿失敗，請稍後再試。");
-      render();
-    }
   }
   if (action === "edit-schedule") {
     editingScheduleId = actionElement.dataset.scheduleId;
