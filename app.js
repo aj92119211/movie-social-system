@@ -683,10 +683,10 @@ async function loadStyleExamplesFromServer(force = false) {
 
 function styleExamplePayloadFromForm(formData) {
   return {
-    type: String(formData.get("type") || "").trim(),
-    platform: String(formData.get("platform") || "").trim(),
-    movieGenre: String(formData.get("movieGenre") || "").trim(),
-    campaignStage: String(formData.get("campaignStage") || "").trim(),
+    type: String(formData.get("type") || "貼文").trim(),
+    platform: String(formData.get("platform") || "通用").trim(),
+    movieGenre: String(formData.get("movieGenre") || "通用").trim(),
+    campaignStage: String(formData.get("campaignStage") || "通用").trim(),
     tone: String(formData.get("tone") || "").trim(),
     exampleContent: String(formData.get("exampleContent") || "").trim(),
     whyItWorks: String(formData.get("whyItWorks") || "").trim(),
@@ -696,6 +696,24 @@ function styleExamplePayloadFromForm(formData) {
     isActive: formData.get("isActive") === "on",
     score: Math.min(5, Math.max(1, Math.round(Number(formData.get("score") || 3)))),
     aiInstruction: String(formData.get("aiInstruction") || "").trim(),
+  };
+}
+
+function defaultStyleExample() {
+  return {
+    type: "貼文",
+    platform: "通用",
+    movieGenre: "通用",
+    campaignStage: "通用",
+    tone: "",
+    exampleContent: "",
+    whyItWorks: "",
+    usageNote: "",
+    qualityTags: [],
+    useCase: "",
+    isActive: true,
+    score: 3,
+    aiInstruction: "",
   };
 }
 
@@ -1903,18 +1921,19 @@ function styleExampleCard(example) {
 }
 
 function styleExampleModal() {
-  const example = mockData.aiStyleExamples.find((item) => String(item.id) === String(editingStyleExampleId));
+  const editingExample = mockData.aiStyleExamples.find((item) => String(item.id) === String(editingStyleExampleId));
+  const example = editingExample || defaultStyleExample();
   return `
     <div class="modal-backdrop" role="presentation">
       <section class="modal" role="dialog" aria-modal="true">
-        <div class="modal-header"><div><h2>${example ? "編輯風格範例" : "新增風格範例"}</h2><p>這些範例會提供給 OpenAI 產生文案、互動題與分析報告時參考。</p></div><button class="icon-button modal-close" type="button" data-action="close-style-example-modal">×</button></div>
+        <div class="modal-header"><div><h2>${editingExample ? "編輯風格範例" : "新增風格範例"}</h2><p>這些範例會提供給 OpenAI 產生文案、互動題與分析報告時參考。</p></div><button class="icon-button modal-close" type="button" data-action="close-style-example-modal">×</button></div>
         <form id="styleExampleForm" class="modal-form">
           ${styleExamplesSchemaError ? `<div class="task-item"><strong>資料表需要更新</strong><span class="muted">${escapeHtml(styleExamplesSchemaError)}</span></div>` : ""}
           ${styleExamplesError ? `<div class="task-item"><strong>儲存失敗</strong><span class="muted">${escapeHtml(styleExamplesError)}</span></div>` : ""}
           <div class="field"><label>類型 type</label><select class="select" name="type" required style="width:100%">${["貼文", "留言回覆", "CTA", "負評回覆", "數據分析", "互動題", "互動題改寫"].map((item) => option(item, example?.type || "貼文")).join("")}</select></div>
-          <div class="field"><label>平台 platform</label><select class="select" name="platform" required style="width:100%">${["IG", "FB", "Threads", "YouTube", "通用"].map((item) => option(item, normalizeStyleValue(example?.platform) || "IG")).join("")}</select></div>
+          <div class="field"><label>平台 platform</label><select class="select" name="platform" required style="width:100%">${["通用", "IG", "FB", "Threads", "YouTube"].map((item) => option(item, normalizeStyleValue(example?.platform) || "通用")).join("")}</select></div>
           <div class="field"><label>電影類型 movie_genre</label><select class="select" name="movieGenre" required style="width:100%">${["恐怖", "愛情", "喜劇", "劇情", "動作", "懸疑", "通用"].map((item) => option(item, normalizeStyleValue(example?.movieGenre) || "通用")).join("")}</select></div>
-          <div class="field"><label>宣傳情境 campaign_stage</label><select class="select" name="campaignStage" required style="width:100%">${["上映前", "上映中", "下檔前", "口碑期", "通用"].map((item) => option(item, normalizeStyleValue(example?.campaignStage) || "上映中")).join("")}</select></div>
+          <div class="field"><label>宣傳情境 campaign_stage</label><select class="select" name="campaignStage" required style="width:100%">${["通用", "上映前", "上映中", "下檔前", "口碑期"].map((item) => option(item, normalizeStyleValue(example?.campaignStage) || "通用")).join("")}</select></div>
           <div class="field"><label>語氣 tone</label><input class="input" name="tone" required value="${escapeHtml(example?.tone || "")}" placeholder="例如：神祕、熱血、感性、幽默、專業白話" /></div>
           <div class="field"><label>品質標籤 quality_tags</label><textarea name="qualityTags" placeholder="例如：有記憶點、適合互動、適合轉粉">${escapeHtml((example?.qualityTags || []).join ? example.qualityTags.join(", ") : example?.qualityTags || "")}</textarea></div>
           <div class="field"><label>適用任務 use_case</label><input class="input" name="useCase" value="${escapeHtml(example?.useCase || "")}" placeholder="例如：產生 IG 貼文、產生負評回覆" /></div>
