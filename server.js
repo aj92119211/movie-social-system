@@ -657,8 +657,13 @@ async function loadRelevantStyleExamples(filters = {}) {
         驚悚: "恐怖",
         前導期: "上映前",
         預告上線: "上映前",
+        倒數貼文: "上映前",
         上映倒數: "上映前",
+        上映提醒: "上映中",
+        場次有限: "上映中",
         口碑擴散: "口碑期",
+        口碑推廣: "口碑期",
+        媒體好評: "口碑期",
       };
       return (aliases[text] || text).toLowerCase();
     };
@@ -1651,20 +1656,27 @@ async function generateCopy(request, response) {
 
   const movie = body.movie || {};
   const sellingPoints = Array.isArray(movie.coreSellingPoints) ? movie.coreSellingPoints.join("、") : "";
+  const scenario = String(body.scenario || body.focus || "通用").trim();
+  const releaseDate = String(movie.releaseDate || movie.release_date || "").trim();
+  const spoilerRules = String(movie.spoilerRules || movie.spoiler_rules || movie.noSpoiler || "").trim();
   const styleExamples = await loadRelevantStyleExamples({
     type: "貼文",
     platform: "通用",
     movieGenre: movie.genre,
-    campaignStage: body.focus,
+    campaignStage: scenario,
     tone: movie.socialTone,
   });
   const prompt = [
     `電影：${movie.title || "未命名電影"}`,
     `類型：${movie.genre || "未提供"}`,
+    `上映日期：${releaseDate || "未提供"}`,
+    `目前上映狀態：${movie.releaseStatus || "未提供"}`,
     `社群語氣：${movie.socialTone || "未提供"}`,
     `核心賣點：${sellingPoints || "未提供"}`,
+    `禁止爆雷內容：${spoilerRules || "未提供"}`,
     `文案用途：通用社群文案，適合 FB、IG、Threads 使用`,
-    `溝通重點：${body.focus || "請依電影資料產生社群宣傳文案"}`,
+    `宣傳情境：${scenario || "通用"}`,
+    `補充重點：${body.focus || "請依電影資料產生社群宣傳文案"}`,
     styleExamplesPromptBlock(styleExamples),
   ].join("\n");
 
@@ -1680,7 +1692,8 @@ async function generateCopy(request, response) {
         instructions: [
           MOVIE_EDITOR_SYSTEM_PROMPT,
           "這次任務是產生電影社群貼文。請根據電影資料、溝通重點與風格範例，產生 10 則通用社群文案，適合用於 FB、IG、Threads。每則文案需有不同角度，不要重複。",
-          "不要自行加入上映日期、上映時間、檔期或任何未在溝通重點中明確提供的日期資訊。社群語氣只代表文字風格，不代表日期資訊。",
+          "可以使用使用者提供的上映日期、宣傳情境與核心賣點；不要自行捏造未提供的日期、劇情、場次或票房資訊。社群語氣只代表文字風格，不代表日期資訊。",
+          "AI 風格範例只能參考語氣、節奏與策略，不可直接複製範例原文。",
           "文案請使用繁體中文、自然、有小編感，不要太像新聞稿，文字不要太長。每一則只放可直接發布或可直接使用的內容，不要放 JSON key、格式符號、分析說明、Reviewing、Final answer、END 或任何系統文字。",
           "只回傳符合 schema 的 JSON。",
         ].join("\n\n"),

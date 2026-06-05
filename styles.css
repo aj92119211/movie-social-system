@@ -426,6 +426,11 @@ tr:last-child td {
   margin: 2px;
 }
 
+.tag.missing-asset-tag {
+  background: #fff1f2;
+  color: #b42318;
+}
+
 .movie-row {
   display: flex;
   align-items: center;

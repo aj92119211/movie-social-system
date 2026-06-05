@@ -13,6 +13,7 @@
   scheduleMovie: "movieSocialOps.selectedScheduleMovie",
   analyticsMovie: "movieSocialOps.selectedAnalyticsMovie",
   copyMovie: "movieSocialOps.selectedCopyMovie",
+  copyScenario: "movieSocialOps.copyScenario",
   copyFocus: "movieSocialOps.copyFocus",
 };
 
@@ -296,6 +297,8 @@ let selectedAnalyticsMovieId = localStorage.getItem(storageKeys.analyticsMovie) 
 let selectedCopyMovieId = localStorage.getItem(storageKeys.copyMovie) || "";
 const legacyCopyFocusDefault = "正式預告上線、提醒上映日期、主打懸疑氛圍，語氣要精準但保留神祕感。";
 const copyFocusDefault = "正式預告上線、主打懸疑氛圍，語氣要精準但保留神祕感。";
+const copyScenarios = ["預告上線", "上映提醒", "口碑推廣", "倒數貼文", "場次有限", "媒體好評"];
+let copyScenarioValue = localStorage.getItem(storageKeys.copyScenario) || "預告上線";
 let copyFocusValue = localStorage.getItem(storageKeys.copyFocus) || copyFocusDefault;
 if (copyFocusValue === legacyCopyFocusDefault) copyFocusValue = copyFocusDefault;
 let isCopyGenerating = false;
@@ -920,6 +923,44 @@ function assetsForSelectedMovie() {
   return movie ? mockData.assets.filter((asset) => asset.movieId === movie.id) : [];
 }
 
+const requiredAssetChecks = [
+  { label: "主視覺", aliases: ["主視覺", "主视觉", "key visual", "kv"] },
+  { label: "正式海報", aliases: ["正式海報", "海報", "poster"] },
+  { label: "劇照", aliases: ["劇照", "still"] },
+  { label: "預告", aliases: ["預告", "預告片", "trailer"] },
+  { label: "幕後照", aliases: ["幕後照", "幕後", "behind"] },
+  { label: "演員照", aliases: ["演員照", "角色照", "cast"] },
+  { label: "短影音", aliases: ["短影音", "reels", "shorts", "tiktok"] },
+  { label: "媒體素材包", aliases: ["媒體素材包", "素材包", "press kit", "epk"] },
+];
+
+function assetSearchText(asset) {
+  return [
+    asset.name,
+    asset.assetType,
+    asset.linkUrl,
+    ...(asset.suitablePlatforms || []),
+  ].join(" ").toLowerCase();
+}
+
+function assetCompletenessForMovie(movieId) {
+  const assets = mockData.assets.filter((asset) => asset.movieId === movieId);
+  const completed = requiredAssetChecks.filter((item) =>
+    assets.some((asset) => item.aliases.some((alias) => assetSearchText(asset).includes(alias.toLowerCase())))
+  );
+  const missing = requiredAssetChecks.filter((item) => !completed.some((done) => done.label === item.label));
+  const percent = requiredAssetChecks.length ? Math.round((completed.length / requiredAssetChecks.length) * 100) : 0;
+  return { total: requiredAssetChecks.length, completed: completed.length, missing, percent };
+}
+
+function lowAssetCompletenessMovies(limit = 4) {
+  return mockData.movies
+    .map((movie) => ({ movie, completeness: assetCompletenessForMovie(movie.id) }))
+    .filter((item) => item.completeness.percent < 100)
+    .sort((a, b) => a.completeness.percent - b.completeness.percent)
+    .slice(0, limit);
+}
+
 function moviePayloadFromForm(formData) {
   const editingMovie = mockData.movies.find((movie) => movie.id === editingMovieId);
   const releaseDate = formatDateForDisplay(formData.get("releaseDate")).trim();
@@ -1166,6 +1207,7 @@ function activityModal() {
 }
 
 function dashboard() {
+  const assetAlerts = lowAssetCompletenessMovies();
   return `
     <div class="grid stats-grid">
       ${[
@@ -1177,6 +1219,19 @@ function dashboard() {
         .map(([label, value, note]) => `<article class="card stat-card"><span>${label}</span><strong>${value}</strong><small>${note}</small></article>`)
         .join("")}
     </div>
+    <section class="card" style="margin-top:16px">
+      <div class="card-header"><div><h2>素材不足提醒</h2><p>自動檢查每部電影是否缺少主視覺、海報、劇照、預告等關鍵素材。</p></div></div>
+      <div class="card-body list">
+        ${assetAlerts.map(({ movie, completeness }) => `
+          <article class="task-item">
+            <div>
+              <strong>${escapeHtml(movieDisplayName(movie))}｜素材完整度 ${completeness.percent}%</strong>
+              <span class="muted">缺少：${escapeHtml(completeness.missing.map((item) => item.label).join("、") || "無")}</span>
+            </div>
+            <button class="secondary-button" type="button" data-action="go-assets" data-movie-id="${escapeHtml(movie.id)}">前往素材庫</button>
+          </article>`).join("") || `<div class="task-item"><span class="muted">目前所有電影素材項目都已完整。</span></div>`}
+      </div>
+    </section>
     <section class="card" style="margin-top:16px">
       <div class="card-header"><div><h2>近期活動</h2><p>依電影資料同步分組，每部電影顯示最新 5 筆活動</p></div><button class="primary-button" type="button" data-action="open-activity-modal" ${mockData.movies.length ? "" : "disabled"}>新增活動</button></div>
       <div class="card-body list">
@@ -1433,12 +1488,27 @@ function projectBoardsPage() {
 function assetsPage() {
   const selectedMovie = getSelectedAssetMovie();
   const visibleAssets = assetsForSelectedMovie();
+  const completeness = selectedMovie ? assetCompletenessForMovie(selectedMovie.id) : null;
   return `
     <div class="toolbar">
       <select class="select" id="assetMovieSelect" ${mockData.movies.length ? "" : "disabled"}>${mockData.movies.map((movie) => option(movie.id, selectedMovie?.id, movie.title)).join("") || "<option>尚無電影資料</option>"}</select>
       <input class="input" readonly value="${selectedMovie ? `${selectedMovie.title} 的素材庫` : "請先新增電影"}" />
       <button class="primary-button" type="button" data-action="open-asset-modal" ${selectedMovie ? "" : "disabled"}>新增素材</button>
     </div>
+    ${selectedMovie && completeness ? `<section class="card" style="margin-bottom:16px">
+      <div class="card-body">
+        <div class="card-header" style="padding:0 0 10px;border-bottom:0">
+          <div><h2>素材完整度 ${completeness.percent}%</h2><p>已完成 ${completeness.completed} / ${completeness.total} 項關鍵素材。</p></div>
+          ${completeness.percent >= 100 ? status("已完成") : status("待確認")}
+        </div>
+        <div class="progress"><span style="--value:${completeness.percent}%"></span></div>
+        <div class="meta-row" style="margin-top:12px">${requiredAssetChecks.map((item) => {
+          const missing = completeness.missing.some((miss) => miss.label === item.label);
+          return `<span class="tag ${missing ? "missing-asset-tag" : ""}">${missing ? "缺 " : "有 "}${escapeHtml(item.label)}</span>`;
+        }).join("")}</div>
+        ${completeness.missing.length ? `<p class="status red">缺少重要素材：${escapeHtml(completeness.missing.map((item) => item.label).join("、"))}</p>` : `<p class="status green">素材已完整，可以進入排程與投放準備。</p>`}
+      </div>
+    </section>` : ""}
     <div class="task-item" style="margin-bottom:16px"><strong>${escapeHtml(selectedMovie?.title || "尚無電影")}</strong><span class="muted">目前共 ${visibleAssets.length} 筆素材</span></div>
     <div class="asset-grid">
       ${visibleAssets.map((asset) => `
@@ -1469,7 +1539,7 @@ function assetModal() {
         <div class="modal-header"><div><h2>${asset ? "編輯素材" : "新增素材"}</h2><p>素材會儲存在目前選取電影的素材庫。</p></div><button class="icon-button modal-close" type="button" data-action="close-asset-modal">×</button></div>
         <form id="assetForm" class="modal-form">
           <div class="field"><label>素材名稱</label><input class="input" name="name" required value="${escapeHtml(asset?.name || "")}" /></div>
-          <div class="field"><label>素材類型</label><select class="select" name="assetType" required style="width:100%">${["海報", "影片", "劇照", "短影音", "限動"].map((item) => option(item, asset?.assetType || "")).join("")}</select></div>
+          <div class="field"><label>素材類型</label><select class="select" name="assetType" required style="width:100%">${["主視覺", "正式海報", "劇照", "預告", "幕後照", "演員照", "短影音", "媒體素材包", "限動"].map((item) => option(item, asset?.assetType || "")).join("")}</select></div>
           <div class="field"><label>適合平台</label><textarea name="suitablePlatforms" required>${escapeHtml((asset?.suitablePlatforms || []).join(", "))}</textarea></div>
           <div class="field"><label>劇透等級</label><select class="select" name="spoilerLevel" required style="width:100%">${["無", "低", "中", "高"].map((item) => option(item, asset?.spoilerLevel || "低")).join("")}</select></div>
           <div class="field"><label>審核狀態</label><select class="select" name="reviewStatus" required style="width:100%">${["待審核", "內部審核", "片方審核", "已通過", "修改中"].map((item) => option(item, asset?.reviewStatus || "待審核")).join("")}</select></div>
@@ -1763,8 +1833,9 @@ function copyPage() {
           ${moviesError ? `<p class="status red">${escapeHtml(moviesError)}</p>` : ""}
           ${moviesLoading ? `<p class="muted">正在同步電影資料...</p>` : ""}
           <div class="field"><label>電影</label><select class="select" id="copyMovie" style="width:100%" ${mockData.movies.length ? "" : "disabled"}>${mockData.movies.map((movie) => option(movie.id, selectedMovie?.id, movie.title)).join("") || "<option>尚無電影資料</option>"}</select></div>
-          ${selectedMovie ? `<div class="task-item"><span class="muted">${escapeHtml(selectedMovie.genre)}｜${escapeHtml(selectedMovie.socialTone)}</span></div>` : ""}
-          <div class="field"><label>溝通重點</label><textarea id="copyFocus" placeholder="例如：正式預告上線、主打懸疑氛圍，語氣要精準但保留神祕感。">${escapeHtml(copyFocusValue)}</textarea></div>
+          ${selectedMovie ? `<div class="task-item"><span class="muted">${escapeHtml(selectedMovie.genre)}｜上映 ${escapeHtml(movieReleaseDateLabel(selectedMovie.releaseDate))}｜${escapeHtml(selectedMovie.socialTone)}</span></div>` : ""}
+          <div class="field"><label>情境</label><select class="select" id="copyScenario" style="width:100%">${copyScenarios.map((item) => option(item, copyScenarioValue)).join("")}</select></div>
+          <div class="field"><label>補充重點</label><textarea id="copyFocus" placeholder="例如：主打懸疑氛圍、強調觀眾口碑、提醒不要爆雷。">${escapeHtml(copyFocusValue)}</textarea></div>
           <button class="primary-button" type="button" data-action="generate-copy-preview" ${isCopyGenerating || !selectedMovie ? "disabled" : ""}>${isCopyGenerating ? "AI 生成中..." : "產生文案"}</button>
           ${copyGeneratorError ? `<p class="status red">${escapeHtml(copyGeneratorError)}</p>` : ""}
         </div>
@@ -1784,7 +1855,9 @@ async function generateCopyPreview() {
     return;
   }
   copyFocusValue = document.querySelector("#copyFocus")?.value.trim() || "";
+  copyScenarioValue = document.querySelector("#copyScenario")?.value || copyScenarioValue;
   localStorage.setItem(storageKeys.copyFocus, copyFocusValue);
+  localStorage.setItem(storageKeys.copyScenario, copyScenarioValue);
   isCopyGenerating = true;
   copyGeneratorError = "";
   generatedCopyResult = null;
@@ -1799,9 +1872,13 @@ async function generateCopyPreview() {
           movie: {
             title: movie.title,
             genre: movie.genre,
+            releaseDate: movie.releaseDate || "",
+            releaseStatus: movie.releaseStatus || "",
             socialTone: movie.socialTone,
             coreSellingPoints: movie.coreSellingPoints || [],
+            spoilerRules: movie.spoilerRules || movie.spoiler_rules || "",
           },
+          scenario: copyScenarioValue,
           focus: copyFocusValue,
         }),
       });
@@ -2079,13 +2156,14 @@ function questionCard(question) {
 
 function questionModal() {
   const question = mockData.questions.find((item) => item.id === editingQuestionId);
-  const movieOptions = [option("", question?.movieId || "", "通用題目"), ...mockData.movies.map((movie) => option(movie.id, question?.movieId || "", movieDisplayName(movie)))].join("");
+  const currentMovieId = question?.movieId || (questionFilters.movieId !== "全部" ? questionFilters.movieId : "") || mockData.movies[0]?.id || "";
+  const movieOptions = mockData.movies.map((movie) => option(movie.id, currentMovieId, movieDisplayName(movie))).join("");
   return `
     <div class="modal-backdrop" role="presentation"><section class="modal" role="dialog" aria-modal="true">
       <div class="modal-header"><div><h2>${question ? "編輯題目" : "新增題目"}</h2><p>管理小編每天可使用的社群互動題。</p></div><button class="icon-button modal-close" type="button" data-action="close-question-modal">×</button></div>
       <form id="questionForm" class="modal-form">
         <div class="field"><label>題目內容</label><textarea name="content" required>${escapeHtml(question?.content || "")}</textarea></div>
-        <div class="field"><label>電影專案</label><select class="select" name="movieId" style="width:100%">${movieOptions}</select></div>
+        <div class="field"><label>電影專案</label><select class="select" name="movieId" required style="width:100%">${movieOptions}</select></div>
         <div class="field"><label>電影類型</label><select class="select" name="movieGenre" style="width:100%">${movieGenreOptions.map((item) => option(item, question?.movieGenre || "通用")).join("")}</select></div>
         <div class="field"><label>題型</label><select class="select" name="type" style="width:100%">${["開放問答", "二選一", "投票", "測驗", "留言引導", "Reels 字卡"].map((item) => option(item, question?.type || "開放問答")).join("")}</select></div>
         <div class="field"><label>平台</label><select class="select" name="platform" style="width:100%">${["IG 限動", "Threads", "Facebook", "Reels"].map((item) => option(item, question?.platform || "IG 限動")).join("")}</select></div>
@@ -3397,6 +3475,14 @@ document.addEventListener("change", (event) => {
     render();
     return;
   }
+  if (event.target.id === "copyScenario") {
+    copyScenarioValue = event.target.value;
+    localStorage.setItem(storageKeys.copyScenario, copyScenarioValue);
+    generatedCopyResult = null;
+    copyGeneratorError = "";
+    render();
+    return;
+  }
   if (event.target.id === "scheduleAssetId") {
     const linkInput = document.getElementById("scheduleAssetLinkUrl");
     const selectedLink = assetLinkUrl(event.target.value);
@@ -3523,6 +3609,14 @@ document.addEventListener("click", async (event) => {
     if (!getSelectedAssetMovie()) return window.alert("請先新增電影，再建立素材。");
     isAssetModalOpen = true;
     editingAssetId = null;
+    render();
+  }
+  if (action === "go-assets") {
+    if (actionElement.dataset.movieId) {
+      selectedAssetMovieId = actionElement.dataset.movieId;
+      localStorage.setItem(storageKeys.assetMovie, selectedAssetMovieId);
+    }
+    location.hash = "assets";
     render();
   }
   if (action === "edit-asset") {
@@ -4175,9 +4269,13 @@ document.addEventListener("submit", async (event) => {
   }
   if (event.target.id === "questionForm") {
     const selectedQuestionMovieId = String(formData.get("movieId") || "");
+    if (!mockData.movies.some((movie) => String(movie.id) === selectedQuestionMovieId)) {
+      window.alert("請先選擇電影專案，再儲存互動題。");
+      return;
+    }
     const questionData = {
       content: formData.get("content") || "未命名題目",
-      movieId: mockData.movies.some((movie) => String(movie.id) === selectedQuestionMovieId) ? selectedQuestionMovieId : "",
+      movieId: selectedQuestionMovieId,
       movieGenre: formData.get("movieGenre") || "通用",
       type: formData.get("type") || "開放問答",
       platform: formData.get("platform") || "IG 限動",
