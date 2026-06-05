@@ -1335,6 +1335,14 @@ function filteredProjectBoards() {
   });
 }
 
+function projectBoardSearchOptions() {
+  const keyword = projectBoardFilters.search.trim().toLowerCase();
+  return [...new Set(projectBoards.map((item) => item.projectName).filter(Boolean))]
+    .filter((name) => !keyword || name.toLowerCase().includes(keyword))
+    .sort((a, b) => a.localeCompare(b, "zh-Hant"))
+    .slice(0, 8);
+}
+
 function projectBoardModal() {
   const item = projectBoards.find((board) => String(board.id) === String(editingProjectBoardId)) || {};
   const movieOptions = mockData.movies.map((movie) => option(movie.id, item.movieId || "", movieDisplayName(movie))).join("");
@@ -1369,7 +1377,12 @@ function projectBoardsPage() {
     ${projectBoardsNotice ? `<p class="status green">${escapeHtml(projectBoardsNotice)}</p>` : ""}
     ${projectBoardsError ? `<p class="status red">${escapeHtml(projectBoardsError)}</p>` : ""}
     <div class="toolbar">
-      <input class="input project-board-filter-input" data-filter="search" placeholder="搜尋專案名稱、負責人、階段、備註" value="${escapeHtml(projectBoardFilters.search)}" />
+      <div class="project-board-search-wrap">
+        <input class="input project-board-filter-input" data-filter="search" placeholder="搜尋專案名稱、負責人、階段、備註" autocomplete="off" value="${escapeHtml(projectBoardFilters.search)}" />
+        <div class="project-board-suggestions">
+          ${projectBoardSearchOptions().map((name) => `<button type="button" data-action="select-project-board-search" data-project-board-search="${escapeHtml(name)}">${escapeHtml(name)}</button>`).join("") || `<span class="muted">目前沒有符合的專案名稱</span>`}
+        </div>
+      </div>
       <select class="select project-board-filter" data-filter="status">${["全部", ...projectBoardStatuses].map((value) => option(value, projectBoardFilters.status)).join("")}</select>
     </div>
     ${projectBoardsLoading ? `<article class="card"><div class="card-body"><p class="muted">正在讀取專案大表...</p></div></article>` : ""}
@@ -3478,6 +3491,10 @@ document.addEventListener("click", async (event) => {
       projectBoardsError = error.message || "專案刪除失敗。";
       render();
     }
+  }
+  if (action === "select-project-board-search") {
+    projectBoardFilters.search = actionElement.dataset.projectBoardSearch || "";
+    render();
   }
   if (action === "open-asset-modal") {
     if (!getSelectedAssetMovie()) return window.alert("請先新增電影，再建立素材。");

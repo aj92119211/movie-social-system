@@ -516,6 +516,55 @@ tr:last-child td {
   margin-bottom: 16px;
 }
 
+.project-board-search-wrap {
+  position: relative;
+  min-width: 240px;
+}
+
+.project-board-search-wrap .input {
+  width: 100%;
+}
+
+.project-board-suggestions {
+  display: none;
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 6px);
+  left: 0;
+  width: min(360px, 80vw);
+  max-height: 240px;
+  overflow-y: auto;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #fff;
+  box-shadow: var(--shadow);
+}
+
+.project-board-search-wrap:focus-within .project-board-suggestions {
+  display: grid;
+  gap: 4px;
+}
+
+.project-board-suggestions button {
+  width: 100%;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 800;
+  padding: 9px 10px;
+  text-align: left;
+}
+
+.project-board-suggestions button:hover,
+.project-board-suggestions button:focus {
+  background: #eff6ff;
+  outline: none;
+}
+
 .select,
 .input {
   min-height: 40px;

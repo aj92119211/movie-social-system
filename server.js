@@ -393,7 +393,7 @@ async function ensureProjectBoardMovieName(board) {
   if (!movieId) {
     return board;
   }
-  const rows = await supabaseRequest(`/movies?id=eq.${encodeURIComponent(movieId)}&select=id,title,name,movie_title&limit=1`);
+  const rows = await supabaseRequest(`/movies?id=eq.${encodeURIComponent(movieId)}&select=id,title&limit=1`);
   const movie = rows?.[0] || {};
   return {
     ...board,
@@ -585,7 +585,7 @@ async function handleMoviesApi(request, response, movieId) {
 async function handleProjectBoardsApi(request, response, boardId) {
   try {
     if (request.method === "GET" && !boardId) {
-      const rows = await supabaseRequest("/project_boards?select=*,movies(id,title,name,movie_title)&order=updated_at.desc");
+      const rows = await supabaseRequest("/project_boards?select=*,movies(id,title)&order=updated_at.desc");
       sendJson(response, 200, { projectBoards: (rows || []).map(mapProjectBoardFromDb) });
       return;
     }
