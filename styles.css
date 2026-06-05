@@ -527,14 +527,16 @@ tr:last-child td {
 }
 
 .movie-grid,
-.asset-grid {
+.asset-grid,
+.project-board-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 16px;
 }
 
 .movie-card,
-.asset-card {
+.asset-card,
+.project-board-card {
   overflow: hidden;
 }
 
@@ -552,7 +554,8 @@ tr:last-child td {
 }
 
 .movie-card .card-body,
-.asset-card .card-body {
+.asset-card .card-body,
+.project-board-card .card-body {
   padding: 12px;
 }
 
@@ -1117,6 +1120,7 @@ textarea {
   .stats-grid,
   .movie-grid,
   .asset-grid,
+  .project-board-grid,
   .question-stats,
   .question-grid,
   .style-example-grid,
@@ -1184,6 +1188,7 @@ textarea {
   .stats-grid,
   .movie-grid,
   .asset-grid,
+  .project-board-grid,
   .question-stats,
   .question-grid,
   .style-example-grid,

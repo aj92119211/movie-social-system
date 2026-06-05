@@ -27,6 +27,7 @@ const workflowStorageKinds = {
 
 const mockData = {
   movies: [],
+  projectBoards: [],
   assets: [
     {
       id: "ast-001",
@@ -194,6 +195,7 @@ const mockData = {
 const pages = [
   { id: "dashboard", title: "首頁 Dashboard", icon: "首" },
   { id: "movies", title: "電影資料", icon: "片" },
+  { id: "project-boards", title: "專案大表", icon: "表" },
   { id: "assets", title: "素材庫", icon: "素" },
   { id: "schedule", title: "社群排程", icon: "排" },
   { id: "copy", title: "AI 文案產生器", icon: "文" },
@@ -204,7 +206,7 @@ const pages = [
 
 const colors = ["#234a8f", "#0e7c86", "#6d4c92", "#b86b00", "#168463", "#c84444"];
 const scheduleStatuses = ["靈感", "草稿", "製作中", "內部審核", "片方審核", "已通過", "已排程", "已發布"];
-const statusClass = { 已通過: "green", 已排程: "green", 已發布: "green", 可使用: "green", 高效題: "green", 啟用: "green", 上映中: "green", 未上映: "amber", 下檔: "red", 草稿: "amber", 靈感: "amber", 製作中: "blue", 內部審核: "amber", 片方審核: "amber", 修改中: "red", 停用: "red" };
+const statusClass = { 已通過: "green", 已排程: "green", 已發布: "green", 已完成: "green", 可使用: "green", 高效題: "green", 啟用: "green", 上映中: "green", 進行中: "blue", 未上映: "amber", 待確認: "amber", 下檔: "red", 草稿: "amber", 靈感: "amber", 製作中: "blue", 內部審核: "amber", 片方審核: "amber", 修改中: "red", 暫停: "red", 停用: "red" };
 
 let moviesLoadedFromServer = false;
 let moviesLoading = false;
@@ -215,6 +217,18 @@ const movieSupabaseErrorMessage = "電影資料尚未連上 Supabase。請到 Re
 let isMovieModalOpen = false;
 let editingMovieId = null;
 let movieReleaseStatusOverrides = {};
+let projectBoards = [];
+let projectBoardsLoaded = false;
+let projectBoardsLoading = false;
+let projectBoardsError = "";
+let projectBoardsNotice = "";
+let isProjectBoardModalOpen = false;
+let editingProjectBoardId = null;
+let projectBoardFilters = {
+  search: "",
+  status: "全部",
+  type: "全部",
+};
 let isAssetModalOpen = false;
 let editingAssetId = null;
 let isScheduleModalOpen = false;
@@ -1229,6 +1243,149 @@ function movieModal() {
         </form>
       </section>
     </div>`;
+}
+
+const projectBoardTypes = ["電影行銷", "發行", "社群", "製作支援", "活動", "其他"];
+const projectBoardStatuses = ["進行中", "已完成", "暫停", "待確認"];
+
+function normalizeProjectBoard(item = {}) {
+  return {
+    id: item.id || `board-${Date.now()}`,
+    projectName: item.projectName || item.project_name || "",
+    projectType: item.projectType || item.project_type || "電影行銷",
+    status: item.status || "進行中",
+    linkLabel: item.linkLabel || item.link_label || "",
+    projectUrl: item.projectUrl || item.project_url || "",
+    notes: item.notes || "",
+    movieId: item.movieId || item.movie_id || "",
+    createdAt: item.createdAt || item.created_at || "",
+    updatedAt: item.updatedAt || item.updated_at || "",
+  };
+}
+
+function projectBoardPayloadFromForm(formData) {
+  return {
+    projectName: String(formData.get("projectName") || "").trim(),
+    projectType: String(formData.get("projectType") || "電影行銷").trim(),
+    status: String(formData.get("status") || "進行中").trim(),
+    linkLabel: String(formData.get("linkLabel") || "").trim(),
+    projectUrl: String(formData.get("projectUrl") || "").trim(),
+    notes: String(formData.get("notes") || "").trim(),
+  };
+}
+
+async function loadProjectBoardsFromServer(force = false) {
+  if (projectBoardsLoading || (projectBoardsLoaded && !force)) return;
+  projectBoardsLoading = true;
+  projectBoardsError = "";
+  render();
+  try {
+    const payload = await requestJson("/api/project-boards");
+    projectBoards = (payload.projectBoards || []).map(normalizeProjectBoard);
+    projectBoardsLoaded = true;
+  } catch (error) {
+    projectBoardsError = error.message || "專案大表讀取失敗。";
+  } finally {
+    projectBoardsLoading = false;
+    render();
+  }
+}
+
+async function saveProjectBoardToServer(data) {
+  const method = editingProjectBoardId ? "PUT" : "POST";
+  const url = editingProjectBoardId ? `/api/project-boards/${encodeURIComponent(editingProjectBoardId)}` : "/api/project-boards";
+  const payload = await requestJson(url, { method, body: JSON.stringify(data) });
+  const savedBoard = normalizeProjectBoard(payload.projectBoard);
+  if (editingProjectBoardId) {
+    projectBoards = projectBoards.map((item) => String(item.id) === String(savedBoard.id) ? savedBoard : item);
+  } else {
+    projectBoards = [savedBoard, ...projectBoards];
+  }
+  projectBoardsLoaded = true;
+  projectBoardsNotice = editingProjectBoardId ? "更新成功" : "已儲存";
+}
+
+async function deleteProjectBoardFromServer(id) {
+  await requestJson(`/api/project-boards/${encodeURIComponent(id)}`, { method: "DELETE" });
+  projectBoards = projectBoards.filter((item) => String(item.id) !== String(id));
+  projectBoardsNotice = "專案已刪除。";
+}
+
+function formatDateTimeText(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return `${date.getFullYear()}/${String(date.getMonth() + 1).padStart(2, "0")}/${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function filteredProjectBoards() {
+  const keyword = projectBoardFilters.search.trim().toLowerCase();
+  return projectBoards.filter((item) => {
+    const matchesSearch = !keyword || [item.projectName, item.linkLabel, item.notes].some((value) => String(value || "").toLowerCase().includes(keyword));
+    const matchesStatus = projectBoardFilters.status === "全部" || item.status === projectBoardFilters.status;
+    const matchesType = projectBoardFilters.type === "全部" || item.projectType === projectBoardFilters.type;
+    return matchesSearch && matchesStatus && matchesType;
+  });
+}
+
+function projectBoardModal() {
+  const item = projectBoards.find((board) => String(board.id) === String(editingProjectBoardId)) || {};
+  return `<div class="modal-backdrop" role="presentation">
+    <section class="modal" role="dialog" aria-modal="true">
+      <div class="modal-header"><div><h2>${item.id ? "編輯專案" : "新增專案"}</h2><p>管理外部工作大表與協作連結。</p></div><button class="icon-button modal-close" type="button" data-action="close-project-board-modal">×</button></div>
+      <form id="projectBoardForm" class="modal-form">
+        <div class="field"><label>專案名稱</label><input class="input" name="projectName" value="${escapeHtml(item.projectName || "")}" required /></div>
+        <div class="field"><label>專案類型</label><select class="select" name="projectType">${projectBoardTypes.map((value) => option(value, item.projectType || "電影行銷")).join("")}</select></div>
+        <div class="field"><label>專案狀態</label><select class="select" name="status">${projectBoardStatuses.map((value) => option(value, item.status || "進行中")).join("")}</select></div>
+        <div class="field"><label>連結名稱</label><input class="input" name="linkLabel" value="${escapeHtml(item.linkLabel || "")}" placeholder="例如：Google Sheet 行銷總表" /></div>
+        <div class="field field-wide"><label>專案連結</label><input class="input" name="projectUrl" type="url" value="${escapeHtml(item.projectUrl || "")}" placeholder="https://..." /></div>
+        <div class="field field-wide"><label>備註</label><textarea name="notes" placeholder="可輸入專案說明、使用提醒或負責人資訊">${escapeHtml(item.notes || "")}</textarea></div>
+        <div class="modal-actions modal-footer-actions"><button class="secondary-button" type="button" data-action="close-project-board-modal">取消</button><button class="primary-button" type="submit">儲存</button></div>
+      </form>
+    </section>
+  </div>`;
+}
+
+function projectBoardsPage() {
+  const boards = filteredProjectBoards();
+  return `
+    <section class="page-hero">
+      <div>
+        <p class="eyebrow">Project Boards</p>
+        <h2>專案大表</h2>
+        <p>集中管理各電影專案的外部工作大表與協作連結。</p>
+      </div>
+      <button class="primary-button" type="button" data-action="open-project-board-modal">＋ 新增專案</button>
+    </section>
+    ${projectBoardsNotice ? `<p class="status green">${escapeHtml(projectBoardsNotice)}</p>` : ""}
+    ${projectBoardsError ? `<p class="status red">${escapeHtml(projectBoardsError)}</p>` : ""}
+    <div class="toolbar">
+      <input class="input project-board-filter-input" data-filter="search" placeholder="搜尋專案名稱、連結名稱、備註" value="${escapeHtml(projectBoardFilters.search)}" />
+      <select class="select project-board-filter" data-filter="status">${["全部", ...projectBoardStatuses].map((value) => option(value, projectBoardFilters.status)).join("")}</select>
+      <select class="select project-board-filter" data-filter="type">${["全部", ...projectBoardTypes].map((value) => option(value, projectBoardFilters.type)).join("")}</select>
+    </div>
+    ${projectBoardsLoading ? `<article class="card"><div class="card-body"><p class="muted">正在讀取專案大表...</p></div></article>` : ""}
+    ${!projectBoardsLoading && !boards.length ? `<article class="card"><div class="card-body"><h3>目前尚未建立專案大表</h3><p class="muted">請點擊「新增專案」開始建立。</p></div></article>` : ""}
+    <div class="project-board-grid">
+      ${boards.map((item) => `<article class="card project-board-card">
+        <div class="card-body">
+          <div class="card-header">
+            <div><h3>${escapeHtml(item.projectName || "未命名專案")}</h3><p class="muted">${escapeHtml(item.linkLabel || "未命名連結")}</p></div>
+            ${status(item.status || "待確認")}
+          </div>
+          <div class="meta-row"><span class="tag">${escapeHtml(item.projectType || "其他")}</span><span class="muted">${escapeHtml(item.updatedAt ? `更新 ${formatDateTimeText(item.updatedAt)}` : item.createdAt ? `建立 ${formatDateTimeText(item.createdAt)}` : "尚無時間紀錄")}</span></div>
+          <p class="muted">${escapeHtml(item.projectUrl || "尚未設定專案連結")}</p>
+          ${item.notes ? `<p>${escapeHtml(item.notes)}</p>` : `<p class="muted">尚無備註</p>`}
+          <div class="meta-row">
+            <button class="primary-button" type="button" data-action="open-project-board-link" data-project-board-id="${escapeHtml(item.id)}">前往專案</button>
+            <button class="secondary-button" type="button" data-action="edit-project-board" data-project-board-id="${escapeHtml(item.id)}">編輯</button>
+            <button class="secondary-button" type="button" data-action="delete-project-board" data-project-board-id="${escapeHtml(item.id)}">刪除</button>
+          </div>
+        </div>
+      </article>`).join("")}
+    </div>
+    ${isProjectBoardModalOpen ? projectBoardModal() : ""}
+  `;
 }
 
 function assetsPage() {
@@ -3019,7 +3176,7 @@ function analyticsPage() {
     ${isPostMetricModalOpen ? postMetricModal() : ""}
   `;
 }
-const renderers = { dashboard, movies: moviesPage, assets: assetsPage, schedule: schedulePage, copy: copyPage, style: styleExamplesPage, review: reviewPage, analytics: analyticsPage };
+const renderers = { dashboard, movies: moviesPage, "project-boards": projectBoardsPage, assets: assetsPage, schedule: schedulePage, copy: copyPage, style: styleExamplesPage, review: reviewPage, analytics: analyticsPage };
 
 function render() {
   if (!authChecked) {
@@ -3039,6 +3196,10 @@ function render() {
   if (page.id !== "movies") {
     isMovieModalOpen = false;
     editingMovieId = null;
+  }
+  if (page.id !== "project-boards") {
+    isProjectBoardModalOpen = false;
+    editingProjectBoardId = null;
   }
   if (page.id !== "assets") {
     isAssetModalOpen = false;
@@ -3074,6 +3235,7 @@ function render() {
   document.querySelector("#pageContent").innerHTML = renderers[page.id]();
   renderNav(page.id);
   if (["movies", "assets", "schedule", "copy", "review", "analytics"].includes(page.id) && Date.now() - moviesLastLoadedAt > 5000) loadMoviesFromServer(true);
+  if (page.id === "project-boards") loadProjectBoardsFromServer();
   if (["assets", "schedule", "review", "analytics", "dashboard"].includes(page.id) && Date.now() - workflowLastLoadedAt > 5000) loadWorkflowDataFromServer();
   if (page.id === "style" && !styleExamplesLoadedFromServer) loadStyleExamplesFromServer(true);
   if (page.id === "analytics" && selectedAnalyticsMovieId) loadAnalyticsDataForMovie();
@@ -3115,6 +3277,14 @@ document.addEventListener("input", (event) => {
     analyticsFilters[filterName] = event.target.value;
     render();
     const input = document.querySelector(`.analytics-filter-input[data-filter="${filterName}"]`);
+    input?.focus();
+    input?.setSelectionRange(cursorPosition, cursorPosition);
+  }
+  if (event.target.classList.contains("project-board-filter-input")) {
+    const cursorPosition = event.target.selectionStart;
+    projectBoardFilters[event.target.dataset.filter] = event.target.value;
+    render();
+    const input = document.querySelector(`.project-board-filter-input[data-filter="${event.target.dataset.filter}"]`);
     input?.focus();
     input?.setSelectionRange(cursorPosition, cursorPosition);
   }
@@ -3214,6 +3384,10 @@ document.addEventListener("change", (event) => {
     styleExampleFilters[event.target.dataset.filter] = event.target.value;
     render();
   }
+  if (event.target.classList.contains("project-board-filter")) {
+    projectBoardFilters[event.target.dataset.filter] = event.target.value;
+    render();
+  }
 });
 
 document.addEventListener("click", async (event) => {
@@ -3262,6 +3436,41 @@ document.addEventListener("click", async (event) => {
       render();
     });
     input.click();
+  }
+  if (action === "open-project-board-modal") {
+    editingProjectBoardId = null;
+    projectBoardsNotice = "";
+    isProjectBoardModalOpen = true;
+    render();
+  }
+  if (action === "edit-project-board") {
+    editingProjectBoardId = actionElement.dataset.projectBoardId;
+    projectBoardsNotice = "";
+    isProjectBoardModalOpen = true;
+    render();
+  }
+  if (action === "close-project-board-modal") {
+    editingProjectBoardId = null;
+    isProjectBoardModalOpen = false;
+    render();
+  }
+  if (action === "open-project-board-link") {
+    const board = projectBoards.find((item) => String(item.id) === String(actionElement.dataset.projectBoardId));
+    if (!board?.projectUrl) {
+      window.alert("尚未設定專案連結");
+      return;
+    }
+    window.open(board.projectUrl, "_blank", "noopener,noreferrer");
+  }
+  if (action === "delete-project-board") {
+    if (!window.confirm("確定要刪除這個專案大表嗎？")) return;
+    try {
+      await deleteProjectBoardFromServer(actionElement.dataset.projectBoardId);
+      render();
+    } catch (error) {
+      projectBoardsError = error.message || "專案刪除失敗。";
+      render();
+    }
   }
   if (action === "open-asset-modal") {
     if (!getSelectedAssetMovie()) return window.alert("請先新增電影，再建立素材。");
@@ -3665,7 +3874,7 @@ document.addEventListener("click", async (event) => {
 });
 
 document.addEventListener("submit", async (event) => {
-  if (!["authForm", "movieForm", "assetForm", "scheduleForm", "activityForm", "styleExampleForm", "questionForm", "questionScheduleForm", "metricForm", "analyticsLinkForm", "manualAnalyticsForm", "postAnalysisForm", "analyticsPeriodForm", "postMetricForm"].includes(event.target.id)) return;
+  if (!["authForm", "movieForm", "projectBoardForm", "assetForm", "scheduleForm", "activityForm", "styleExampleForm", "questionForm", "questionScheduleForm", "metricForm", "analyticsLinkForm", "manualAnalyticsForm", "postAnalysisForm", "analyticsPeriodForm", "postMetricForm"].includes(event.target.id)) return;
   event.preventDefault();
   const formData = new FormData(event.target);
 
@@ -3825,6 +4034,21 @@ document.addEventListener("submit", async (event) => {
     } catch (error) {
       movieSaveMessage = "";
       moviesError = error.message;
+      render();
+    }
+    return;
+  }
+
+  if (event.target.id === "projectBoardForm") {
+    try {
+      projectBoardsError = "";
+      await saveProjectBoardToServer(projectBoardPayloadFromForm(formData));
+      isProjectBoardModalOpen = false;
+      editingProjectBoardId = null;
+      render();
+    } catch (error) {
+      projectBoardsNotice = "";
+      projectBoardsError = error.message || "專案大表儲存失敗。";
       render();
     }
     return;

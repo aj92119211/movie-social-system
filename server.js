@@ -346,6 +346,39 @@ function mapStyleExampleToDb(example, includeAdvancedFields = true) {
   return payload;
 }
 
+function mapProjectBoardFromDb(row) {
+  return {
+    id: row.id,
+    projectName: row.project_name || "",
+    projectType: row.project_type || "",
+    status: row.status || "",
+    linkLabel: row.link_label || "",
+    projectUrl: row.project_url || "",
+    notes: row.notes || "",
+    movieId: row.movie_id || "",
+    createdAt: row.created_at || "",
+    updatedAt: row.updated_at || "",
+  };
+}
+
+function mapProjectBoardToDb(board) {
+  return {
+    project_name: String(board.projectName || "").trim(),
+    project_type: String(board.projectType || "").trim(),
+    status: String(board.status || "").trim(),
+    link_label: String(board.linkLabel || "").trim(),
+    project_url: String(board.projectUrl || "").trim(),
+    notes: String(board.notes || "").trim(),
+  };
+}
+
+function validateProjectBoardPayload(board) {
+  if (!String(board.projectName || "").trim()) {
+    return "專案名稱為必填。";
+  }
+  return "";
+}
+
 async function saveMovieToSupabase(pathname, method, movie) {
   const payload = mapMovieToDb(movie);
   try {
@@ -524,6 +557,62 @@ async function handleMoviesApi(request, response, movieId) {
     sendJson(response, 405, { error: "Method not allowed" });
   } catch (error) {
     sendJson(response, error.statusCode || 500, { error: error.message || "Movies API failed" });
+  }
+}
+
+async function handleProjectBoardsApi(request, response, boardId) {
+  try {
+    if (request.method === "GET" && !boardId) {
+      const rows = await supabaseRequest("/project_boards?select=*&order=updated_at.desc");
+      sendJson(response, 200, { projectBoards: (rows || []).map(mapProjectBoardFromDb) });
+      return;
+    }
+
+    if (request.method === "POST" && !boardId) {
+      const body = await readJsonBody(request);
+      const validationError = validateProjectBoardPayload(body);
+      if (validationError) {
+        sendJson(response, 400, { error: validationError });
+        return;
+      }
+      const rows = await supabaseRequest("/project_boards?select=*", {
+        method: "POST",
+        headers: { Prefer: "return=representation" },
+        body: JSON.stringify(mapProjectBoardToDb(body)),
+      });
+      sendJson(response, 201, { projectBoard: mapProjectBoardFromDb(rows[0]) });
+      return;
+    }
+
+    if (request.method === "PUT" && boardId) {
+      const body = await readJsonBody(request);
+      const validationError = validateProjectBoardPayload(body);
+      if (validationError) {
+        sendJson(response, 400, { error: validationError });
+        return;
+      }
+      const rows = await supabaseRequest(`/project_boards?id=eq.${encodeURIComponent(boardId)}&select=*`, {
+        method: "PATCH",
+        headers: { Prefer: "return=representation" },
+        body: JSON.stringify(mapProjectBoardToDb(body)),
+      });
+      if (!rows?.[0]) {
+        sendJson(response, 404, { error: "找不到專案大表。" });
+        return;
+      }
+      sendJson(response, 200, { projectBoard: mapProjectBoardFromDb(rows[0]) });
+      return;
+    }
+
+    if (request.method === "DELETE" && boardId) {
+      await supabaseRequest(`/project_boards?id=eq.${encodeURIComponent(boardId)}`, { method: "DELETE" });
+      sendJson(response, 200, { ok: true });
+      return;
+    }
+
+    sendJson(response, 405, { error: "Method not allowed" });
+  } catch (error) {
+    sendJson(response, error.statusCode || 500, { error: error.message || "Project boards API failed" });
   }
 }
 
@@ -2087,6 +2176,17 @@ const server = http.createServer((request, response) => {
   if (url.pathname.startsWith("/api/movies/")) {
     const movieId = decodeURIComponent(url.pathname.replace("/api/movies/", ""));
     handleMoviesApi(request, response, movieId);
+    return;
+  }
+
+  if (url.pathname === "/api/project-boards") {
+    handleProjectBoardsApi(request, response);
+    return;
+  }
+
+  if (url.pathname.startsWith("/api/project-boards/")) {
+    const boardId = decodeURIComponent(url.pathname.replace("/api/project-boards/", ""));
+    handleProjectBoardsApi(request, response, boardId);
     return;
   }
 
