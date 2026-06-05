@@ -1260,6 +1260,7 @@ function normalizeProjectBoard(item = {}) {
     startDate: item.startDate || item.start_date || "",
     dueDate: item.dueDate || item.due_date || "",
     status: item.status || "未開始",
+    projectUrl: item.projectUrl || item.project_url || "",
     notes: item.notes || "",
     createdAt: item.createdAt || item.created_at || "",
     updatedAt: item.updatedAt || item.updated_at || "",
@@ -1277,6 +1278,7 @@ function projectBoardPayloadFromForm(formData) {
     startDate: String(formData.get("startDate") || "").trim(),
     dueDate: String(formData.get("dueDate") || "").trim(),
     status: String(formData.get("status") || "未開始").trim(),
+    projectUrl: String(formData.get("projectUrl") || "").trim(),
     notes: String(formData.get("notes") || "").trim(),
   };
 }
@@ -1356,6 +1358,7 @@ function projectBoardModal() {
         <div class="field"><label>開始日期</label><input class="input" name="startDate" type="date" value="${escapeHtml(item.startDate || "")}" /></div>
         <div class="field"><label>截止日期</label><input class="input" name="dueDate" type="date" value="${escapeHtml(item.dueDate || "")}" /></div>
         <div class="field"><label>狀態</label><select class="select" name="status">${projectBoardStatuses.map((value) => option(value, item.status || "未開始")).join("")}</select></div>
+        <div class="field field-wide"><label>新增連結</label><input class="input" name="projectUrl" type="url" value="${escapeHtml(item.projectUrl || "")}" placeholder="請貼上 Google Sheet、Notion、Drive 等外部大表連結" /></div>
         <div class="field field-wide"><label>備註</label><textarea name="notes" placeholder="可輸入專案說明、使用提醒或負責人資訊">${escapeHtml(item.notes || "")}</textarea></div>
         <div class="modal-actions modal-footer-actions"><button class="secondary-button" type="button" data-action="close-project-board-modal">取消</button><button class="primary-button" type="submit">儲存</button></div>
       </form>
@@ -1398,6 +1401,7 @@ function projectBoardsPage() {
           <p class="muted">${escapeHtml(item.updatedAt ? `更新 ${formatDateTimeText(item.updatedAt)}` : item.createdAt ? `建立 ${formatDateTimeText(item.createdAt)}` : "尚無時間紀錄")}</p>
           ${item.notes ? `<p>${escapeHtml(item.notes)}</p>` : `<p class="muted">尚無備註</p>`}
           <div class="meta-row">
+            <button class="secondary-button" type="button" data-action="open-project-board-link" data-project-board-id="${escapeHtml(item.id)}">連結</button>
             <button class="secondary-button" type="button" data-action="edit-project-board" data-project-board-id="${escapeHtml(item.id)}">編輯</button>
             <button class="secondary-button" type="button" data-action="delete-project-board" data-project-board-id="${escapeHtml(item.id)}">刪除</button>
           </div>

@@ -359,6 +359,7 @@ function mapProjectBoardFromDb(row) {
     startDate: row.start_date || "",
     dueDate: row.due_date || "",
     status: row.status || "",
+    projectUrl: row.project_url || "",
     notes: row.notes || "",
     createdAt: row.created_at || "",
     updatedAt: row.updated_at || "",
@@ -374,6 +375,7 @@ function mapProjectBoardToDb(board) {
     start_date: String(board.startDate || "").trim() || null,
     due_date: String(board.dueDate || "").trim() || null,
     status: String(board.status || "未開始").trim(),
+    project_url: String(board.projectUrl || "").trim(),
     notes: String(board.notes || "").trim(),
   };
 }

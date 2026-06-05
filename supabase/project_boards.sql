@@ -35,6 +35,9 @@ add column if not exists start_date date;
 alter table public.project_boards
 add column if not exists due_date date;
 
+alter table public.project_boards
+add column if not exists project_url text;
+
 create index if not exists project_boards_movie_id_idx on public.project_boards(movie_id);
 create index if not exists project_boards_status_idx on public.project_boards(status);
 create index if not exists project_boards_project_type_idx on public.project_boards(project_type);
