@@ -11,10 +11,29 @@ create table if not exists public.project_boards (
   status text,
   link_label text,
   project_url text,
+  owner text,
+  current_phase text,
+  start_date date,
+  due_date date,
   notes text,
   created_at timestamptz default now(),
   updated_at timestamptz default now()
 );
+
+alter table public.project_boards
+add column if not exists movie_id uuid null references public.movies(id) on delete set null;
+
+alter table public.project_boards
+add column if not exists owner text;
+
+alter table public.project_boards
+add column if not exists current_phase text;
+
+alter table public.project_boards
+add column if not exists start_date date;
+
+alter table public.project_boards
+add column if not exists due_date date;
 
 create index if not exists project_boards_movie_id_idx on public.project_boards(movie_id);
 create index if not exists project_boards_status_idx on public.project_boards(status);

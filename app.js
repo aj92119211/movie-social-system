@@ -206,7 +206,7 @@ const pages = [
 
 const colors = ["#234a8f", "#0e7c86", "#6d4c92", "#b86b00", "#168463", "#c84444"];
 const scheduleStatuses = ["靈感", "草稿", "製作中", "內部審核", "片方審核", "已通過", "已排程", "已發布"];
-const statusClass = { 已通過: "green", 已排程: "green", 已發布: "green", 已完成: "green", 可使用: "green", 高效題: "green", 啟用: "green", 上映中: "green", 進行中: "blue", 未上映: "amber", 待確認: "amber", 下檔: "red", 草稿: "amber", 靈感: "amber", 製作中: "blue", 內部審核: "amber", 片方審核: "amber", 修改中: "red", 暫停: "red", 停用: "red" };
+const statusClass = { 已通過: "green", 已排程: "green", 已發布: "green", 已完成: "green", 可使用: "green", 高效題: "green", 啟用: "green", 上映中: "green", 進行中: "blue", 未開始: "amber", 未上映: "amber", 待確認: "amber", 下檔: "red", 草稿: "amber", 靈感: "amber", 製作中: "blue", 內部審核: "amber", 片方審核: "amber", 修改中: "red", 暫停: "red", 停用: "red" };
 
 let moviesLoadedFromServer = false;
 let moviesLoading = false;
@@ -227,7 +227,6 @@ let editingProjectBoardId = null;
 let projectBoardFilters = {
   search: "",
   status: "全部",
-  type: "全部",
 };
 let isAssetModalOpen = false;
 let editingAssetId = null;
@@ -1245,31 +1244,39 @@ function movieModal() {
     </div>`;
 }
 
-const projectBoardTypes = ["電影行銷", "發行", "社群", "製作支援", "活動", "其他"];
-const projectBoardStatuses = ["進行中", "已完成", "暫停", "待確認"];
+const projectBoardStatuses = ["未開始", "進行中", "已完成", "暫停", "待確認"];
 
 function normalizeProjectBoard(item = {}) {
+  const movie = item.movie || item.movies || {};
+  const movieRawName = movie?.title || movie?.name || movie?.movie_title || movie?.movieTitle || "";
+  const movieName = String(movieRawName || item.movieName || item.movie_name || item.projectName || item.project_name || "").trim();
   return {
     id: item.id || `board-${Date.now()}`,
-    projectName: item.projectName || item.project_name || "",
-    projectType: item.projectType || item.project_type || "電影行銷",
-    status: item.status || "進行中",
-    linkLabel: item.linkLabel || item.link_label || "",
-    projectUrl: item.projectUrl || item.project_url || "",
+    movieId: item.movieId || item.movie_id || movie.id || "",
+    movieName,
+    projectName: movieName,
+    owner: item.owner || "",
+    currentPhase: item.currentPhase || item.current_phase || "",
+    startDate: item.startDate || item.start_date || "",
+    dueDate: item.dueDate || item.due_date || "",
+    status: item.status || "未開始",
     notes: item.notes || "",
-    movieId: item.movieId || item.movie_id || "",
     createdAt: item.createdAt || item.created_at || "",
     updatedAt: item.updatedAt || item.updated_at || "",
   };
 }
 
 function projectBoardPayloadFromForm(formData) {
+  const movieId = String(formData.get("movieId") || "").trim();
+  const movie = mockData.movies.find((item) => String(item.id) === movieId);
   return {
-    projectName: String(formData.get("projectName") || "").trim(),
-    projectType: String(formData.get("projectType") || "電影行銷").trim(),
-    status: String(formData.get("status") || "進行中").trim(),
-    linkLabel: String(formData.get("linkLabel") || "").trim(),
-    projectUrl: String(formData.get("projectUrl") || "").trim(),
+    movieId,
+    projectName: movie ? movieDisplayName(movie) : "",
+    owner: String(formData.get("owner") || "").trim(),
+    currentPhase: String(formData.get("currentPhase") || "").trim(),
+    startDate: String(formData.get("startDate") || "").trim(),
+    dueDate: String(formData.get("dueDate") || "").trim(),
+    status: String(formData.get("status") || "未開始").trim(),
     notes: String(formData.get("notes") || "").trim(),
   };
 }
@@ -1285,6 +1292,7 @@ async function loadProjectBoardsFromServer(force = false) {
     projectBoardsLoaded = true;
   } catch (error) {
     projectBoardsError = error.message || "專案大表讀取失敗。";
+    projectBoardsLoaded = true;
   } finally {
     projectBoardsLoading = false;
     render();
@@ -1321,24 +1329,25 @@ function formatDateTimeText(value) {
 function filteredProjectBoards() {
   const keyword = projectBoardFilters.search.trim().toLowerCase();
   return projectBoards.filter((item) => {
-    const matchesSearch = !keyword || [item.projectName, item.linkLabel, item.notes].some((value) => String(value || "").toLowerCase().includes(keyword));
+    const matchesSearch = !keyword || [item.projectName, item.owner, item.currentPhase, item.notes].some((value) => String(value || "").toLowerCase().includes(keyword));
     const matchesStatus = projectBoardFilters.status === "全部" || item.status === projectBoardFilters.status;
-    const matchesType = projectBoardFilters.type === "全部" || item.projectType === projectBoardFilters.type;
-    return matchesSearch && matchesStatus && matchesType;
+    return matchesSearch && matchesStatus;
   });
 }
 
 function projectBoardModal() {
   const item = projectBoards.find((board) => String(board.id) === String(editingProjectBoardId)) || {};
+  const movieOptions = mockData.movies.map((movie) => option(movie.id, item.movieId || "", movieDisplayName(movie))).join("");
   return `<div class="modal-backdrop" role="presentation">
     <section class="modal" role="dialog" aria-modal="true">
       <div class="modal-header"><div><h2>${item.id ? "編輯專案" : "新增專案"}</h2><p>管理外部工作大表與協作連結。</p></div><button class="icon-button modal-close" type="button" data-action="close-project-board-modal">×</button></div>
       <form id="projectBoardForm" class="modal-form">
-        <div class="field"><label>專案名稱</label><input class="input" name="projectName" value="${escapeHtml(item.projectName || "")}" required /></div>
-        <div class="field"><label>專案類型</label><select class="select" name="projectType">${projectBoardTypes.map((value) => option(value, item.projectType || "電影行銷")).join("")}</select></div>
-        <div class="field"><label>專案狀態</label><select class="select" name="status">${projectBoardStatuses.map((value) => option(value, item.status || "進行中")).join("")}</select></div>
-        <div class="field"><label>連結名稱</label><input class="input" name="linkLabel" value="${escapeHtml(item.linkLabel || "")}" placeholder="例如：Google Sheet 行銷總表" /></div>
-        <div class="field field-wide"><label>專案連結</label><input class="input" name="projectUrl" type="url" value="${escapeHtml(item.projectUrl || "")}" placeholder="https://..." /></div>
+        ${mockData.movies.length ? `<div class="field field-wide"><label>電影 / 專案名稱</label><select class="select" name="movieId" required>${movieOptions}</select></div>` : `<div class="field field-wide"><p class="status red">目前尚無電影資料，請先到電影資料庫新增電影。</p></div>`}
+        <div class="field"><label>專案負責人</label><input class="input" name="owner" value="${escapeHtml(item.owner || "")}" placeholder="例如：AJ、社群小編" /></div>
+        <div class="field"><label>目前階段</label><input class="input" name="currentPhase" value="${escapeHtml(item.currentPhase || "")}" placeholder="例如：上映前、素材整理、結案" /></div>
+        <div class="field"><label>開始日期</label><input class="input" name="startDate" type="date" value="${escapeHtml(item.startDate || "")}" /></div>
+        <div class="field"><label>截止日期</label><input class="input" name="dueDate" type="date" value="${escapeHtml(item.dueDate || "")}" /></div>
+        <div class="field"><label>狀態</label><select class="select" name="status">${projectBoardStatuses.map((value) => option(value, item.status || "未開始")).join("")}</select></div>
         <div class="field field-wide"><label>備註</label><textarea name="notes" placeholder="可輸入專案說明、使用提醒或負責人資訊">${escapeHtml(item.notes || "")}</textarea></div>
         <div class="modal-actions modal-footer-actions"><button class="secondary-button" type="button" data-action="close-project-board-modal">取消</button><button class="primary-button" type="submit">儲存</button></div>
       </form>
@@ -1360,24 +1369,22 @@ function projectBoardsPage() {
     ${projectBoardsNotice ? `<p class="status green">${escapeHtml(projectBoardsNotice)}</p>` : ""}
     ${projectBoardsError ? `<p class="status red">${escapeHtml(projectBoardsError)}</p>` : ""}
     <div class="toolbar">
-      <input class="input project-board-filter-input" data-filter="search" placeholder="搜尋專案名稱、連結名稱、備註" value="${escapeHtml(projectBoardFilters.search)}" />
+      <input class="input project-board-filter-input" data-filter="search" placeholder="搜尋專案名稱、負責人、階段、備註" value="${escapeHtml(projectBoardFilters.search)}" />
       <select class="select project-board-filter" data-filter="status">${["全部", ...projectBoardStatuses].map((value) => option(value, projectBoardFilters.status)).join("")}</select>
-      <select class="select project-board-filter" data-filter="type">${["全部", ...projectBoardTypes].map((value) => option(value, projectBoardFilters.type)).join("")}</select>
     </div>
     ${projectBoardsLoading ? `<article class="card"><div class="card-body"><p class="muted">正在讀取專案大表...</p></div></article>` : ""}
-    ${!projectBoardsLoading && !boards.length ? `<article class="card"><div class="card-body"><h3>目前尚未建立專案大表</h3><p class="muted">請點擊「新增專案」開始建立。</p></div></article>` : ""}
+    ${!projectBoardsLoading && !projectBoardsError && !boards.length ? `<article class="card"><div class="card-body"><h3>目前尚無專案資料</h3><p class="muted">請先新增電影資料或建立專案。</p></div></article>` : ""}
     <div class="project-board-grid">
       ${boards.map((item) => `<article class="card project-board-card">
         <div class="card-body">
           <div class="card-header">
-            <div><h3>${escapeHtml(item.projectName || "未命名專案")}</h3><p class="muted">${escapeHtml(item.linkLabel || "未命名連結")}</p></div>
+            <div><h3>${escapeHtml(item.projectName || "未命名專案")}</h3><p class="muted">${escapeHtml(item.currentPhase || "尚未設定階段")}</p></div>
             ${status(item.status || "待確認")}
           </div>
-          <div class="meta-row"><span class="tag">${escapeHtml(item.projectType || "其他")}</span><span class="muted">${escapeHtml(item.updatedAt ? `更新 ${formatDateTimeText(item.updatedAt)}` : item.createdAt ? `建立 ${formatDateTimeText(item.createdAt)}` : "尚無時間紀錄")}</span></div>
-          <p class="muted">${escapeHtml(item.projectUrl || "尚未設定專案連結")}</p>
+          <div class="meta-row"><span class="tag">負責 ${escapeHtml(item.owner || "未指定")}</span><span class="tag">開始 ${escapeHtml(item.startDate || "待確認")}</span><span class="tag">截止 ${escapeHtml(item.dueDate || "待確認")}</span></div>
+          <p class="muted">${escapeHtml(item.updatedAt ? `更新 ${formatDateTimeText(item.updatedAt)}` : item.createdAt ? `建立 ${formatDateTimeText(item.createdAt)}` : "尚無時間紀錄")}</p>
           ${item.notes ? `<p>${escapeHtml(item.notes)}</p>` : `<p class="muted">尚無備註</p>`}
           <div class="meta-row">
-            <button class="primary-button" type="button" data-action="open-project-board-link" data-project-board-id="${escapeHtml(item.id)}">前往專案</button>
             <button class="secondary-button" type="button" data-action="edit-project-board" data-project-board-id="${escapeHtml(item.id)}">編輯</button>
             <button class="secondary-button" type="button" data-action="delete-project-board" data-project-board-id="${escapeHtml(item.id)}">刪除</button>
           </div>
@@ -3234,7 +3241,7 @@ function render() {
   document.querySelector("#pageTitle").textContent = page.title;
   document.querySelector("#pageContent").innerHTML = renderers[page.id]();
   renderNav(page.id);
-  if (["movies", "assets", "schedule", "copy", "review", "analytics"].includes(page.id) && Date.now() - moviesLastLoadedAt > 5000) loadMoviesFromServer(true);
+  if (["movies", "project-boards", "assets", "schedule", "copy", "review", "analytics"].includes(page.id) && Date.now() - moviesLastLoadedAt > 5000) loadMoviesFromServer(true);
   if (page.id === "project-boards") loadProjectBoardsFromServer();
   if (["assets", "schedule", "review", "analytics", "dashboard"].includes(page.id) && Date.now() - workflowLastLoadedAt > 5000) loadWorkflowDataFromServer();
   if (page.id === "style" && !styleExamplesLoadedFromServer) loadStyleExamplesFromServer(true);
@@ -4042,7 +4049,13 @@ document.addEventListener("submit", async (event) => {
   if (event.target.id === "projectBoardForm") {
     try {
       projectBoardsError = "";
-      await saveProjectBoardToServer(projectBoardPayloadFromForm(formData));
+      const payload = projectBoardPayloadFromForm(formData);
+      if (!payload.movieId) {
+        projectBoardsError = "請先選擇電影作為專案名稱。";
+        render();
+        return;
+      }
+      await saveProjectBoardToServer(payload);
       isProjectBoardModalOpen = false;
       editingProjectBoardId = null;
       render();

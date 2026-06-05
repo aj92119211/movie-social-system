@@ -347,15 +347,19 @@ function mapStyleExampleToDb(example, includeAdvancedFields = true) {
 }
 
 function mapProjectBoardFromDb(row) {
+  const movie = row.movies || row.movie || {};
+  const movieName = movie.title || movie.name || movie.movie_title || row.project_name || "";
   return {
     id: row.id,
-    projectName: row.project_name || "",
-    projectType: row.project_type || "",
-    status: row.status || "",
-    linkLabel: row.link_label || "",
-    projectUrl: row.project_url || "",
-    notes: row.notes || "",
     movieId: row.movie_id || "",
+    movieName,
+    projectName: movieName,
+    owner: row.owner || "",
+    currentPhase: row.current_phase || "",
+    startDate: row.start_date || "",
+    dueDate: row.due_date || "",
+    status: row.status || "",
+    notes: row.notes || "",
     createdAt: row.created_at || "",
     updatedAt: row.updated_at || "",
   };
@@ -363,20 +367,38 @@ function mapProjectBoardFromDb(row) {
 
 function mapProjectBoardToDb(board) {
   return {
+    movie_id: String(board.movieId || "").trim() || null,
     project_name: String(board.projectName || "").trim(),
-    project_type: String(board.projectType || "").trim(),
-    status: String(board.status || "").trim(),
-    link_label: String(board.linkLabel || "").trim(),
-    project_url: String(board.projectUrl || "").trim(),
+    owner: String(board.owner || "").trim(),
+    current_phase: String(board.currentPhase || "").trim(),
+    start_date: String(board.startDate || "").trim() || null,
+    due_date: String(board.dueDate || "").trim() || null,
+    status: String(board.status || "未開始").trim(),
     notes: String(board.notes || "").trim(),
   };
 }
 
 function validateProjectBoardPayload(board) {
-  if (!String(board.projectName || "").trim()) {
-    return "專案名稱為必填。";
+  if (!String(board.movieId || "").trim()) {
+    return "請先選擇電影作為專案名稱。";
   }
   return "";
+}
+
+async function ensureProjectBoardMovieName(board) {
+  if (String(board.projectName || "").trim()) {
+    return board;
+  }
+  const movieId = String(board.movieId || "").trim();
+  if (!movieId) {
+    return board;
+  }
+  const rows = await supabaseRequest(`/movies?id=eq.${encodeURIComponent(movieId)}&select=id,title,name,movie_title&limit=1`);
+  const movie = rows?.[0] || {};
+  return {
+    ...board,
+    projectName: movie.title || movie.name || movie.movie_title || "未命名電影",
+  };
 }
 
 async function saveMovieToSupabase(pathname, method, movie) {
@@ -563,18 +585,19 @@ async function handleMoviesApi(request, response, movieId) {
 async function handleProjectBoardsApi(request, response, boardId) {
   try {
     if (request.method === "GET" && !boardId) {
-      const rows = await supabaseRequest("/project_boards?select=*&order=updated_at.desc");
+      const rows = await supabaseRequest("/project_boards?select=*,movies(id,title,name,movie_title)&order=updated_at.desc");
       sendJson(response, 200, { projectBoards: (rows || []).map(mapProjectBoardFromDb) });
       return;
     }
 
     if (request.method === "POST" && !boardId) {
-      const body = await readJsonBody(request);
+      let body = await readJsonBody(request);
       const validationError = validateProjectBoardPayload(body);
       if (validationError) {
         sendJson(response, 400, { error: validationError });
         return;
       }
+      body = await ensureProjectBoardMovieName(body);
       const rows = await supabaseRequest("/project_boards?select=*", {
         method: "POST",
         headers: { Prefer: "return=representation" },
@@ -585,12 +608,13 @@ async function handleProjectBoardsApi(request, response, boardId) {
     }
 
     if (request.method === "PUT" && boardId) {
-      const body = await readJsonBody(request);
+      let body = await readJsonBody(request);
       const validationError = validateProjectBoardPayload(body);
       if (validationError) {
         sendJson(response, 400, { error: validationError });
         return;
       }
+      body = await ensureProjectBoardMovieName(body);
       const rows = await supabaseRequest(`/project_boards?id=eq.${encodeURIComponent(boardId)}&select=*`, {
         method: "PATCH",
         headers: { Prefer: "return=representation" },
