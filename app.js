@@ -1214,7 +1214,6 @@ function dashboard() {
         ["進行中電影", dashboardMovieCount(), "未上映或上映中"],
         ["待發布貼文", dashboardPendingPostCount(), "待發布、已排程與草稿"],
         ["待審核內容", dashboardPendingReviewCount(), "尚待確認的內容項目"],
-        ["本週高效貼文", dashboardHighPerformingPostCount(), "本週表現突出的內容"],
       ]
         .map(([label, value, note]) => `<article class="card stat-card"><span>${label}</span><strong>${value}</strong><small>${note}</small></article>`)
         .join("")}
