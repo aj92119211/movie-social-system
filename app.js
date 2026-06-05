@@ -1128,6 +1128,10 @@ function dashboardPendingPostCount() {
   return mockData.schedules.filter((schedule) => pendingStatuses.includes(schedule.status)).length;
 }
 
+function dashboardActiveProjectCount() {
+  return projectBoards.filter((project) => project.status === "進行中").length;
+}
+
 function dashboardPendingReviewCount() {
   const pendingReviewStatuses = ["內部審核", "片方審核", "待修改", "待確認", "修改中", "待審核"];
   return mockData.schedules.filter((schedule) => pendingReviewStatuses.includes(schedule.status)).length;
@@ -1211,11 +1215,11 @@ function dashboard() {
   return `
     <div class="grid stats-grid">
       ${[
-        ["進行中電影", dashboardMovieCount(), "未上映或上映中"],
-        ["待發布貼文", dashboardPendingPostCount(), "待發布、已排程與草稿"],
-        ["待審核內容", dashboardPendingReviewCount(), "尚待確認的內容項目"],
+        { label: "進行中電影", value: dashboardMovieCount(), note: "未上映或上映中", target: "movies" },
+        { label: "進行中專案", value: dashboardActiveProjectCount(), note: "專案大表進行中", target: "project-boards" },
+        { label: "待審核內容", value: dashboardPendingReviewCount(), note: "尚待確認的內容項目", target: "schedule" },
       ]
-        .map(([label, value, note]) => `<article class="card stat-card"><span>${label}</span><strong>${value}</strong><small>${note}</small></article>`)
+        .map((item) => `<article class="card stat-card stat-link-card" role="button" tabindex="0" data-action="go-dashboard-stat" data-target-page="${item.target}"><span>${item.label}</span><strong>${item.value}</strong><small>${item.note}</small></article>`)
         .join("")}
     </div>
     <section class="card" style="margin-top:16px">
@@ -3355,7 +3359,7 @@ function render() {
   document.querySelector("#pageContent").innerHTML = renderers[page.id]();
   renderNav(page.id);
   if (["movies", "project-boards", "assets", "schedule", "copy", "review", "analytics"].includes(page.id) && Date.now() - moviesLastLoadedAt > 5000) loadMoviesFromServer(true);
-  if (page.id === "project-boards") loadProjectBoardsFromServer();
+  if (["dashboard", "project-boards"].includes(page.id)) loadProjectBoardsFromServer();
   if (["assets", "schedule", "review", "analytics", "dashboard"].includes(page.id) && Date.now() - workflowLastLoadedAt > 5000) loadWorkflowDataFromServer();
   if (page.id === "style" && !styleExamplesLoadedFromServer) loadStyleExamplesFromServer(true);
   if (page.id === "analytics" && selectedAnalyticsMovieId) loadAnalyticsDataForMovie();
@@ -3522,6 +3526,12 @@ document.addEventListener("click", async (event) => {
   const actionElement = event.target.closest("[data-action]");
   const action = actionElement?.dataset.action;
   if (!action) return;
+
+  if (action === "go-dashboard-stat") {
+    const targetPage = actionElement.dataset.targetPage;
+    if (targetPage) location.hash = targetPage;
+    return;
+  }
 
   if (action === "open-movie-modal") {
     isMovieModalOpen = true;
