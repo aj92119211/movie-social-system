@@ -1103,7 +1103,7 @@ function deleteMovieLocally(movieId) {
 function renderNav(activeId) {
   const nav = document.querySelector("#navList");
   nav.innerHTML = pages
-    .map((page) => `<button class="nav-item ${page.id === activeId ? "active" : ""}" data-page="${page.id}"><span class="nav-icon">${page.icon}</span><span>${page.title}</span></button>`)
+    .map((page) => `<button class="nav-item ${page.id === activeId ? "active" : ""}" data-page="${page.id}"><span>${page.title}</span></button>`)
     .join("");
   nav.querySelectorAll("button").forEach((button) => {
     button.addEventListener("click", () => {
