@@ -2131,7 +2131,14 @@ const twEntertainmentSocialSources = [
 ];
 
 const twEntertainmentExcludedKeywords = [
-  "影評", "心得", "推薦", "懶人包", "片單", "劇透", "雷文", "八卦", "私生活", "星座", "炎上", "穿搭", "感情", "緋聞", "戀情", "結婚", "離婚", "不倫", "家暴", "吵架", "粉絲", "網友反應", "網友熱議",
+  "影評", "心得", "推薦", "懶人包", "片單", "劇透", "雷文", "八卦", "私生活", "星座", "炎上", "穿搭", "感情", "緋聞", "戀情", "結婚", "離婚", "不倫", "家暴", "吵架", "粉絲", "網友反應", "網友熱議", "18禁", "成人", "情色", "情趣", "情趣用品", "西斯", "性事", "約炮",
+];
+
+const twEntertainmentUnsafeSocialUrlPatterns = [
+  /\/topics\/%E6%83%85%E8%B6%A3%E7%94%A8%E5%93%81/i,
+  /\/topics\/情趣用品/i,
+  /\/f\/sex/i,
+  /\/f\/adult/i,
 ];
 
 const twEntertainmentOfficialDomains = [
@@ -2241,7 +2248,8 @@ function stripLowRelatedResults(items) {
   let excludedCount = 0;
   for (const item of items) {
     const text = `${item.title || ""} ${item.snippet || ""} ${item.summary || ""}`;
-    if (twEntertainmentExcludedKeywords.some((keyword) => text.includes(keyword))) {
+    const url = `${item.articleUrl || ""} ${item.postUrl || ""}`;
+    if (twEntertainmentExcludedKeywords.some((keyword) => text.includes(keyword)) || twEntertainmentUnsafeSocialUrlPatterns.some((pattern) => pattern.test(url))) {
       excludedCount += 1;
     } else {
       filtered.push(item);
@@ -2349,6 +2357,9 @@ function normalizeTwNewsItem(raw, source, keyword) {
 function shouldKeepTwEntertainmentNewsItem(raw, source) {
   const link = String(raw?.link || "");
   if (!link) return false;
+  if (twEntertainmentUnsafeSocialUrlPatterns.some((pattern) => pattern.test(link))) {
+    return false;
+  }
   if (source.domain === "mirrormedia.mg" && /\/external\//i.test(link)) {
     return false;
   }
