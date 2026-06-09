@@ -2216,8 +2216,14 @@ function stripLowRelatedResults(items) {
   return { filtered, excludedCount };
 }
 
-function normalizeResultTitleKey(title) {
+function stripNewsSourceSuffix(title) {
   return String(title || "")
+    .replace(/\s[-－]\s*(Yahoo新聞|Yahoo奇摩新聞|鏡週刊Mirror Media|鏡週刊|Mirror Media|聯合新聞網|噓！星聞|ETtoday星光雲|ETtoday新聞雲|三立新聞網|自由娛樂|中央社|TVBS新聞網|中時新聞網|NOWnews今日新聞|台視新聞網|華視新聞網)\s*$/i, "")
+    .trim();
+}
+
+function normalizeResultTitleKey(title) {
+  return stripNewsSourceSuffix(title)
     .replace(/\s+/g, "")
     .replace(/[｜|:：\-－_—–‧·・,，.。!！?？「」『』【】\[\]（）()]/g, "")
     .replace(/鏡大咖/g, "")
@@ -2262,11 +2268,12 @@ async function fetchGoogleNewsRss(query, limit = 5) {
 }
 
 function normalizeTwNewsItem(raw, source, keyword) {
-  const text = `${raw.title} ${source.name} ${keyword}`;
+  const cleanTitle = stripNewsSourceSuffix(raw.title);
+  const text = `${cleanTitle} ${source.name} ${keyword}`;
   const tags = inferEntertainmentTags(text, "news");
   return {
     resultType: "news",
-    title: raw.title,
+    title: cleanTitle,
     sourceName: source.name || raw.sourceName || "新聞來源",
     platform: "",
     accountName: "",
@@ -2276,7 +2283,7 @@ function normalizeTwNewsItem(raw, source, keyword) {
     relatedTitle: "",
     category: inferEntertainmentCategory(text),
     tags,
-    snippet: raw.title,
+    snippet: cleanTitle,
     aiSummary: `這則結果與「${keyword}」相關，建議開啟原文確認細節、日期與作品資訊。`,
     keyPoint: tags.includes("產業") ? "可先作為產業資料保存，再判斷是否需要追蹤後續公告。" : "可先確認是否包含開拍、定檔、預告、票房或宣傳節點。",
     usefulFor: inferUsefulFor(text, "news"),
