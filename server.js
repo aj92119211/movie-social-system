@@ -2546,6 +2546,11 @@ const server = http.createServer((request, response) => {
     return;
   }
 
+  if (request.method === "GET" && url.pathname === "/api/tw-entertainment-news/search") {
+    handleTwEntertainmentNewsSearch(request, response, url);
+    return;
+  }
+
   if (url.pathname.startsWith("/api/") && !isAuthenticated(request)) {
     sendUnauthorized(response);
     return;
@@ -2553,11 +2558,6 @@ const server = http.createServer((request, response) => {
 
   if (request.method === "POST" && url.pathname === "/api/analyze-social-link") {
     analyzeSocialLink(request, response);
-    return;
-  }
-
-  if (request.method === "GET" && url.pathname === "/api/tw-entertainment-news/search") {
-    handleTwEntertainmentNewsSearch(request, response, url);
     return;
   }
 
