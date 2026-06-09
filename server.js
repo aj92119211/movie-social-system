@@ -2491,6 +2491,7 @@ async function handleTwEntertainmentNewsSearch(request, response, url) {
   const range = String(url.searchParams.get("range") || "7d");
   const sort = String(url.searchParams.get("sort") || "latest");
   const includeSocial = String(url.searchParams.get("includeSocial") || "true") !== "false";
+  const includeAi = String(url.searchParams.get("includeAi") || "true") !== "false";
 
   if (!keyword) {
     sendJson(response, 400, { error: "請先輸入搜尋關鍵字。" });
@@ -2506,7 +2507,9 @@ async function handleTwEntertainmentNewsSearch(request, response, url) {
     const socialFilter = stripLowRelatedResults(rawSocialResults);
     const newsResults = dedupeTwEntertainmentResults(sortTwEntertainmentItems(newsFilter.filtered, sort), "articleUrl").slice(0, 50);
     const socialResults = dedupeTwEntertainmentResults(sortTwEntertainmentItems(socialFilter.filtered, sort), "postUrl").slice(0, 40);
-    const { aiNotes, aiFailed } = await organizeTwEntertainmentResultsWithAi(keyword, newsResults, socialResults);
+    const { aiNotes, aiFailed } = includeAi
+      ? await organizeTwEntertainmentResultsWithAi(keyword, newsResults, socialResults)
+      : { aiNotes: [], aiFailed: false };
     const savedCount = await saveTwEntertainmentItems([...newsResults, ...socialResults]).catch(() => 0);
     const categoryCounts = {};
     for (const item of [...newsResults, ...socialResults]) categoryCounts[item.category] = (categoryCounts[item.category] || 0) + 1;

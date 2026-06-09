@@ -217,38 +217,12 @@
       .tag.green { background: #e9f8f1; color: var(--success); }
       .tag.gray { background: #f1f5f9; color: #475569; }
 
-      .result-body {
-        display: grid;
-        gap: 7px;
-        margin-top: 12px;
-        line-height: 1.75;
-      }
-
-      .result-body p { margin: 0; }
-      .result-body strong { color: #0f172a; }
-
       .actions {
         display: flex;
         flex-wrap: wrap;
         gap: 8px;
         margin-top: 12px;
       }
-
-      .ai-grid {
-        display: grid;
-        grid-template-columns: repeat(4, minmax(0, 1fr));
-        gap: 10px;
-      }
-
-      .ai-box {
-        border: 1px solid var(--line);
-        border-radius: var(--radius);
-        background: #fbfdff;
-        padding: 14px;
-      }
-
-      .ai-box h3 { margin: 0 0 8px; font-size: 15px; }
-      .ai-box ol { margin: 0; padding-left: 20px; line-height: 1.8; }
 
       .empty {
         border: 1px dashed var(--line);
@@ -274,7 +248,7 @@
       .toast.show { display: block; }
 
       @media (max-width: 860px) {
-        .search-row, .filter-grid, .summary-grid, .ai-grid, .result-top { grid-template-columns: 1fr; }
+        .search-row, .filter-grid, .summary-grid, .result-top { grid-template-columns: 1fr; }
       }
     </style>
   </head>
@@ -373,19 +347,10 @@
           <div id="socialResults" class="result-list"><div class="empty">本次未找到相關社群結果。</div></div>
         </section>
 
-        <section class="panel section">
-          <div class="section-header">
-            <div>
-              <h2>AI整理重點</h2>
-              <p>用自己整理資料的角度看，不做老闆簡報、不寫公司決策。</p>
-            </div>
-          </div>
-          <div id="aiNotes" class="ai-grid"></div>
-        </section>
       </main>
     </div>
 
-    <div id="toast" class="toast">已複製摘要</div>
+    <div id="toast" class="toast">已複製標題</div>
 
     <script>
       const rangeLabels = { today: "今天", "7d": "最近 7 天", "30d": "最近 30 天", year: "今年" };
@@ -424,11 +389,11 @@
 
       function resultActions(item, linkLabel) {
         const url = item.resultType === "social" ? item.postUrl : item.articleUrl;
-        const text = `${item.title || item.relatedTitle}\n摘要：${item.aiSummary || item.snippet}\n重點：${item.keyPoint}`;
+        const text = item.title || item.relatedTitle || "";
         return `
           <div class="actions">
             ${url ? `<a class="secondary-button" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${linkLabel}</a>` : ""}
-            <button class="secondary-button" type="button" data-copy="${escapeHtml(text)}">複製摘要</button>
+            <button class="secondary-button" type="button" data-copy="${escapeHtml(text)}">複製標題</button>
             <button class="secondary-button" type="button" data-copy="${escapeHtml(item.title || item.relatedTitle || "")}">加入收藏</button>
           </div>
         `;
@@ -462,9 +427,6 @@
               </div>
               <div class="tags">${tagList(item.tags)}</div>
             </div>
-            <div class="result-body">
-              <p><strong>摘要：</strong>${escapeHtml(item.aiSummary || item.snippet || "尚無摘要，請開啟原文確認。")}</p>
-            </div>
             ${resultActions(item, "開啟原文")}
           </article>
         `).join("") : `<div class="empty">本次未找到相關新聞結果。</div>`;
@@ -481,22 +443,9 @@
               </div>
               <div class="tags">${tagList(item.tags)}</div>
             </div>
-            <div class="result-body">
-              <p><strong>貼文內容摘要：</strong>${escapeHtml(item.aiSummary || item.snippet || "-")}</p>
-              <p><strong>互動觀察：</strong>${escapeHtml(item.interactionObservation || "-")}</p>
-            </div>
             ${resultActions(item, "開啟貼文")}
           </article>
         `).join("") : `<div class="empty">本次未找到相關社群結果。</div>`;
-      }
-
-      function renderAiNotes(blocks = []) {
-        document.getElementById("aiNotes").innerHTML = blocks.length ? blocks.map((block) => `
-          <div class="ai-box">
-            <h3>${escapeHtml(block.title)}</h3>
-            <ol>${(block.items || []).map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ol>
-          </div>
-        `).join("") : `<div class="empty">搜尋後會顯示 AI 整理重點。</div>`;
       }
 
       async function performSearch(query) {
@@ -516,6 +465,7 @@
             range: rangeSelect.value,
             sort: sortSelect.value,
             includeSocial: socialSelect.value === "yes" ? "true" : "false",
+            includeAi: "false",
           });
           const response = await fetch(`/api/tw-entertainment-news/search?${params.toString()}`);
           const payload = await response.json().catch(() => ({}));
@@ -525,7 +475,6 @@
           renderSummary(payload.summary);
           renderNews(payload.newsResults);
           renderSocial(payload.socialResults);
-          renderAiNotes(payload.aiNotes);
           const limitationText = (payload.limitations || []).join(" ");
           showStatus(payload.summary?.aiFailed ? `搜尋完成，但 AI 整理使用保守備援。${limitationText}` : `搜尋完成。${limitationText}`, payload.summary?.aiFailed ? "warning" : "success");
         } catch (error) {
@@ -551,13 +500,12 @@
         if (!copyButton) return;
         try {
           await navigator.clipboard.writeText(copyButton.dataset.copy);
-          showToast("已複製摘要");
+          showToast("已複製標題");
         } catch {
           window.alert("複製失敗，請手動選取文字。");
         }
       });
 
-      renderAiNotes();
     </script>
   </body>
 </html>
