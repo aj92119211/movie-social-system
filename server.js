@@ -2216,6 +2216,31 @@ function stripLowRelatedResults(items) {
   return { filtered, excludedCount };
 }
 
+function normalizeResultTitleKey(title) {
+  return String(title || "")
+    .replace(/\s+/g, "")
+    .replace(/[｜|:：\-－_—–‧·・,，.。!！?？「」『』【】\[\]（）()]/g, "")
+    .replace(/鏡大咖/g, "")
+    .toLowerCase()
+    .trim();
+}
+
+function dedupeTwEntertainmentResults(items, urlKey) {
+  const byUrl = new Set();
+  const byTitle = new Set();
+  const results = [];
+  for (const item of items) {
+    const url = String(item[urlKey] || item.articleUrl || item.postUrl || "").trim();
+    const titleKey = normalizeResultTitleKey(item.title || item.relatedTitle);
+    if (url && byUrl.has(url)) continue;
+    if (titleKey && byTitle.has(titleKey)) continue;
+    if (url) byUrl.add(url);
+    if (titleKey) byTitle.add(titleKey);
+    results.push(item);
+  }
+  return results;
+}
+
 async function fetchGoogleNewsRss(query, limit = 5) {
   const rssUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(query)}&hl=zh-TW&gl=TW&ceid=TW:zh-Hant`;
   const response = await fetch(rssUrl, {
@@ -2302,11 +2327,7 @@ async function fetchTwEntertainmentNewsResults(keyword, range) {
       console.warn("[TW_NEWS_SOURCE_SKIPPED]", source.name, error.message);
     }
   }
-  const byUrl = new Map();
-  for (const result of allResults) {
-    if (!byUrl.has(result.articleUrl)) byUrl.set(result.articleUrl, result);
-  }
-  return [...byUrl.values()].slice(0, 50);
+  return dedupeTwEntertainmentResults(allResults, "articleUrl").slice(0, 50);
 }
 
 async function fetchTwEntertainmentSocialResults(keyword, range) {
@@ -2336,12 +2357,7 @@ async function fetchTwEntertainmentSocialResults(keyword, range) {
     results.push(buildSocialSearchEntry(source, keyword));
   }
 
-  const byUrl = new Map();
-  for (const result of results) {
-    const key = result.postUrl || `${result.platform}:${result.title}`;
-    if (!byUrl.has(key)) byUrl.set(key, result);
-  }
-  return [...byUrl.values()].slice(0, 40);
+  return dedupeTwEntertainmentResults(results, "postUrl").slice(0, 40);
 }
 
 function fallbackTwEntertainmentAiNotes(keyword, newsResults, socialResults) {
@@ -2488,8 +2504,8 @@ async function handleTwEntertainmentNewsSearch(request, response, url) {
     ]);
     const newsFilter = stripLowRelatedResults(rawNewsResults);
     const socialFilter = stripLowRelatedResults(rawSocialResults);
-    const newsResults = sortTwEntertainmentItems(newsFilter.filtered, sort).slice(0, 50);
-    const socialResults = sortTwEntertainmentItems(socialFilter.filtered, sort).slice(0, 40);
+    const newsResults = dedupeTwEntertainmentResults(sortTwEntertainmentItems(newsFilter.filtered, sort), "articleUrl").slice(0, 50);
+    const socialResults = dedupeTwEntertainmentResults(sortTwEntertainmentItems(socialFilter.filtered, sort), "postUrl").slice(0, 40);
     const { aiNotes, aiFailed } = await organizeTwEntertainmentResultsWithAi(keyword, newsResults, socialResults);
     const savedCount = await saveTwEntertainmentItems([...newsResults, ...socialResults]).catch(() => 0);
     const categoryCounts = {};
