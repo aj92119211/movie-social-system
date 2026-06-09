@@ -2287,6 +2287,15 @@ function normalizeTwNewsItem(raw, source, keyword) {
   };
 }
 
+function shouldKeepTwEntertainmentNewsItem(raw, source) {
+  const link = String(raw?.link || "");
+  if (!link) return false;
+  if (source.domain === "mirrormedia.mg" && /\/external\//i.test(link)) {
+    return false;
+  }
+  return true;
+}
+
 function buildSocialSearchEntry(source, keyword) {
   const query = `site:${source.domain} ${keyword}`;
   const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(query)}`;
@@ -2322,7 +2331,7 @@ async function fetchTwEntertainmentNewsResults(keyword, range) {
     const sourceQuery = `${keyword} site:${source.domain} ${source.queryHint || ""} ${rangeQuery(range)}`.trim();
     try {
       const rows = await fetchGoogleNewsRss(sourceQuery, sourceLimit);
-      allResults.push(...rows.map((row) => normalizeTwNewsItem(row, source, keyword)));
+      allResults.push(...rows.filter((row) => shouldKeepTwEntertainmentNewsItem(row, source)).map((row) => normalizeTwNewsItem(row, source, keyword)));
     } catch (error) {
       console.warn("[TW_NEWS_SOURCE_SKIPPED]", source.name, error.message);
     }
