@@ -2113,6 +2113,12 @@ const twEntertainmentNewsSources = [
   { name: "ETtoday 星光雲", domain: "star.ettoday.net" },
   { name: "Yahoo 娛樂", domain: "tw.news.yahoo.com" },
   { name: "聯合報噓！星聞", domain: "stars.udn.com" },
+  { name: "三立新聞網娛樂", domain: "setn.com" },
+  { name: "自由娛樂", domain: "ent.ltn.com.tw" },
+  { name: "TVBS 娛樂", domain: "news.tvbs.com.tw" },
+  { name: "中時新聞網娛樂", domain: "chinatimes.com" },
+  { name: "NOWnews 娛樂", domain: "nownews.com" },
+  { name: "台視新聞", domain: "news.ttv.com.tw" },
   { name: "電影神搜", domain: "news.agentm.tw" },
   { name: "DramaQueen 電視迷", domain: "dramaqueen.com.tw" },
   { name: "台灣電影網", domain: "taiwancinema.bamid.gov.tw" },
@@ -2149,8 +2155,22 @@ const twEntertainmentOfficialDomains = [
   "boxofficetw.tfai.org.tw",
 ];
 
+const twEntertainmentTrustedTaiwanMediaDomains = [
+  "mirrormedia.mg",
+  "star.ettoday.net",
+  "tw.news.yahoo.com",
+  "stars.udn.com",
+  "setn.com",
+  "ent.ltn.com.tw",
+  "news.tvbs.com.tw",
+  "chinatimes.com",
+  "nownews.com",
+  "news.ttv.com.tw",
+  "dramaqueen.com.tw",
+];
+
 const twEntertainmentTaiwanSignals = [
-  "台灣", "臺灣", "台劇", "臺劇", "國片", "台片", "華語", "本土", "金馬", "金鐘", "北影", "台北電影", "台北", "臺北", "新北", "桃園", "台中", "臺中", "台南", "臺南", "高雄", "文策院", "文化部", "影視局", "公視", "台視", "臺視", "華視", "民視", "三立", "八大", "客家電視", "客台", "全國電影票房",
+  "台灣", "臺灣", "台劇", "臺劇", "國片", "台片", "華語", "本土", "金馬", "金鐘", "北影", "台北電影", "台北", "臺北", "新北", "桃園", "台中", "臺中", "台南", "臺南", "高雄", "文策院", "文化部", "影視局", "公視", "台視", "臺視", "華視", "民視", "三立", "八大", "客家電視", "客台", "全國電影票房", "八點檔", "偶像劇", "影視基地", "殺青宴", "盧彥澤", "何宜珊", "林健寰", "尹昭德", "周渝民", "薛仕凌", "劉子銓", "白潤音", "詹懷雲", "温貞菱", "溫貞菱", "寶島西米樂", "我們與惡的距離", "便利商店1999", "便利商店",
 ];
 
 const twEntertainmentForeignSignals = [
@@ -2269,11 +2289,33 @@ function hasTaiwanEntertainmentContext(raw, source) {
   const hasForeignSignal = twEntertainmentForeignSignals.some((signal) => text.includes(signal));
   if (hasForeignSignal) return false;
 
+  if (twEntertainmentTrustedTaiwanMediaDomains.includes(domain) && /台劇|臺劇|台灣電影|臺灣電影|國片|台片/.test(String(raw?.searchKeyword || ""))) {
+    return true;
+  }
+
   if (domain === "atmovies.com.tw" && /電影版|劇場版|正式預告|電影預告|預告/.test(text)) {
     return false;
   }
 
   return false;
+}
+
+function matchesSearchIntent(raw, keyword) {
+  const text = `${raw?.title || ""} ${raw?.sourceName || ""}`;
+  const query = String(keyword || "");
+  const intentGroups = [
+    { query: /開拍|開鏡/, result: /開拍|開鏡|開機|開工|開鏡/ },
+    { query: /殺青/, result: /殺青|殺青宴/ },
+    { query: /定檔/, result: /定檔|檔期/ },
+    { query: /上映/, result: /上映|院線|戲院|大銀幕/ },
+    { query: /票房/, result: /票房|賣座|排行|全國電影票房/ },
+    { query: /補助/, result: /補助|輔導金|投資|徵件/ },
+    { query: /影展/, result: /影展|金馬奇幻|台北電影節|金穗|入選/ },
+    { query: /獎項/, result: /獎項|入圍|得獎|金馬|金鐘|金穗/ },
+  ];
+  const activeGroups = intentGroups.filter((group) => group.query.test(query));
+  if (!activeGroups.length) return true;
+  return activeGroups.some((group) => group.result.test(text));
 }
 
 function stripNewsSourceSuffix(title) {
@@ -2354,7 +2396,7 @@ function normalizeTwNewsItem(raw, source, keyword) {
   };
 }
 
-function shouldKeepTwEntertainmentNewsItem(raw, source) {
+function shouldKeepTwEntertainmentNewsItem(raw, source, keyword = "") {
   const link = String(raw?.link || "");
   if (!link) return false;
   if (twEntertainmentUnsafeSocialUrlPatterns.some((pattern) => pattern.test(link))) {
@@ -2363,7 +2405,10 @@ function shouldKeepTwEntertainmentNewsItem(raw, source) {
   if (source.domain === "mirrormedia.mg" && /\/external\//i.test(link)) {
     return false;
   }
-  if (!hasTaiwanEntertainmentContext(raw, source)) {
+  if (!hasTaiwanEntertainmentContext({ ...raw, searchKeyword: keyword }, source)) {
+    return false;
+  }
+  if (!matchesSearchIntent(raw, keyword)) {
     return false;
   }
   return true;
@@ -2399,12 +2444,12 @@ function buildSocialSearchEntry(source, keyword) {
 
 async function fetchTwEntertainmentNewsResults(keyword, range) {
   const allResults = [];
-  const sourceLimit = 5;
+  const sourceLimit = 10;
   for (const source of twEntertainmentNewsSources) {
     const sourceQuery = `${keyword} site:${source.domain} ${rangeQuery(range)}`.trim();
     try {
       const rows = await fetchGoogleNewsRss(sourceQuery, sourceLimit);
-      allResults.push(...rows.filter((row) => isNewsDateWithinRange(row.publishedDate, range)).filter((row) => shouldKeepTwEntertainmentNewsItem(row, source)).map((row) => normalizeTwNewsItem(row, source, keyword)));
+      allResults.push(...rows.filter((row) => isNewsDateWithinRange(row.publishedDate, range)).filter((row) => shouldKeepTwEntertainmentNewsItem(row, source, keyword)).map((row) => normalizeTwNewsItem(row, source, keyword)));
     } catch (error) {
       console.warn("[TW_NEWS_SOURCE_SKIPPED]", source.name, error.message);
     }
