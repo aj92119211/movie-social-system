@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>影劇新聞搜尋</title>
+    <title>台灣影視圈每日快搜</title>
     <style>
       :root {
         --bg: #f6f7f9;
@@ -256,9 +256,9 @@
     <div class="page">
       <header class="hero">
         <div class="hero-inner">
-          <p class="eyebrow">小編／影視工作者自用工具</p>
-          <h1>影劇新聞搜尋</h1>
-          <p>用條列式整理台灣影劇新聞與社群討論，快速看重點、來源與可用方向。搜尋由後端 API 處理，前端不直接打外部網站。</p>
+          <p class="eyebrow">個人影視產業雷達</p>
+          <h1>台灣影視圈每日快搜</h1>
+          <p>每天快速掃描台灣電影、台劇、OTT、票房、政策補助、影展獎項與公開討論入口。用條列式呈現，方便自己掌握影視圈正在發生什麼事。</p>
         </div>
       </header>
 
@@ -273,14 +273,15 @@
           </div>
 
           <div class="quick-grid" aria-label="快速搜尋">
-            <button class="chip-button" type="button" data-query="今日影劇新聞">今日影劇新聞</button>
-            <button class="chip-button" type="button" data-query="台灣電影 開拍 殺青">台灣電影開拍／殺青</button>
-            <button class="chip-button" type="button" data-query="台灣電影 定檔 票房">台灣電影定檔／票房</button>
-            <button class="chip-button" type="button" data-query="台劇 開拍 殺青">台劇開拍／殺青</button>
-            <button class="chip-button" type="button" data-query="OTT 台劇 Netflix Disney+">OTT台劇</button>
-            <button class="chip-button" type="button" data-query="文策院 文化部 影視 補助">文策院／文化部</button>
-            <button class="chip-button" type="button" data-query="社群 口碑 台灣電影 台劇">社群口碑</button>
-            <button class="chip-button" type="button" data-query="預告 海報 發布 台灣電影">預告／海報發布</button>
+            <button class="chip-button" type="button" data-query="今日 台灣 影視 產業 電影 台劇">今日影視圈</button>
+            <button class="chip-button" type="button" data-query="台灣電影 開拍 殺青 定檔 上映">台灣電影</button>
+            <button class="chip-button" type="button" data-query="台劇 影集 開拍 殺青 定檔 OTT">台劇／影集</button>
+            <button class="chip-button" type="button" data-query="OTT 串流 台劇 Netflix Disney+ 上架">OTT／串流</button>
+            <button class="chip-button" type="button" data-query="台灣電影 票房 全國電影票房">票房</button>
+            <button class="chip-button" type="button" data-query="台灣電影 台劇 開拍 殺青">開拍／殺青</button>
+            <button class="chip-button" type="button" data-query="台灣電影 台劇 定檔 上映">定檔／上映</button>
+            <button class="chip-button" type="button" data-query="文策院 文化部 影視 補助 政策">政策／補助</button>
+            <button class="chip-button" type="button" data-query="台灣電影 影展 獎項 入圍 得獎">影展／獎項</button>
           </div>
 
           <div class="filter-grid">
@@ -303,23 +304,24 @@
               </select>
             </label>
             <label class="field">
-              <span>社群結果</span>
+              <span>討論來源</span>
               <select id="socialSelect" class="select">
-                <option value="yes" selected>包含 Instagram / Facebook / Threads / Dcard</option>
-                <option value="no">只看新聞網站</option>
+                <option value="yes" selected>包含 Dcard / Threads / Facebook / Instagram 搜尋入口</option>
+                <option value="no">只看新聞與官方來源</option>
               </select>
             </label>
           </div>
 
-          <div id="searchStatus" class="notice">正式 API 版：新聞來源會透過後端搜尋指定站台；封閉社群平台會先提供搜尋入口，不用假資料冒充貼文。</div>
+          <div id="searchStatus" class="notice">正式 API 版：用後端搜尋台灣影視新聞、官方來源與公開討論入口；封閉平台只提供搜尋入口，不用假資料冒充貼文。</div>
         </section>
 
         <section class="panel section">
           <div class="section-header">
             <div>
-              <h2>搜尋摘要</h2>
+              <h2>快搜摘要</h2>
               <p id="summaryDescription">尚未搜尋。請輸入關鍵字或點選快速搜尋。</p>
             </div>
+            <button id="copyDigestButton" class="secondary-button" type="button">複製今日整理</button>
           </div>
           <div id="summaryGrid" class="summary-grid"></div>
           <ol id="searchFocusList" class="bullet-list"></ol>
@@ -328,23 +330,23 @@
         <section class="panel section">
           <div class="section-header">
             <div>
-              <h2>新聞網站結果</h2>
-              <p>新聞結果與社群結果分開呈現，方便快速掃描。</p>
+              <h2>產業新聞與官方來源</h2>
+              <p>新聞、官方公告與產業資訊分開列出，方便快速掃描。</p>
             </div>
             <span id="newsCount" class="tag gray">0 筆</span>
           </div>
-          <div id="newsResults" class="result-list"><div class="empty">本次未找到相關新聞結果。</div></div>
+          <div id="newsResults" class="result-list"><div class="empty">本次未找到相關新聞或官方來源。</div></div>
         </section>
 
         <section class="panel section">
           <div class="section-header">
             <div>
-              <h2>社群結果</h2>
-              <p>Dcard 會嘗試搜尋公開結果；Instagram、Facebook、Threads 第一版提供搜尋入口。</p>
+              <h2>社群與討論入口</h2>
+              <p>Dcard 會嘗試搜尋公開結果；Instagram、Facebook、Threads 先提供搜尋入口，方便追討論線索。</p>
             </div>
             <span id="socialCount" class="tag gray">0 筆</span>
           </div>
-          <div id="socialResults" class="result-list"><div class="empty">本次未找到相關社群結果。</div></div>
+          <div id="socialResults" class="result-list"><div class="empty">本次未找到相關社群或討論入口。</div></div>
         </section>
 
       </main>
@@ -362,6 +364,8 @@
       const socialSelect = document.getElementById("socialSelect");
       const statusBox = document.getElementById("searchStatus");
       const toast = document.getElementById("toast");
+      const copyDigestButton = document.getElementById("copyDigestButton");
+      let lastSearchPayload = null;
 
       function escapeHtml(value) {
         return String(value ?? "")
@@ -399,14 +403,48 @@
         `;
       }
 
+      function getItemUrl(item) {
+        return item?.resultType === "social" ? item.postUrl : item.articleUrl;
+      }
+
+      function buildDigestSection(title, items = []) {
+        if (!items.length) return `${title}\n目前沒有資料`;
+        const rows = items.slice(0, 20).map((item, index) => {
+          const label = item.sourceName || item.platform || "未提供來源";
+          const date = item.publishedDate || "未提供日期";
+          const tags = Array.isArray(item.tags) && item.tags.length ? `｜${item.tags.join(" ")}` : "";
+          const url = getItemUrl(item) || "";
+          return `${index + 1}. ${item.title || item.relatedTitle || "未命名"}｜${label}｜${date}${tags}${url ? `\n${url}` : ""}`;
+        });
+        return `${title}\n${rows.join("\n")}`;
+      }
+
+      function buildDailyDigest() {
+        if (!lastSearchPayload?.summary) return "";
+        const summary = lastSearchPayload.summary;
+        const date = summary.searchedAt ? new Date(summary.searchedAt).toLocaleString("zh-TW") : new Date().toLocaleString("zh-TW");
+        const header = [
+          `台灣影視圈每日快搜｜${date}`,
+          `關鍵字：${summary.keyword || "-"}`,
+          `時間範圍：${rangeLabels[summary.range] || summary.range || "-"}`,
+          `新聞與官方來源：${summary.newsCount || 0} 筆`,
+          `社群與討論入口：${summary.socialCount || 0} 筆`,
+        ].join("\n");
+        return [
+          header,
+          buildDigestSection("一、產業新聞與官方來源", lastSearchPayload.newsResults || []),
+          buildDigestSection("二、社群與討論入口", lastSearchPayload.socialResults || []),
+        ].join("\n\n");
+      }
+
       function renderSummary(summary = {}) {
         const range = rangeLabels[summary.range] || rangeLabels[rangeSelect.value];
         const sort = sortLabels[summary.sort] || sortLabels[sortSelect.value];
         const date = summary.searchedAt ? new Date(summary.searchedAt).toLocaleString("zh-TW") : "-";
         document.getElementById("summaryDescription").textContent = `搜尋關鍵字：${summary.keyword || "-"}｜時間範圍：${range}｜排序：${sort}｜搜尋日期：${date}`;
         document.getElementById("summaryGrid").innerHTML = [
-          ["新聞網站結果", summary.newsCount || 0],
-          ["社群結果", summary.socialCount || 0],
+          ["新聞與官方來源", summary.newsCount || 0],
+          ["討論入口", summary.socialCount || 0],
           ["排除低相關", summary.excludedCount || 0],
           ["已儲存新結果", summary.savedCount || 0],
         ].map(([label, value]) => `<div class="summary-item"><span>${label}</span><strong>${escapeHtml(value)}</strong></div>`).join("");
@@ -429,7 +467,7 @@
             </div>
             ${resultActions(item, "開啟原文")}
           </article>
-        `).join("") : `<div class="empty">本次未找到相關新聞結果。</div>`;
+        `).join("") : `<div class="empty">本次未找到相關新聞或官方來源。</div>`;
       }
 
       function renderSocial(items = []) {
@@ -445,7 +483,7 @@
             </div>
             ${resultActions(item, "開啟貼文")}
           </article>
-        `).join("") : `<div class="empty">本次未找到相關社群結果。</div>`;
+        `).join("") : `<div class="empty">本次未找到相關社群或討論入口。</div>`;
       }
 
       async function performSearch(query) {
@@ -472,6 +510,7 @@
           if (!response.ok) {
             throw new Error(payload.error || "搜尋失敗，請稍後再試。");
           }
+          lastSearchPayload = payload;
           renderSummary(payload.summary);
           renderNews(payload.newsResults);
           renderSocial(payload.socialResults);
@@ -493,6 +532,20 @@
       searchButton.addEventListener("click", () => performSearch());
       keywordInput.addEventListener("keydown", (event) => {
         if (event.key === "Enter") performSearch();
+      });
+
+      copyDigestButton.addEventListener("click", async () => {
+        const digest = buildDailyDigest();
+        if (!digest) {
+          showStatus("請先搜尋，再複製今日整理。", "warning");
+          return;
+        }
+        try {
+          await navigator.clipboard.writeText(digest);
+          showToast("已複製今日整理");
+        } catch {
+          window.alert("複製失敗，請手動選取文字。");
+        }
       });
 
       document.addEventListener("click", async (event) => {
