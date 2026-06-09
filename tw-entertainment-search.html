@@ -461,9 +461,6 @@
             </div>
             <div class="result-body">
               <p><strong>摘要：</strong>${escapeHtml(item.aiSummary || item.snippet || "尚無摘要，請開啟原文確認。")}</p>
-              <p><strong>這篇重點：</strong>${escapeHtml(item.keyPoint || "-")}</p>
-              <p><strong>可以拿來做什麼：</strong><span class="tags">${tagList(item.usefulFor, "green")}</span></p>
-              <p><strong>備註：</strong>${escapeHtml(item.note || "-")}</p>
             </div>
             ${resultActions(item, "開啟原文")}
           </article>
@@ -483,10 +480,7 @@
             </div>
             <div class="result-body">
               <p><strong>貼文內容摘要：</strong>${escapeHtml(item.aiSummary || item.snippet || "-")}</p>
-              <p><strong>這篇重點：</strong>${escapeHtml(item.keyPoint || "-")}</p>
               <p><strong>互動觀察：</strong>${escapeHtml(item.interactionObservation || "-")}</p>
-              <p><strong>可以拿來做什麼：</strong><span class="tags">${tagList(item.usefulFor, "green")}</span></p>
-              <p><strong>備註：</strong>${escapeHtml(item.note || "-")}</p>
             </div>
             ${resultActions(item, "開啟貼文")}
           </article>

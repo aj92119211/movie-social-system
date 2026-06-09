@@ -2292,7 +2292,7 @@ function buildSocialSearchEntry(source, keyword) {
 
 async function fetchTwEntertainmentNewsResults(keyword, range) {
   const allResults = [];
-  const sourceLimit = 3;
+  const sourceLimit = 5;
   for (const source of twEntertainmentNewsSources) {
     const sourceQuery = `${keyword} site:${source.domain} ${source.queryHint || ""} ${rangeQuery(range)}`.trim();
     try {
@@ -2306,14 +2306,14 @@ async function fetchTwEntertainmentNewsResults(keyword, range) {
   for (const result of allResults) {
     if (!byUrl.has(result.articleUrl)) byUrl.set(result.articleUrl, result);
   }
-  return [...byUrl.values()].slice(0, 30);
+  return [...byUrl.values()].slice(0, 50);
 }
 
 async function fetchTwEntertainmentSocialResults(keyword, range) {
   const results = [];
   const dcardSource = twEntertainmentSocialSources.find((source) => source.platform === "Dcard");
   try {
-    const rows = await fetchGoogleNewsRss(`${keyword} site:dcard.tw ${rangeQuery(range)}`, 8);
+    const rows = await fetchGoogleNewsRss(`${keyword} site:dcard.tw ${rangeQuery(range)}`, 20);
     results.push(...rows.map((row) => ({
       ...normalizeTwNewsItem(row, { name: "Dcard", domain: "dcard.tw" }, keyword),
       resultType: "social",
@@ -2341,7 +2341,7 @@ async function fetchTwEntertainmentSocialResults(keyword, range) {
     const key = result.postUrl || `${result.platform}:${result.title}`;
     if (!byUrl.has(key)) byUrl.set(key, result);
   }
-  return [...byUrl.values()].slice(0, 30);
+  return [...byUrl.values()].slice(0, 40);
 }
 
 function fallbackTwEntertainmentAiNotes(keyword, newsResults, socialResults) {
@@ -2488,8 +2488,8 @@ async function handleTwEntertainmentNewsSearch(request, response, url) {
     ]);
     const newsFilter = stripLowRelatedResults(rawNewsResults);
     const socialFilter = stripLowRelatedResults(rawSocialResults);
-    const newsResults = sortTwEntertainmentItems(newsFilter.filtered, sort).slice(0, 30);
-    const socialResults = sortTwEntertainmentItems(socialFilter.filtered, sort).slice(0, 30);
+    const newsResults = sortTwEntertainmentItems(newsFilter.filtered, sort).slice(0, 50);
+    const socialResults = sortTwEntertainmentItems(socialFilter.filtered, sort).slice(0, 40);
     const { aiNotes, aiFailed } = await organizeTwEntertainmentResultsWithAi(keyword, newsResults, socialResults);
     const savedCount = await saveTwEntertainmentItems([...newsResults, ...socialResults]).catch(() => 0);
     const categoryCounts = {};
