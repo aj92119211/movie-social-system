@@ -2134,6 +2134,22 @@ const twEntertainmentExcludedKeywords = [
   "影評", "心得", "推薦", "懶人包", "片單", "劇透", "雷文", "八卦", "私生活", "星座", "炎上", "穿搭", "感情", "緋聞", "戀情", "結婚", "離婚", "不倫", "家暴", "吵架", "粉絲", "網友反應", "網友熱議",
 ];
 
+const twEntertainmentOfficialDomains = [
+  "taiwancinema.bamid.gov.tw",
+  "tavis.tw",
+  "taicca.tw",
+  "bamid.gov.tw",
+  "boxofficetw.tfai.org.tw",
+];
+
+const twEntertainmentTaiwanSignals = [
+  "台灣", "臺灣", "台劇", "臺劇", "國片", "台片", "華語", "本土", "金馬", "金鐘", "北影", "台北電影", "台北", "臺北", "新北", "桃園", "台中", "臺中", "台南", "臺南", "高雄", "文策院", "文化部", "影視局", "公視", "台視", "臺視", "華視", "民視", "三立", "八大", "客家電視", "客台", "全國電影票房",
+];
+
+const twEntertainmentForeignSignals = [
+  "日本", "韓國", "韓星", "日劇", "韓劇", "好萊塢", "美國", "中國", "陸劇", "香港", "港片", "泰國", "越南", "法國", "英國",
+];
+
 function decodeBasicHtml(value) {
   return String(value || "")
     .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
@@ -2214,6 +2230,24 @@ function stripLowRelatedResults(items) {
     }
   }
   return { filtered, excludedCount };
+}
+
+function hasTaiwanEntertainmentContext(raw, source) {
+  const domain = String(source?.domain || "");
+  if (twEntertainmentOfficialDomains.includes(domain)) return true;
+
+  const text = `${raw?.title || ""} ${raw?.sourceName || ""} ${source?.name || ""}`;
+  const hasTaiwanSignal = twEntertainmentTaiwanSignals.some((signal) => text.includes(signal));
+  if (hasTaiwanSignal) return true;
+
+  const hasForeignSignal = twEntertainmentForeignSignals.some((signal) => text.includes(signal));
+  if (hasForeignSignal) return false;
+
+  if (domain === "atmovies.com.tw" && /電影版|劇場版|正式預告|電影預告|預告/.test(text)) {
+    return false;
+  }
+
+  return false;
 }
 
 function stripNewsSourceSuffix(title) {
@@ -2298,6 +2332,9 @@ function shouldKeepTwEntertainmentNewsItem(raw, source) {
   const link = String(raw?.link || "");
   if (!link) return false;
   if (source.domain === "mirrormedia.mg" && /\/external\//i.test(link)) {
+    return false;
+  }
+  if (!hasTaiwanEntertainmentContext(raw, source)) {
     return false;
   }
   return true;
