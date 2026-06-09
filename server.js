@@ -2113,6 +2113,10 @@ const twEntertainmentNewsSources = [
   { name: "ETtoday 星光雲", domain: "star.ettoday.net" },
   { name: "Yahoo 娛樂", domain: "tw.news.yahoo.com" },
   { name: "聯合報噓！星聞", domain: "stars.udn.com" },
+  { name: "聯合新聞網", domain: "udn.com" },
+  { name: "中央社訊息平台", domain: "cna.com.tw" },
+  { name: "鏡報娛樂", domain: "mirrordaily.news" },
+  { name: "蕃新聞", domain: "n.yam.com" },
   { name: "三立新聞網娛樂", domain: "setn.com" },
   { name: "自由娛樂", domain: "ent.ltn.com.tw" },
   { name: "TVBS 娛樂", domain: "news.tvbs.com.tw" },
@@ -2160,6 +2164,10 @@ const twEntertainmentTrustedTaiwanMediaDomains = [
   "star.ettoday.net",
   "tw.news.yahoo.com",
   "stars.udn.com",
+  "udn.com",
+  "cna.com.tw",
+  "mirrordaily.news",
+  "n.yam.com",
   "setn.com",
   "ent.ltn.com.tw",
   "news.tvbs.com.tw",
@@ -2170,11 +2178,11 @@ const twEntertainmentTrustedTaiwanMediaDomains = [
 ];
 
 const twEntertainmentTaiwanSignals = [
-  "台灣", "臺灣", "台劇", "臺劇", "國片", "台片", "華語", "本土", "金馬", "金鐘", "北影", "台北電影", "台北", "臺北", "新北", "桃園", "台中", "臺中", "台南", "臺南", "高雄", "文策院", "文化部", "影視局", "公視", "台視", "臺視", "華視", "民視", "三立", "八大", "客家電視", "客台", "全國電影票房", "八點檔", "偶像劇", "影視基地", "殺青宴", "盧彥澤", "何宜珊", "林健寰", "尹昭德", "周渝民", "薛仕凌", "劉子銓", "白潤音", "詹懷雲", "温貞菱", "溫貞菱", "寶島西米樂", "我們與惡的距離", "便利商店1999", "便利商店",
+  "台灣", "臺灣", "台劇", "臺劇", "國片", "台片", "華語", "本土", "金馬", "金鐘", "北影", "台北電影", "台北", "臺北", "新北", "桃園", "台中", "臺中", "台南", "臺南", "高雄", "金門", "文策院", "文化部", "影視局", "公視", "台視", "臺視", "華視", "民視", "三立", "八大", "客家電視", "客台", "全國電影票房", "八點檔", "偶像劇", "影視基地", "殺青宴", "盧彥澤", "何宜珊", "林健寰", "尹昭德", "周渝民", "薛仕凌", "劉子銓", "白潤音", "詹懷雲", "温貞菱", "溫貞菱", "寶島西米樂", "我們與惡的距離", "便利商店1999", "便利商店", "不算AI情", "打狗", "哥哥可以跟我打勾勾嗎", "絕勝",
 ];
 
 const twEntertainmentForeignSignals = [
-  "日本", "韓國", "韓星", "日劇", "韓劇", "好萊塢", "美國", "中國", "陸劇", "香港", "港片", "泰國", "越南", "法國", "英國",
+  "日本", "韓國", "韓星", "日劇", "韓劇", "好萊塢", "美國", "中國", "陸劇", "香港", "港片", "泰國", "越南", "法國", "英國", "紐倫堡", "雷米馬利克", "雷米馬利克", "羅素克洛", "羅素克洛",
 ];
 
 function decodeBasicHtml(value) {
@@ -2283,13 +2291,18 @@ function hasTaiwanEntertainmentContext(raw, source) {
   if (twEntertainmentOfficialDomains.includes(domain)) return true;
 
   const text = `${raw?.title || ""} ${raw?.sourceName || ""} ${source?.name || ""}`;
+  const query = String(raw?.searchKeyword || "");
   const hasTaiwanSignal = twEntertainmentTaiwanSignals.some((signal) => text.includes(signal));
   if (hasTaiwanSignal) return true;
 
   const hasForeignSignal = twEntertainmentForeignSignals.some((signal) => text.includes(signal));
   if (hasForeignSignal) return false;
 
-  if (twEntertainmentTrustedTaiwanMediaDomains.includes(domain) && /台劇|臺劇|台灣電影|臺灣電影|國片|台片/.test(String(raw?.searchKeyword || ""))) {
+  if (/台灣電影|臺灣電影|國片|台片/.test(query)) {
+    return false;
+  }
+
+  if (twEntertainmentTrustedTaiwanMediaDomains.includes(domain) && /台劇|臺劇/.test(query)) {
     return true;
   }
 
