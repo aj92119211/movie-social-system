@@ -107,6 +107,11 @@
       .primary-button:disabled { opacity: 0.7; cursor: wait; }
       .secondary-button, .chip-button { border-color: var(--line); background: #fff; color: var(--text); }
       .chip-button:hover, .secondary-button:hover { border-color: #93c5fd; color: var(--primary-dark); }
+      .chip-button.selected {
+        border-color: var(--primary);
+        background: #eff6ff;
+        color: var(--primary-dark);
+      }
 
       .quick-grid {
         display: flex;
@@ -273,15 +278,20 @@
           </div>
 
           <div class="quick-grid" aria-label="快速搜尋">
-            <button class="chip-button" type="button" data-query="今日 台灣 影視 產業 電影 台劇">今日影視圈</button>
-            <button class="chip-button" type="button" data-query="台灣電影 開拍 殺青 定檔 上映">台灣電影</button>
-            <button class="chip-button" type="button" data-query="台劇 影集 開拍 殺青 定檔 OTT">台劇／影集</button>
-            <button class="chip-button" type="button" data-query="OTT 串流 台劇 Netflix Disney+ 上架">OTT／串流</button>
-            <button class="chip-button" type="button" data-query="台灣電影 票房 全國電影票房">票房</button>
-            <button class="chip-button" type="button" data-query="台灣電影 台劇 開拍 殺青">開拍／殺青</button>
-            <button class="chip-button" type="button" data-query="台灣電影 台劇 定檔 上映">定檔／上映</button>
-            <button class="chip-button" type="button" data-query="文策院 文化部 影視 補助 政策">政策／補助</button>
-            <button class="chip-button" type="button" data-query="台灣電影 影展 獎項 入圍 得獎">影展／獎項</button>
+            <button class="chip-button" type="button" data-query="今日">今日</button>
+            <button class="chip-button" type="button" data-query="台灣電影">台灣電影</button>
+            <button class="chip-button" type="button" data-query="台劇">台劇</button>
+            <button class="chip-button" type="button" data-query="OTT">OTT</button>
+            <button class="chip-button" type="button" data-query="票房">票房</button>
+            <button class="chip-button" type="button" data-query="開拍">開拍</button>
+            <button class="chip-button" type="button" data-query="殺青">殺青</button>
+            <button class="chip-button" type="button" data-query="定檔">定檔</button>
+            <button class="chip-button" type="button" data-query="上映">上映</button>
+            <button class="chip-button" type="button" data-query="文策院">文策院</button>
+            <button class="chip-button" type="button" data-query="文化部">文化部</button>
+            <button class="chip-button" type="button" data-query="補助">補助</button>
+            <button class="chip-button" type="button" data-query="影展">影展</button>
+            <button class="chip-button" type="button" data-query="獎項">獎項</button>
           </div>
 
           <div class="filter-grid">
@@ -365,7 +375,9 @@
       const statusBox = document.getElementById("searchStatus");
       const toast = document.getElementById("toast");
       const copyDigestButton = document.getElementById("copyDigestButton");
+      const quickButtons = [...document.querySelectorAll("[data-query]")];
       let lastSearchPayload = null;
+      let manualKeywordEdited = false;
 
       function escapeHtml(value) {
         return String(value ?? "")
@@ -525,11 +537,23 @@
         }
       }
 
-      document.querySelectorAll("[data-query]").forEach((button) => {
-        button.addEventListener("click", () => performSearch(button.dataset.query));
+      quickButtons.forEach((button) => {
+        button.addEventListener("click", () => {
+          button.classList.toggle("selected");
+          const selectedKeywords = quickButtons.filter((item) => item.classList.contains("selected")).map((item) => item.dataset.query);
+          if (selectedKeywords.length || !manualKeywordEdited) {
+            keywordInput.value = selectedKeywords.join(" ");
+            manualKeywordEdited = false;
+          }
+          showStatus(selectedKeywords.length ? "已選擇搜尋關鍵字，請按「搜尋」開始查詢。" : "請輸入關鍵字，或複選上方搜尋選項後按「搜尋」。");
+        });
       });
 
       searchButton.addEventListener("click", () => performSearch());
+      keywordInput.addEventListener("input", () => {
+        manualKeywordEdited = true;
+        quickButtons.forEach((button) => button.classList.remove("selected"));
+      });
       keywordInput.addEventListener("keydown", (event) => {
         if (event.key === "Enter") performSearch();
       });

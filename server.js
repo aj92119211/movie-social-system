@@ -2109,9 +2109,9 @@ async function analyzeSocialLink(request, response) {
 }
 
 const twEntertainmentNewsSources = [
-  { name: "鏡報娛樂", domain: "mirrormedia.mg", queryHint: "entertainment" },
+  { name: "鏡報娛樂", domain: "mirrormedia.mg" },
   { name: "ETtoday 星光雲", domain: "star.ettoday.net" },
-  { name: "Yahoo 娛樂", domain: "tw.news.yahoo.com", queryHint: "entertainment" },
+  { name: "Yahoo 娛樂", domain: "tw.news.yahoo.com" },
   { name: "聯合報噓！星聞", domain: "stars.udn.com" },
   { name: "電影神搜", domain: "news.agentm.tw" },
   { name: "DramaQueen 電視迷", domain: "dramaqueen.com.tw" },
@@ -2175,6 +2175,24 @@ function rangeQuery(range) {
   if (range === "30d") return "when:30d";
   if (range === "year") return "when:365d";
   return "when:7d";
+}
+
+function rangeDays(range) {
+  if (range === "today") return 1;
+  if (range === "7d") return 7;
+  if (range === "30d") return 30;
+  if (range === "year") return 365;
+  return 7;
+}
+
+function isNewsDateWithinRange(value, range) {
+  const date = new Date(value || "");
+  if (Number.isNaN(date.getTime())) return false;
+  const now = new Date();
+  const start = new Date(now);
+  start.setHours(0, 0, 0, 0);
+  start.setDate(start.getDate() - (rangeDays(range) - 1));
+  return date >= start && date <= now;
 }
 
 function inferEntertainmentCategory(text) {
@@ -2372,10 +2390,10 @@ async function fetchTwEntertainmentNewsResults(keyword, range) {
   const allResults = [];
   const sourceLimit = 5;
   for (const source of twEntertainmentNewsSources) {
-    const sourceQuery = `${keyword} site:${source.domain} ${source.queryHint || ""} ${rangeQuery(range)}`.trim();
+    const sourceQuery = `${keyword} site:${source.domain} ${rangeQuery(range)}`.trim();
     try {
       const rows = await fetchGoogleNewsRss(sourceQuery, sourceLimit);
-      allResults.push(...rows.filter((row) => shouldKeepTwEntertainmentNewsItem(row, source)).map((row) => normalizeTwNewsItem(row, source, keyword)));
+      allResults.push(...rows.filter((row) => isNewsDateWithinRange(row.publishedDate, range)).filter((row) => shouldKeepTwEntertainmentNewsItem(row, source)).map((row) => normalizeTwNewsItem(row, source, keyword)));
     } catch (error) {
       console.warn("[TW_NEWS_SOURCE_SKIPPED]", source.name, error.message);
     }
@@ -2388,7 +2406,7 @@ async function fetchTwEntertainmentSocialResults(keyword, range) {
   const dcardSource = twEntertainmentSocialSources.find((source) => source.platform === "Dcard");
   try {
     const rows = await fetchGoogleNewsRss(`${keyword} site:dcard.tw ${rangeQuery(range)}`, 20);
-    results.push(...rows.map((row) => ({
+    results.push(...rows.filter((row) => isNewsDateWithinRange(row.publishedDate, range)).map((row) => ({
       ...normalizeTwNewsItem(row, { name: "Dcard", domain: "dcard.tw" }, keyword),
       resultType: "social",
       platform: "Dcard",
