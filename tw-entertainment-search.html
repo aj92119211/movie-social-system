@@ -20,9 +20,7 @@
         --shadow: 0 14px 34px rgba(28, 39, 61, 0.08);
       }
 
-      * {
-        box-sizing: border-box;
-      }
+      * { box-sizing: border-box; }
 
       body {
         margin: 0;
@@ -31,34 +29,20 @@
         font-family: "Noto Sans TC", "Microsoft JhengHei", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       }
 
-      button,
-      input,
-      select {
-        font: inherit;
-      }
-
-      a {
-        color: inherit;
-      }
-
-      .page {
-        min-height: 100vh;
-      }
+      button, input, select { font: inherit; }
+      a { color: inherit; }
 
       .hero {
         border-bottom: 1px solid var(--line);
         background: var(--panel);
       }
 
-      .hero-inner,
-      .content {
+      .hero-inner, .content {
         width: min(1180px, calc(100% - 32px));
         margin: 0 auto;
       }
 
-      .hero-inner {
-        padding: 28px 0 22px;
-      }
+      .hero-inner { padding: 28px 0 22px; }
 
       .eyebrow {
         margin: 0 0 8px;
@@ -80,9 +64,7 @@
         line-height: 1.7;
       }
 
-      .content {
-        padding: 22px 0 40px;
-      }
+      .content { padding: 22px 0 40px; }
 
       .panel {
         border: 1px solid var(--line);
@@ -91,9 +73,8 @@
         box-shadow: var(--shadow);
       }
 
-      .search-panel {
-        padding: 18px;
-      }
+      .search-panel, .section { padding: 18px; }
+      .section { margin-top: 18px; }
 
       .search-row {
         display: grid;
@@ -101,8 +82,7 @@
         gap: 10px;
       }
 
-      .input,
-      .select {
+      .input, .select {
         width: 100%;
         min-height: 42px;
         border: 1px solid var(--line);
@@ -112,38 +92,21 @@
         padding: 9px 12px;
       }
 
-      .primary-button,
-      .secondary-button,
-      .chip-button {
+      .primary-button, .secondary-button, .chip-button {
         min-height: 40px;
         border-radius: var(--radius);
         border: 1px solid transparent;
         padding: 9px 14px;
         cursor: pointer;
         font-weight: 800;
+        text-decoration: none;
       }
 
-      .primary-button {
-        background: var(--primary);
-        color: #fff;
-      }
-
-      .primary-button:hover {
-        background: var(--primary-dark);
-      }
-
-      .secondary-button,
-      .chip-button {
-        border-color: var(--line);
-        background: #fff;
-        color: var(--text);
-      }
-
-      .chip-button:hover,
-      .secondary-button:hover {
-        border-color: #93c5fd;
-        color: var(--primary-dark);
-      }
+      .primary-button { background: var(--primary); color: #fff; }
+      .primary-button:hover { background: var(--primary-dark); }
+      .primary-button:disabled { opacity: 0.7; cursor: wait; }
+      .secondary-button, .chip-button { border-color: var(--line); background: #fff; color: var(--text); }
+      .chip-button:hover, .secondary-button:hover { border-color: #93c5fd; color: var(--primary-dark); }
 
       .quick-grid {
         display: flex;
@@ -167,20 +130,18 @@
         font-weight: 800;
       }
 
-      .notice {
+      .notice, .status {
         margin-top: 12px;
         border-radius: var(--radius);
-        background: #fff7ed;
-        color: #9a3412;
         padding: 10px 12px;
         font-size: 13px;
         font-weight: 700;
       }
 
-      .section {
-        margin-top: 18px;
-        padding: 18px;
-      }
+      .notice { background: #eff6ff; color: #17459d; }
+      .status.red { background: #fff1f2; color: #b42318; }
+      .status.amber { background: #fff7ed; color: #9a3412; }
+      .status.green { background: #e9f8f1; color: var(--success); }
 
       .section-header {
         display: flex;
@@ -190,20 +151,9 @@
         margin-bottom: 12px;
       }
 
-      .section-header h2 {
-        margin: 0;
-        font-size: 20px;
-      }
-
-      .section-header p {
-        margin: 4px 0 0;
-        color: var(--muted);
-        line-height: 1.6;
-      }
-
-      .muted {
-        color: var(--muted);
-      }
+      .section-header h2 { margin: 0; font-size: 20px; }
+      .section-header p { margin: 4px 0 0; color: var(--muted); line-height: 1.6; }
+      .muted { color: var(--muted); }
 
       .summary-grid {
         display: grid;
@@ -231,16 +181,8 @@
         font-size: 22px;
       }
 
-      .bullet-list {
-        margin: 14px 0 0;
-        padding-left: 20px;
-        line-height: 1.8;
-      }
-
-      .result-list {
-        display: grid;
-        gap: 10px;
-      }
+      .bullet-list { margin: 14px 0 0; padding-left: 20px; line-height: 1.8; }
+      .result-list { display: grid; gap: 10px; }
 
       .result-row {
         border: 1px solid var(--line);
@@ -255,24 +197,10 @@
         gap: 10px;
       }
 
-      .result-title {
-        margin: 0;
-        font-size: 17px;
-        line-height: 1.5;
-      }
+      .result-title { margin: 0; font-size: 17px; line-height: 1.5; }
+      .meta { margin-top: 4px; color: var(--muted); font-size: 13px; }
 
-      .meta {
-        margin-top: 4px;
-        color: var(--muted);
-        font-size: 13px;
-      }
-
-      .tags {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 6px;
-        margin-top: 10px;
-      }
+      .tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
 
       .tag {
         display: inline-flex;
@@ -286,15 +214,8 @@
         font-weight: 800;
       }
 
-      .tag.green {
-        background: #e9f8f1;
-        color: var(--success);
-      }
-
-      .tag.gray {
-        background: #f1f5f9;
-        color: #475569;
-      }
+      .tag.green { background: #e9f8f1; color: var(--success); }
+      .tag.gray { background: #f1f5f9; color: #475569; }
 
       .result-body {
         display: grid;
@@ -303,13 +224,8 @@
         line-height: 1.75;
       }
 
-      .result-body p {
-        margin: 0;
-      }
-
-      .result-body strong {
-        color: #0f172a;
-      }
+      .result-body p { margin: 0; }
+      .result-body strong { color: #0f172a; }
 
       .actions {
         display: flex;
@@ -331,16 +247,8 @@
         padding: 14px;
       }
 
-      .ai-box h3 {
-        margin: 0 0 8px;
-        font-size: 15px;
-      }
-
-      .ai-box ol {
-        margin: 0;
-        padding-left: 20px;
-        line-height: 1.8;
-      }
+      .ai-box h3 { margin: 0 0 8px; font-size: 15px; }
+      .ai-box ol { margin: 0; padding-left: 20px; line-height: 1.8; }
 
       .empty {
         border: 1px dashed var(--line);
@@ -363,18 +271,10 @@
         font-weight: 800;
       }
 
-      .toast.show {
-        display: block;
-      }
+      .toast.show { display: block; }
 
       @media (max-width: 860px) {
-        .search-row,
-        .filter-grid,
-        .summary-grid,
-        .ai-grid,
-        .result-top {
-          grid-template-columns: 1fr;
-        }
+        .search-row, .filter-grid, .summary-grid, .ai-grid, .result-top { grid-template-columns: 1fr; }
       }
     </style>
   </head>
@@ -384,7 +284,7 @@
         <div class="hero-inner">
           <p class="eyebrow">小編／影視工作者自用工具</p>
           <h1>影劇新聞搜尋</h1>
-          <p>用條列式整理台灣影劇新聞與社群討論，先快速看重點、來源與可用方向。這一版是版面確認版，尚未串正式搜尋 API。</p>
+          <p>用條列式整理台灣影劇新聞與社群討論，快速看重點、來源與可用方向。搜尋由後端 API 處理，前端不直接打外部網站。</p>
         </div>
       </header>
 
@@ -434,7 +334,7 @@
             </label>
           </div>
 
-          <div class="notice">目前是版面確認版：結果為展示資料，之後可再接後端搜尋 API、OpenAI 整理與 Supabase 儲存。</div>
+          <div id="searchStatus" class="notice">正式 API 版：新聞來源會透過後端搜尋指定站台；封閉社群平台會先提供搜尋入口，不用假資料冒充貼文。</div>
         </section>
 
         <section class="panel section">
@@ -452,26 +352,22 @@
           <div class="section-header">
             <div>
               <h2>新聞網站結果</h2>
-              <p>以新聞來源、發布日期、摘要與工作可用方向呈現。</p>
+              <p>新聞結果與社群結果分開呈現，方便快速掃描。</p>
             </div>
             <span id="newsCount" class="tag gray">0 筆</span>
           </div>
-          <div id="newsResults" class="result-list">
-            <div class="empty">本次未找到相關新聞結果。</div>
-          </div>
+          <div id="newsResults" class="result-list"><div class="empty">本次未找到相關新聞結果。</div></div>
         </section>
 
         <section class="panel section">
           <div class="section-header">
             <div>
               <h2>社群結果</h2>
-              <p>Instagram、Facebook、Threads、Dcard 等社群討論先分開整理。</p>
+              <p>Dcard 會嘗試搜尋公開結果；Instagram、Facebook、Threads 第一版提供搜尋入口。</p>
             </div>
             <span id="socialCount" class="tag gray">0 筆</span>
           </div>
-          <div id="socialResults" class="result-list">
-            <div class="empty">本次未找到相關社群結果。</div>
-          </div>
+          <div id="socialResults" class="result-list"><div class="empty">本次未找到相關社群結果。</div></div>
         </section>
 
         <section class="panel section">
@@ -489,111 +385,14 @@
     <div id="toast" class="toast">已複製摘要</div>
 
     <script>
-      const demoNews = [
-        {
-          tags: ["電影", "台灣", "定檔"],
-          title: "國片驚悚新作公布上映檔期，預告同步釋出",
-          source: "ETtoday 星光雲",
-          date: "2026/06/09",
-          url: "https://star.ettoday.net/",
-          summary: "片方公布上映日期並釋出首支預告，主打懸疑氛圍與演員突破演出，後續可追正式海報與場次資訊。",
-          keyPoint: "可觀察片名關鍵字、預告釋出時間點與社群第一波討論。",
-          usefulFor: ["日報整理", "社群靈感", "定檔追蹤"],
-          note: "適合放入每日影劇新聞整理。"
-        },
-        {
-          tags: ["影集", "台灣", "開拍"],
-          title: "新台劇舉辦開鏡儀式，主創團隊分享題材方向",
-          source: "聯合報噓！星聞",
-          date: "2026/06/08",
-          url: "https://stars.udn.com/",
-          summary: "劇組正式開拍，題材聚焦家庭關係與職場壓力，演員卡司與播出平台尚待後續公布。",
-          keyPoint: "可建立開拍追蹤，後續留意殺青、定檔與平台資訊。",
-          usefulFor: ["開拍追蹤", "題材趨勢", "產業資料"],
-          note: "若後續有角色照，可轉為社群人物介紹素材。"
-        },
-        {
-          tags: ["產業", "台灣", "文策院"],
-          title: "文策院公布影視內容支持計畫，鼓勵原創 IP 開發",
-          source: "文策院",
-          date: "2026/06/07",
-          url: "https://taicca.tw/",
-          summary: "新一波影視支持計畫聚焦原創內容、國際合製與 IP 延伸，適合追蹤台灣內容產業發展方向。",
-          keyPoint: "可作為產業資料與題材趨勢觀察，不適合直接當一般社群貼文。",
-          usefulFor: ["產業資料", "題材趨勢"],
-          note: "可整理成內部資料夾或週報素材。"
-        }
-      ];
-
-      const demoSocial = [
-        {
-          platform: "Threads",
-          account: "影迷討論串",
-          tags: ["社群", "台灣", "口碑"],
-          relatedTitle: "某台灣驚悚片",
-          date: "2026/06/09",
-          url: "https://www.threads.net/",
-          summary: "討論集中在預告氣氛、演員表現與是否適合揪朋友一起看，留言語氣偏期待與好奇。",
-          keyPoint: "期待感比爭議高，適合延伸成限動投票或留言互動題。",
-          observation: "有揪團、怕爆雷、想看預告解析等討論方向。",
-          usefulFor: ["口碑追蹤", "文案參考", "宣傳節奏參考"],
-          note: "正式版需透過外部搜尋或社群 API 才能穩定抓取。"
-        },
-        {
-          platform: "Dcard",
-          account: "戲劇綜藝板",
-          tags: ["社群", "台灣", "討論"],
-          relatedTitle: "OTT 台劇新作",
-          date: "2026/06/08",
-          url: "https://www.dcard.tw/",
-          summary: "討論集中在卡司組合、題材新鮮度與平台上架節奏，部分留言在比較同類型作品。",
-          keyPoint: "可觀察競品比較字眼，整理成後續內容定位參考。",
-          observation: "討論偏長文，適合擷取觀眾疑問與期待點。",
-          usefulFor: ["競品觀察", "口碑追蹤", "留言回覆參考"],
-          note: "避免引用個人內容，整理方向即可。"
-        }
-      ];
-
-      const aiBlocks = [
-        {
-          title: "本次最值得注意",
-          items: ["定檔與預告發布仍是最容易形成搜尋需求的節點。", "開拍／殺青資訊適合建立追蹤清單。", "產業政策類適合做資料保存，不一定直接轉社群。"]
-        },
-        {
-          title: "可做成社群內容",
-          items: ["預告上線後做 3 題限動互動。", "用開拍資訊整理角色或題材期待。", "用社群口碑整理留言回覆素材。"]
-        },
-        {
-          title: "值得追蹤",
-          items: ["新公布檔期的台灣電影。", "OTT 台劇上架節奏。", "文策院與文化部影視支持計畫。"]
-        },
-        {
-          title: "需要後續追蹤",
-          items: ["正式海報與主視覺是否發布。", "票房首週數字與社群討論變化。", "社群是否出現口碑、迷因化或爭議訊號。"]
-        }
-      ];
-
-      const rangeLabels = {
-        today: "今天",
-        "7d": "最近 7 天",
-        "30d": "最近 30 天",
-        year: "今年"
-      };
-
-      const sortLabels = {
-        latest: "最新優先",
-        relevance: "相關度優先",
-        source: "來源分類",
-        title: "作品名稱"
-      };
-
-      const lowRelatedKeywords = ["影評", "心得", "推薦", "懶人包", "片單", "劇透", "雷文", "八卦", "私生活", "星座", "炎上", "穿搭", "感情", "緋聞", "戀情", "結婚", "離婚"];
-
+      const rangeLabels = { today: "今天", "7d": "最近 7 天", "30d": "最近 30 天", year: "今年" };
+      const sortLabels = { latest: "最新優先", relevance: "相關度優先", source: "來源分類", title: "作品名稱" };
       const keywordInput = document.getElementById("keywordInput");
       const searchButton = document.getElementById("searchButton");
       const rangeSelect = document.getElementById("rangeSelect");
       const sortSelect = document.getElementById("sortSelect");
       const socialSelect = document.getElementById("socialSelect");
+      const statusBox = document.getElementById("searchStatus");
       const toast = document.getElementById("toast");
 
       function escapeHtml(value) {
@@ -605,108 +404,140 @@
           .replaceAll("'", "&#039;");
       }
 
-      function tagList(tags, className = "") {
+      function tagList(tags = [], className = "") {
         return tags.map((tag) => `<span class="tag ${className}">${escapeHtml(tag)}</span>`).join("");
       }
 
+      function showStatus(message, type = "notice") {
+        statusBox.className = type === "error" ? "status red" : type === "success" ? "status green" : type === "warning" ? "status amber" : "notice";
+        statusBox.textContent = message;
+      }
+
+      function showToast(message) {
+        toast.textContent = message;
+        toast.classList.add("show");
+        window.setTimeout(() => toast.classList.remove("show"), 1400);
+      }
+
       function resultActions(item, linkLabel) {
-        const text = `${item.title || item.relatedTitle}\n摘要：${item.summary}\n重點：${item.keyPoint}`;
+        const url = item.resultType === "social" ? item.postUrl : item.articleUrl;
+        const text = `${item.title || item.relatedTitle}\n摘要：${item.aiSummary || item.snippet}\n重點：${item.keyPoint}`;
         return `
           <div class="actions">
-            <a class="secondary-button" href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer">${linkLabel}</a>
+            ${url ? `<a class="secondary-button" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${linkLabel}</a>` : ""}
             <button class="secondary-button" type="button" data-copy="${escapeHtml(text)}">複製摘要</button>
-            <button class="secondary-button" type="button">加入收藏</button>
+            <button class="secondary-button" type="button" data-copy="${escapeHtml(item.title || item.relatedTitle || "")}">加入收藏</button>
           </div>
         `;
       }
 
-      function renderNews(items) {
+      function renderSummary(summary = {}) {
+        const range = rangeLabels[summary.range] || rangeLabels[rangeSelect.value];
+        const sort = sortLabels[summary.sort] || sortLabels[sortSelect.value];
+        const date = summary.searchedAt ? new Date(summary.searchedAt).toLocaleString("zh-TW") : "-";
+        document.getElementById("summaryDescription").textContent = `搜尋關鍵字：${summary.keyword || "-"}｜時間範圍：${range}｜排序：${sort}｜搜尋日期：${date}`;
+        document.getElementById("summaryGrid").innerHTML = [
+          ["新聞網站結果", summary.newsCount || 0],
+          ["社群結果", summary.socialCount || 0],
+          ["排除低相關", summary.excludedCount || 0],
+          ["已儲存新結果", summary.savedCount || 0],
+        ].map(([label, value]) => `<div class="summary-item"><span>${label}</span><strong>${escapeHtml(value)}</strong></div>`).join("");
+        const categoryText = Object.entries(summary.categoryCounts || {}).map(([key, value]) => `${key} ${value}`).join("、");
+        const points = [...(summary.focusPoints || [])];
+        if (categoryText) points.unshift(`主要分類統計：${categoryText}`);
+        document.getElementById("searchFocusList").innerHTML = points.length ? points.map((item) => `<li>${escapeHtml(item)}</li>`).join("") : "";
+      }
+
+      function renderNews(items = []) {
         document.getElementById("newsCount").textContent = `${items.length} 筆`;
         document.getElementById("newsResults").innerHTML = items.length ? items.map((item) => `
           <article class="result-row">
             <div class="result-top">
               <div>
                 <h3 class="result-title">${escapeHtml(item.title)}</h3>
-                <div class="meta">來源：${escapeHtml(item.source)}｜日期：${escapeHtml(item.date)}</div>
+                <div class="meta">來源：${escapeHtml(item.sourceName)}｜日期：${escapeHtml(item.publishedDate || "未提供")}</div>
               </div>
               <div class="tags">${tagList(item.tags)}</div>
             </div>
             <div class="result-body">
-              <p><strong>摘要：</strong>${escapeHtml(item.summary)}</p>
-              <p><strong>這篇重點：</strong>${escapeHtml(item.keyPoint)}</p>
+              <p><strong>摘要：</strong>${escapeHtml(item.aiSummary || item.snippet || "尚無摘要，請開啟原文確認。")}</p>
+              <p><strong>這篇重點：</strong>${escapeHtml(item.keyPoint || "-")}</p>
               <p><strong>可以拿來做什麼：</strong><span class="tags">${tagList(item.usefulFor, "green")}</span></p>
-              <p><strong>備註：</strong>${escapeHtml(item.note)}</p>
+              <p><strong>備註：</strong>${escapeHtml(item.note || "-")}</p>
             </div>
             ${resultActions(item, "開啟原文")}
           </article>
         `).join("") : `<div class="empty">本次未找到相關新聞結果。</div>`;
       }
 
-      function renderSocial(items) {
+      function renderSocial(items = []) {
         document.getElementById("socialCount").textContent = `${items.length} 筆`;
         document.getElementById("socialResults").innerHTML = items.length ? items.map((item) => `
           <article class="result-row">
             <div class="result-top">
               <div>
-                <h3 class="result-title">${escapeHtml(item.relatedTitle)}</h3>
-                <div class="meta">平台：${escapeHtml(item.platform)}｜帳號／看板：${escapeHtml(item.account)}｜日期：${escapeHtml(item.date)}</div>
+                <h3 class="result-title">${escapeHtml(item.relatedTitle || item.title)}</h3>
+                <div class="meta">平台：${escapeHtml(item.platform)}｜帳號／看板：${escapeHtml(item.accountName || "-")}｜日期：${escapeHtml(item.publishedDate || "未提供")}</div>
               </div>
               <div class="tags">${tagList(item.tags)}</div>
             </div>
             <div class="result-body">
-              <p><strong>貼文內容摘要：</strong>${escapeHtml(item.summary)}</p>
-              <p><strong>這篇重點：</strong>${escapeHtml(item.keyPoint)}</p>
-              <p><strong>互動觀察：</strong>${escapeHtml(item.observation)}</p>
+              <p><strong>貼文內容摘要：</strong>${escapeHtml(item.aiSummary || item.snippet || "-")}</p>
+              <p><strong>這篇重點：</strong>${escapeHtml(item.keyPoint || "-")}</p>
+              <p><strong>互動觀察：</strong>${escapeHtml(item.interactionObservation || "-")}</p>
               <p><strong>可以拿來做什麼：</strong><span class="tags">${tagList(item.usefulFor, "green")}</span></p>
-              <p><strong>備註：</strong>${escapeHtml(item.note)}</p>
+              <p><strong>備註：</strong>${escapeHtml(item.note || "-")}</p>
             </div>
-            ${resultActions({ ...item, title: item.relatedTitle }, "開啟貼文")}
+            ${resultActions(item, "開啟貼文")}
           </article>
         `).join("") : `<div class="empty">本次未找到相關社群結果。</div>`;
       }
 
-      function renderSummary(keyword, newsItems, socialItems) {
-        const range = rangeLabels[rangeSelect.value];
-        const sort = sortLabels[sortSelect.value];
-        const today = new Date().toLocaleDateString("zh-TW", { year: "numeric", month: "2-digit", day: "2-digit" });
-        const excluded = lowRelatedKeywords.filter((word) => keyword.includes(word)).length;
-        document.getElementById("summaryDescription").textContent = `搜尋關鍵字：${keyword || "未輸入"}｜時間範圍：${range}｜排序：${sort}｜搜尋日期：${today}`;
-        document.getElementById("summaryGrid").innerHTML = [
-          ["新聞網站結果", newsItems.length],
-          ["社群結果", socialItems.length],
-          ["排除低相關", excluded],
-          ["主要分類", "電影／影集／產業／社群"]
-        ].map(([label, value]) => `<div class="summary-item"><span>${label}</span><strong>${escapeHtml(value)}</strong></div>`).join("");
-        document.getElementById("searchFocusList").innerHTML = [
-          "先把定檔、開拍、票房與政策資訊分開看，方便後續整理日報。",
-          "社群結果適合拿來觀察口碑、互動題與留言回覆方向。",
-          "如果關鍵字太廣，建議加上作品名、平台或事件，例如「台灣電影 定檔」。"
-        ].map((item) => `<li>${escapeHtml(item)}</li>`).join("");
-      }
-
-      function renderAiNotes() {
-        document.getElementById("aiNotes").innerHTML = aiBlocks.map((block) => `
+      function renderAiNotes(blocks = []) {
+        document.getElementById("aiNotes").innerHTML = blocks.length ? blocks.map((block) => `
           <div class="ai-box">
             <h3>${escapeHtml(block.title)}</h3>
-            <ol>${block.items.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ol>
+            <ol>${(block.items || []).map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ol>
           </div>
-        `).join("");
+        `).join("") : `<div class="empty">搜尋後會顯示 AI 整理重點。</div>`;
       }
 
-      function performSearch(query) {
+      async function performSearch(query) {
         const keyword = String(query || keywordInput.value || "").trim();
+        if (!keyword) {
+          showStatus("請先輸入搜尋關鍵字。", "warning");
+          keywordInput.focus();
+          return;
+        }
         keywordInput.value = keyword;
         searchButton.textContent = "搜尋中...";
         searchButton.disabled = true;
-        window.setTimeout(() => {
-          const includeSocial = socialSelect.value === "yes";
-          renderSummary(keyword, demoNews, includeSocial ? demoSocial : []);
-          renderNews(demoNews);
-          renderSocial(includeSocial ? demoSocial : []);
-          renderAiNotes();
+        showStatus("正在搜尋新聞來源與社群入口，請稍等。");
+        try {
+          const params = new URLSearchParams({
+            q: keyword,
+            range: rangeSelect.value,
+            sort: sortSelect.value,
+            includeSocial: socialSelect.value === "yes" ? "true" : "false",
+          });
+          const response = await fetch(`/api/tw-entertainment-news/search?${params.toString()}`);
+          const payload = await response.json().catch(() => ({}));
+          if (!response.ok) {
+            throw new Error(payload.error || "搜尋失敗，請稍後再試。");
+          }
+          renderSummary(payload.summary);
+          renderNews(payload.newsResults);
+          renderSocial(payload.socialResults);
+          renderAiNotes(payload.aiNotes);
+          const limitationText = (payload.limitations || []).join(" ");
+          showStatus(payload.summary?.aiFailed ? `搜尋完成，但 AI 整理使用保守備援。${limitationText}` : `搜尋完成。${limitationText}`, payload.summary?.aiFailed ? "warning" : "success");
+        } catch (error) {
+          console.error("[TW_ENTERTAINMENT_SEARCH_UI_FAILED]", error);
+          showStatus(error.message.includes("登入") ? "請先回主系統登入後，再使用搜尋 API。" : error.message, "error");
+        } finally {
           searchButton.textContent = "搜尋";
           searchButton.disabled = false;
-        }, 360);
+        }
       }
 
       document.querySelectorAll("[data-query]").forEach((button) => {
@@ -723,8 +554,7 @@
         if (!copyButton) return;
         try {
           await navigator.clipboard.writeText(copyButton.dataset.copy);
-          toast.classList.add("show");
-          window.setTimeout(() => toast.classList.remove("show"), 1400);
+          showToast("已複製摘要");
         } catch {
           window.alert("複製失敗，請手動選取文字。");
         }

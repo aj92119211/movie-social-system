@@ -2107,6 +2107,422 @@ async function analyzeSocialLink(request, response) {
     sendJson(response, error.statusCode || 500, { error: error.message || "社群連結分析失敗。" });
   }
 }
+
+const twEntertainmentNewsSources = [
+  { name: "鏡報娛樂", domain: "mirrormedia.mg", queryHint: "entertainment" },
+  { name: "ETtoday 星光雲", domain: "star.ettoday.net" },
+  { name: "Yahoo 娛樂", domain: "tw.news.yahoo.com", queryHint: "entertainment" },
+  { name: "聯合報噓！星聞", domain: "stars.udn.com" },
+  { name: "電影神搜", domain: "news.agentm.tw" },
+  { name: "DramaQueen 電視迷", domain: "dramaqueen.com.tw" },
+  { name: "台灣電影網", domain: "taiwancinema.bamid.gov.tw" },
+  { name: "TAVIS", domain: "tavis.tw" },
+  { name: "文策院", domain: "taicca.tw" },
+  { name: "文化部影視及流行音樂產業局", domain: "bamid.gov.tw" },
+  { name: "開眼電影網", domain: "atmovies.com.tw" },
+  { name: "全國電影票房統計資訊", domain: "boxofficetw.tfai.org.tw" },
+];
+
+const twEntertainmentSocialSources = [
+  { platform: "Dcard", domain: "dcard.tw", accountName: "Dcard 搜尋" },
+  { platform: "Threads", domain: "threads.net", accountName: "Threads 搜尋入口", searchOnly: true },
+  { platform: "Facebook", domain: "facebook.com", accountName: "Facebook 搜尋入口", searchOnly: true },
+  { platform: "Instagram", domain: "instagram.com", accountName: "Instagram 搜尋入口", searchOnly: true },
+];
+
+const twEntertainmentExcludedKeywords = [
+  "影評", "心得", "推薦", "懶人包", "片單", "劇透", "雷文", "八卦", "私生活", "星座", "炎上", "穿搭", "感情", "緋聞", "戀情", "結婚", "離婚", "不倫", "家暴", "吵架", "粉絲", "網友反應", "網友熱議",
+];
+
+function decodeBasicHtml(value) {
+  return String(value || "")
+    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&nbsp;/g, " ")
+    .trim();
+}
+
+function normalizeNewsDate(value) {
+  const date = new Date(value || "");
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toISOString().slice(0, 10);
+}
+
+function rangeQuery(range) {
+  if (range === "today") return "when:1d";
+  if (range === "7d") return "when:7d";
+  if (range === "30d") return "when:30d";
+  if (range === "year") return "when:365d";
+  return "when:7d";
+}
+
+function inferEntertainmentCategory(text) {
+  const haystack = String(text || "");
+  if (/票房|賣座|全國電影票房/.test(haystack)) return "票房";
+  if (/文策院|文化部|補助|產業|政策|影視局/.test(haystack)) return "產業";
+  if (/OTT|Netflix|Disney|影集|台劇|劇集|上架/.test(haystack)) return "影集";
+  if (/社群|Dcard|Threads|Instagram|Facebook|口碑|討論/.test(haystack)) return "社群口碑";
+  return "電影";
+}
+
+function inferEntertainmentTags(text, resultType = "news") {
+  const haystack = String(text || "");
+  const tags = [];
+  if (resultType === "social") tags.push("社群");
+  if (/影集|台劇|劇集|OTT/.test(haystack)) tags.push("影集");
+  else if (!tags.includes("社群")) tags.push("電影");
+  tags.push("台灣");
+  if (/開拍|開鏡/.test(haystack)) tags.push("開拍");
+  else if (/殺青/.test(haystack)) tags.push("殺青");
+  else if (/定檔|上映|檔期/.test(haystack)) tags.push("定檔");
+  else if (/票房/.test(haystack)) tags.push("票房");
+  else if (/預告/.test(haystack)) tags.push("預告");
+  else if (/海報|主視覺/.test(haystack)) tags.push("海報");
+  else if (/文策院|文化部|補助|政策/.test(haystack)) tags.push("產業");
+  else if (resultType === "social") tags.push("討論");
+  return [...new Set(tags)];
+}
+
+function inferUsefulFor(text, resultType = "news") {
+  const haystack = String(text || "");
+  if (resultType === "social") {
+    if (/爭議|負評|炎上|危機/.test(haystack)) return ["危機觀察", "口碑追蹤"];
+    if (/留言|回覆|討論/.test(haystack)) return ["口碑追蹤", "留言回覆參考"];
+    return ["社群靈感", "口碑追蹤"];
+  }
+  if (/開拍|開鏡|殺青/.test(haystack)) return ["開拍追蹤", "日報整理"];
+  if (/定檔|上映|檔期/.test(haystack)) return ["定檔追蹤", "社群靈感"];
+  if (/票房/.test(haystack)) return ["票房觀察", "日報整理"];
+  if (/文策院|文化部|補助|產業/.test(haystack)) return ["產業資料", "題材趨勢"];
+  return ["日報整理", "社群靈感"];
+}
+
+function stripLowRelatedResults(items) {
+  const filtered = [];
+  let excludedCount = 0;
+  for (const item of items) {
+    const text = `${item.title || ""} ${item.snippet || ""} ${item.summary || ""}`;
+    if (twEntertainmentExcludedKeywords.some((keyword) => text.includes(keyword))) {
+      excludedCount += 1;
+    } else {
+      filtered.push(item);
+    }
+  }
+  return { filtered, excludedCount };
+}
+
+async function fetchGoogleNewsRss(query, limit = 5) {
+  const rssUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(query)}&hl=zh-TW&gl=TW&ceid=TW:zh-Hant`;
+  const response = await fetch(rssUrl, {
+    headers: {
+      "User-Agent": "MovieSocialOps/1.0 (+https://movie-social-system.onrender.com)",
+      Accept: "application/rss+xml,text/xml,*/*",
+    },
+  });
+  if (!response.ok) return [];
+  const xml = await response.text();
+  const itemBlocks = [...xml.matchAll(/<item>([\s\S]*?)<\/item>/g)].map((match) => match[1]);
+  return itemBlocks.slice(0, limit).map((item) => {
+    const title = decodeBasicHtml(item.match(/<title>([\s\S]*?)<\/title>/)?.[1]);
+    const link = decodeBasicHtml(item.match(/<link>([\s\S]*?)<\/link>/)?.[1]);
+    const pubDate = decodeBasicHtml(item.match(/<pubDate>([\s\S]*?)<\/pubDate>/)?.[1]);
+    const sourceName = decodeBasicHtml(item.match(/<source[^>]*>([\s\S]*?)<\/source>/)?.[1]);
+    return { title, link, publishedDate: normalizeNewsDate(pubDate), sourceName };
+  }).filter((item) => item.title && item.link);
+}
+
+function normalizeTwNewsItem(raw, source, keyword) {
+  const text = `${raw.title} ${source.name} ${keyword}`;
+  const tags = inferEntertainmentTags(text, "news");
+  return {
+    resultType: "news",
+    title: raw.title,
+    sourceName: source.name || raw.sourceName || "新聞來源",
+    platform: "",
+    accountName: "",
+    articleUrl: raw.link,
+    postUrl: "",
+    publishedDate: raw.publishedDate,
+    relatedTitle: "",
+    category: inferEntertainmentCategory(text),
+    tags,
+    snippet: raw.title,
+    aiSummary: `這則結果與「${keyword}」相關，建議開啟原文確認細節、日期與作品資訊。`,
+    keyPoint: tags.includes("產業") ? "可先作為產業資料保存，再判斷是否需要追蹤後續公告。" : "可先確認是否包含開拍、定檔、預告、票房或宣傳節點。",
+    usefulFor: inferUsefulFor(text, "news"),
+    interactionObservation: "",
+    note: raw.link.includes("news.google.com") ? "Google News RSS 可能提供新聞轉址，開啟後可再進原站。" : "",
+    rawContent: raw.title,
+    searchKeyword: keyword,
+  };
+}
+
+function buildSocialSearchEntry(source, keyword) {
+  const query = `site:${source.domain} ${keyword}`;
+  const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(query)}`;
+  const title = `${source.platform}｜${keyword} 搜尋入口`;
+  const text = `${title} ${keyword}`;
+  return {
+    resultType: "social",
+    title,
+    sourceName: source.platform,
+    platform: source.platform,
+    accountName: source.accountName,
+    articleUrl: "",
+    postUrl: searchUrl,
+    publishedDate: "",
+    relatedTitle: keyword,
+    category: "社群口碑",
+    tags: inferEntertainmentTags(text, "social"),
+    snippet: `此平台較難由後端直接穩定爬取，先提供指定站台搜尋入口。`,
+    aiSummary: `可用這個入口快速查 ${source.platform} 上與「${keyword}」相關的公開討論或貼文。`,
+    keyPoint: "封閉式社群平台需要外部搜尋或正式 API，這裡先提供可開啟的搜尋入口。",
+    usefulFor: ["口碑追蹤", "社群靈感"],
+    interactionObservation: "需進入平台後人工確認互動量、留言方向與是否有口碑訊號。",
+    note: "不是假貼文，這是平台搜尋入口。",
+    rawContent: query,
+    searchKeyword: keyword,
+  };
+}
+
+async function fetchTwEntertainmentNewsResults(keyword, range) {
+  const allResults = [];
+  const sourceLimit = 3;
+  for (const source of twEntertainmentNewsSources) {
+    const sourceQuery = `${keyword} site:${source.domain} ${source.queryHint || ""} ${rangeQuery(range)}`.trim();
+    try {
+      const rows = await fetchGoogleNewsRss(sourceQuery, sourceLimit);
+      allResults.push(...rows.map((row) => normalizeTwNewsItem(row, source, keyword)));
+    } catch (error) {
+      console.warn("[TW_NEWS_SOURCE_SKIPPED]", source.name, error.message);
+    }
+  }
+  const byUrl = new Map();
+  for (const result of allResults) {
+    if (!byUrl.has(result.articleUrl)) byUrl.set(result.articleUrl, result);
+  }
+  return [...byUrl.values()].slice(0, 30);
+}
+
+async function fetchTwEntertainmentSocialResults(keyword, range) {
+  const results = [];
+  const dcardSource = twEntertainmentSocialSources.find((source) => source.platform === "Dcard");
+  try {
+    const rows = await fetchGoogleNewsRss(`${keyword} site:dcard.tw ${rangeQuery(range)}`, 8);
+    results.push(...rows.map((row) => ({
+      ...normalizeTwNewsItem(row, { name: "Dcard", domain: "dcard.tw" }, keyword),
+      resultType: "social",
+      platform: "Dcard",
+      sourceName: "Dcard",
+      accountName: "Dcard 搜尋",
+      postUrl: row.link,
+      articleUrl: "",
+      relatedTitle: keyword,
+      category: "社群口碑",
+      tags: inferEntertainmentTags(`${row.title} ${keyword}`, "social"),
+      interactionObservation: "請開啟原文確認留言方向、按讚數與討論情緒。",
+      usefulFor: inferUsefulFor(row.title, "social"),
+    })));
+  } catch (error) {
+    console.warn("[TW_SOCIAL_DCARD_SKIPPED]", error.message);
+  }
+
+  for (const source of twEntertainmentSocialSources.filter((item) => item.platform !== dcardSource?.platform)) {
+    results.push(buildSocialSearchEntry(source, keyword));
+  }
+
+  const byUrl = new Map();
+  for (const result of results) {
+    const key = result.postUrl || `${result.platform}:${result.title}`;
+    if (!byUrl.has(key)) byUrl.set(key, result);
+  }
+  return [...byUrl.values()].slice(0, 30);
+}
+
+function fallbackTwEntertainmentAiNotes(keyword, newsResults, socialResults) {
+  const firstNews = newsResults[0]?.title || "新聞來源";
+  const firstSocial = socialResults[0]?.platform || "社群來源";
+  return [
+    { title: "本次最值得注意的 3 件事", items: [`先確認「${keyword}」相關的最新新聞是否包含定檔、開拍或票房節點。`, `${firstNews} 可作為第一筆追蹤素材。`, `${firstSocial} 可補充口碑與討論方向。`] },
+    { title: "可做成社群內容的題材", items: ["定檔或預告發布可延伸成倒數貼文。", "開拍／殺青資訊可整理成作品追蹤。", "社群討論可轉成互動題或留言回覆素材。"] },
+    { title: "值得追蹤的作品／公司／人物", items: ["本次搜尋中反覆出現的作品名稱。", "發布新聞的片方、平台或影視單位。", "社群留言裡被重複提到的人物或題材。"] },
+    { title: "需要後續追蹤", items: ["是否有正式海報、預告或主視覺釋出。", "社群討論是否持續升溫或出現爭議。", "票房或上架後的第二波新聞。"] },
+  ];
+}
+
+async function organizeTwEntertainmentResultsWithAi(keyword, newsResults, socialResults) {
+  const apiKey = envValue("OPENAI_API_KEY");
+  if (!apiKey) return { aiNotes: fallbackTwEntertainmentAiNotes(keyword, newsResults, socialResults), aiFailed: true };
+
+  const compactResults = [...newsResults.slice(0, 8), ...socialResults.slice(0, 6)].map((item) => ({
+    type: item.resultType,
+    title: item.title,
+    source: item.sourceName || item.platform,
+    date: item.publishedDate,
+    snippet: item.snippet,
+    tags: item.tags,
+  }));
+
+  const prompt = `
+你是影視小編自己的資料整理助手。請根據搜尋結果整理工作用重點，不要寫老闆視角、公司決策、商業策略或公司可參考處。
+請使用繁體中文，不要照抄原文，不要八卦口吻。
+
+搜尋關鍵字：${keyword}
+搜尋結果：
+${JSON.stringify(compactResults, null, 2)}
+
+請只回傳 JSON：
+{
+  "notes": [
+    {"title":"本次搜尋最值得注意的 3 件事","items":["...","...","..."]},
+    {"title":"可做成社群內容的題材","items":["...","...","..."]},
+    {"title":"值得追蹤的作品／公司／人物","items":["...","...","..."]},
+    {"title":"需要後續追蹤","items":["...","...","..."]}
+  ],
+  "enhancements": [
+    {"title":"結果標題","aiSummary":"60到120字摘要","keyPoint":"這篇重點","usefulFor":["日報整理"],"interactionObservation":"社群才需要，新聞可空白"}
+  ]
+}`;
+
+  try {
+    const openai = new OpenAI({ apiKey });
+    const completion = await openai.chat.completions.create({
+      model: envValue("OPENAI_MODEL") || "gpt-4o-mini",
+      temperature: 0.2,
+      messages: [
+        { role: "system", content: "你只使用繁體中文，協助影視工作者整理搜尋資料。" },
+        { role: "user", content: prompt },
+      ],
+    });
+    const text = completion.choices?.[0]?.message?.content || "";
+    const parsed = JSON.parse(text.replace(/^```json\s*|\s*```$/g, "").trim());
+    const enhancements = Array.isArray(parsed.enhancements) ? parsed.enhancements : [];
+    for (const item of [...newsResults, ...socialResults]) {
+      const matched = enhancements.find((entry) => entry.title && item.title && String(item.title).includes(String(entry.title).slice(0, 12)));
+      if (matched) {
+        item.aiSummary = matched.aiSummary || item.aiSummary;
+        item.keyPoint = matched.keyPoint || item.keyPoint;
+        item.usefulFor = Array.isArray(matched.usefulFor) && matched.usefulFor.length ? matched.usefulFor : item.usefulFor;
+        if (item.resultType === "social") item.interactionObservation = matched.interactionObservation || item.interactionObservation;
+      }
+    }
+    return { aiNotes: Array.isArray(parsed.notes) ? parsed.notes : fallbackTwEntertainmentAiNotes(keyword, newsResults, socialResults), aiFailed: false };
+  } catch (error) {
+    console.warn("[TW_ENTERTAINMENT_AI_FALLBACK]", error.message);
+    return { aiNotes: fallbackTwEntertainmentAiNotes(keyword, newsResults, socialResults), aiFailed: true };
+  }
+}
+
+async function saveTwEntertainmentItems(items) {
+  const saved = [];
+  for (const item of items) {
+    const url = item.resultType === "social" ? item.postUrl : item.articleUrl;
+    if (!url) continue;
+    try {
+      const encodedUrl = encodeURIComponent(url);
+      const column = item.resultType === "social" ? "post_url" : "article_url";
+      const existing = await supabaseRequest(`/tw_entertainment_news_items?${column}=eq.${encodedUrl}&select=id&limit=1`);
+      if (Array.isArray(existing) && existing.length) continue;
+      await supabaseRequest("/tw_entertainment_news_items", {
+        method: "POST",
+        headers: { Prefer: "return=minimal" },
+        body: JSON.stringify({
+          result_type: item.resultType,
+          title: item.title,
+          source_name: item.sourceName,
+          platform: item.platform,
+          account_name: item.accountName,
+          article_url: item.articleUrl,
+          post_url: item.postUrl,
+          published_date: item.publishedDate || null,
+          related_title: item.relatedTitle,
+          category: item.category,
+          tags: item.tags,
+          snippet: item.snippet,
+          ai_summary: item.aiSummary,
+          key_point: item.keyPoint,
+          useful_for: item.usefulFor,
+          interaction_observation: item.interactionObservation,
+          note: item.note,
+          raw_content: item.rawContent,
+          search_keyword: item.searchKeyword,
+        }),
+      });
+      saved.push(url);
+    } catch (error) {
+      console.warn("[TW_ENTERTAINMENT_SAVE_SKIPPED]", error.message);
+      break;
+    }
+  }
+  return saved.length;
+}
+
+function sortTwEntertainmentItems(items, sort) {
+  const sorted = [...items];
+  if (sort === "source") sorted.sort((a, b) => String(a.sourceName || a.platform).localeCompare(String(b.sourceName || b.platform), "zh-Hant"));
+  else if (sort === "title") sorted.sort((a, b) => String(a.title).localeCompare(String(b.title), "zh-Hant"));
+  else sorted.sort((a, b) => String(b.publishedDate || "").localeCompare(String(a.publishedDate || "")));
+  return sorted;
+}
+
+async function handleTwEntertainmentNewsSearch(request, response, url) {
+  const keyword = String(url.searchParams.get("q") || "").trim();
+  const range = String(url.searchParams.get("range") || "7d");
+  const sort = String(url.searchParams.get("sort") || "latest");
+  const includeSocial = String(url.searchParams.get("includeSocial") || "true") !== "false";
+
+  if (!keyword) {
+    sendJson(response, 400, { error: "請先輸入搜尋關鍵字。" });
+    return;
+  }
+
+  try {
+    const [rawNewsResults, rawSocialResults] = await Promise.all([
+      fetchTwEntertainmentNewsResults(keyword, range),
+      includeSocial ? fetchTwEntertainmentSocialResults(keyword, range) : Promise.resolve([]),
+    ]);
+    const newsFilter = stripLowRelatedResults(rawNewsResults);
+    const socialFilter = stripLowRelatedResults(rawSocialResults);
+    const newsResults = sortTwEntertainmentItems(newsFilter.filtered, sort).slice(0, 30);
+    const socialResults = sortTwEntertainmentItems(socialFilter.filtered, sort).slice(0, 30);
+    const { aiNotes, aiFailed } = await organizeTwEntertainmentResultsWithAi(keyword, newsResults, socialResults);
+    const savedCount = await saveTwEntertainmentItems([...newsResults, ...socialResults]).catch(() => 0);
+    const categoryCounts = {};
+    for (const item of [...newsResults, ...socialResults]) categoryCounts[item.category] = (categoryCounts[item.category] || 0) + 1;
+
+    sendJson(response, 200, {
+      summary: {
+        keyword,
+        range,
+        sort,
+        searchedAt: new Date().toISOString(),
+        newsCount: newsResults.length,
+        socialCount: socialResults.length,
+        excludedCount: newsFilter.excludedCount + socialFilter.excludedCount,
+        categoryCounts,
+        focusPoints: fallbackTwEntertainmentAiNotes(keyword, newsResults, socialResults)[0].items,
+        savedCount,
+        aiFailed,
+      },
+      newsResults,
+      socialResults,
+      aiNotes,
+      limitations: [
+        "新聞來源目前使用 Google News RSS 指定站台搜尋；部分連結可能先經 Google News 轉址。",
+        "Instagram、Facebook、Threads 屬封閉平台，第一版提供站台搜尋入口，不直接冒充貼文爬取。",
+        "Dcard 以公開搜尋結果為主，仍需開啟原文確認互動數與留言方向。",
+      ],
+    });
+  } catch (error) {
+    console.error("[TW_ENTERTAINMENT_SEARCH_FAILED]", error);
+    sendJson(response, error.statusCode || 500, { error: error.message || "影劇新聞搜尋失敗，請稍後再試。" });
+  }
+}
 const server = http.createServer((request, response) => {
   const url = new URL(request.url, `http://${request.headers.host}`);
 
@@ -2137,6 +2553,11 @@ const server = http.createServer((request, response) => {
 
   if (request.method === "POST" && url.pathname === "/api/analyze-social-link") {
     analyzeSocialLink(request, response);
+    return;
+  }
+
+  if (request.method === "GET" && url.pathname === "/api/tw-entertainment-news/search") {
+    handleTwEntertainmentNewsSearch(request, response, url);
     return;
   }
 
