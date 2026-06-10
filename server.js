@@ -2203,6 +2203,10 @@ const twEntertainmentDramaTopicSignals = [
   "都會劇", "家庭劇", "職人劇", "愛情劇", "喜劇影集", "情境喜劇", "青春校園劇", "懸疑劇", "犯罪劇", "驚悚劇", "恐怖劇", "科幻劇", "奇幻劇", "歷史劇", "古裝劇", "武俠劇", "政治劇", "醫療劇", "律政劇", "警匪劇", "黑幫劇", "社會寫實劇", "女性成長劇", "BL劇", "GL劇", "偶像劇", "職場劇", "家庭倫理劇", "單元劇", "迷你劇", "長壽劇", "動畫影集", "紀錄影集", "實境影集", "綜藝節目", "選秀節目", "談話節目", "旅遊節目", "美食節目", "音樂節目", "兒少節目", "親子節目",
 ];
 
+const twEntertainmentFilmTopicSignals = [
+  "電影", "國片", "台片", "臺片", "院線", "上映", "定檔", "預告", "海報", "劇照", "主視覺", "開拍", "開鏡", "開機", "殺青", "殺青宴", "導演", "編劇", "演員", "主演", "監製", "製片", "片商", "發行", "票房", "影展", "金馬", "北影", "台北電影", "金穗", "入圍", "得獎", "紀錄片", "劇情片", "喜劇片", "愛情片", "動作片", "犯罪片", "懸疑片", "驚悚片", "恐怖片", "科幻片", "奇幻片", "動畫片", "短片", "造山者", "不算AI情", "打狗", "哥哥可以跟我打勾勾嗎", "絕勝",
+];
+
 function decodeBasicHtml(value) {
   return String(value || "")
     .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
@@ -2334,6 +2338,9 @@ function hasTaiwanEntertainmentContext(raw, source) {
 function matchesSearchIntent(raw, keyword) {
   const text = `${raw?.title || ""} ${raw?.sourceName || ""}`;
   const query = String(keyword || "");
+  if (/台灣電影|臺灣電影|國片|台片/.test(query) && !twEntertainmentFilmTopicSignals.some((signal) => text.includes(signal))) {
+    return false;
+  }
   if (/台劇|臺劇/.test(query) && !twEntertainmentDramaTopicSignals.some((signal) => text.includes(signal))) {
     return false;
   }
