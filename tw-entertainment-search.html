@@ -120,6 +120,62 @@
         margin-top: 14px;
       }
 
+      .tracker-panel {
+        margin-top: 14px;
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        background: #fbfdff;
+        padding: 12px;
+      }
+
+      .tracker-header {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        align-items: flex-start;
+        margin-bottom: 10px;
+      }
+
+      .tracker-header h2 { margin: 0; font-size: 16px; }
+      .tracker-header p { margin: 4px 0 0; color: var(--muted); font-size: 13px; line-height: 1.5; }
+
+      .tracker-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 8px;
+      }
+
+      .tracker-list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 10px;
+      }
+
+      .tracker-tag {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: #fff;
+        padding: 5px 8px 5px 10px;
+        color: var(--text);
+        font-size: 13px;
+        font-weight: 800;
+      }
+
+      .tracker-tag button {
+        width: 22px;
+        height: 22px;
+        border: 0;
+        border-radius: 50%;
+        background: #f1f5f9;
+        color: #475569;
+        cursor: pointer;
+        font-weight: 900;
+      }
+
       .filter-grid {
         display: grid;
         grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -253,7 +309,7 @@
       .toast.show { display: block; }
 
       @media (max-width: 860px) {
-        .search-row, .filter-grid, .summary-grid, .result-top { grid-template-columns: 1fr; }
+        .search-row, .filter-grid, .summary-grid, .result-top, .tracker-row { grid-template-columns: 1fr; }
       }
     </style>
   </head>
@@ -288,6 +344,20 @@
             <button class="chip-button" type="button" data-query="文策院 文化部">文策院 文化部</button>
             <button class="chip-button" type="button" data-query="補助">補助</button>
             <button class="chip-button" type="button" data-query="影展 獎項">影展 獎項</button>
+          </div>
+
+          <div class="tracker-panel">
+            <div class="tracker-header">
+              <div>
+                <h2>追蹤關鍵字清單</h2>
+                <p>放入想長期追的作品、人名或公司名。搜尋時會自動加強查詢，不需要付費 API。</p>
+              </div>
+            </div>
+            <div class="tracker-row">
+              <input id="trackedKeywordInput" class="input" placeholder="例如：新片名、導演、製作公司" />
+              <button id="addTrackedKeywordButton" class="secondary-button" type="button">新增追蹤</button>
+            </div>
+            <div id="trackedKeywordList" class="tracker-list"></div>
           </div>
 
           <div class="filter-grid">
@@ -372,6 +442,12 @@
       const toast = document.getElementById("toast");
       const copyDigestButton = document.getElementById("copyDigestButton");
       const quickButtons = [...document.querySelectorAll("[data-query]")];
+      const trackedKeywordInput = document.getElementById("trackedKeywordInput");
+      const addTrackedKeywordButton = document.getElementById("addTrackedKeywordButton");
+      const trackedKeywordList = document.getElementById("trackedKeywordList");
+      const trackedKeywordStorageKey = "twEntertainmentTrackedKeywords";
+      const defaultTrackedKeywords = ["不算AI情", "打狗", "哥哥可以跟我打勾勾嗎", "絕勝", "寶島西米樂", "我們與惡的距離II", "便利商店"];
+      let trackedKeywords = loadTrackedKeywords();
       let lastSearchPayload = null;
       let manualKeywordEdited = false;
 
@@ -397,6 +473,44 @@
         toast.textContent = message;
         toast.classList.add("show");
         window.setTimeout(() => toast.classList.remove("show"), 1400);
+      }
+
+      function loadTrackedKeywords() {
+        try {
+          const stored = JSON.parse(localStorage.getItem(trackedKeywordStorageKey) || "null");
+          if (Array.isArray(stored)) return stored.filter(Boolean);
+        } catch {
+          // Use defaults when localStorage is unavailable or corrupted.
+        }
+        return [...defaultTrackedKeywords];
+      }
+
+      function saveTrackedKeywords() {
+        localStorage.setItem(trackedKeywordStorageKey, JSON.stringify(trackedKeywords));
+      }
+
+      function renderTrackedKeywords() {
+        trackedKeywordList.innerHTML = trackedKeywords.length
+          ? trackedKeywords.map((keyword) => `
+              <span class="tracker-tag">
+                ${escapeHtml(keyword)}
+                <button type="button" data-remove-tracked="${escapeHtml(keyword)}" aria-label="移除 ${escapeHtml(keyword)}">×</button>
+              </span>
+            `).join("")
+          : `<span class="muted">目前沒有追蹤關鍵字。</span>`;
+      }
+
+      function addTrackedKeyword() {
+        const keyword = trackedKeywordInput.value.trim();
+        if (!keyword) {
+          showStatus("請先輸入要追蹤的作品、人名或公司名。", "warning");
+          return;
+        }
+        if (!trackedKeywords.includes(keyword)) trackedKeywords = [...trackedKeywords, keyword];
+        trackedKeywordInput.value = "";
+        saveTrackedKeywords();
+        renderTrackedKeywords();
+        showStatus(`已加入追蹤關鍵字：${keyword}`);
       }
 
       function resultActions(item, linkLabel) {
@@ -434,6 +548,7 @@
         const header = [
           `台灣影視圈每日快搜｜${date}`,
           `關鍵字：${summary.keyword || "-"}`,
+          `追蹤關鍵字：${(summary.trackedKeywords || []).join("、") || "無"}`,
           `時間範圍：${rangeLabels[summary.range] || summary.range || "-"}`,
           `新聞與官方來源：${summary.newsCount || 0} 筆`,
           `社群與討論入口：${summary.socialCount || 0} 筆`,
@@ -453,6 +568,7 @@
         document.getElementById("summaryGrid").innerHTML = [
           ["新聞與官方來源", summary.newsCount || 0],
           ["討論入口", summary.socialCount || 0],
+          ["追蹤關鍵字", summary.trackedKeywordCount || 0],
           ["排除低相關", summary.excludedCount || 0],
           ["已儲存新結果", summary.savedCount || 0],
         ].map(([label, value]) => `<div class="summary-item"><span>${label}</span><strong>${escapeHtml(value)}</strong></div>`).join("");
@@ -512,6 +628,7 @@
             sort: sortSelect.value,
             includeSocial: socialSelect.value === "yes" ? "true" : "false",
             includeAi: "false",
+            trackedKeywords: trackedKeywords.join(","),
           });
           const response = await fetch(`/api/tw-entertainment-news/search?${params.toString()}`);
           const payload = await response.json().catch(() => ({}));
@@ -554,6 +671,19 @@
         if (event.key === "Enter") performSearch();
       });
 
+      addTrackedKeywordButton.addEventListener("click", addTrackedKeyword);
+      trackedKeywordInput.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") addTrackedKeyword();
+      });
+      trackedKeywordList.addEventListener("click", (event) => {
+        const removeButton = event.target.closest("[data-remove-tracked]");
+        if (!removeButton) return;
+        trackedKeywords = trackedKeywords.filter((keyword) => keyword !== removeButton.dataset.removeTracked);
+        saveTrackedKeywords();
+        renderTrackedKeywords();
+        showStatus("已移除追蹤關鍵字。");
+      });
+
       copyDigestButton.addEventListener("click", async () => {
         const digest = buildDailyDigest();
         if (!digest) {
@@ -579,6 +709,7 @@
         }
       });
 
+      renderTrackedKeywords();
     </script>
   </body>
 </html>

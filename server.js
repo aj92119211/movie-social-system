@@ -2177,6 +2177,18 @@ const twEntertainmentTrustedTaiwanMediaDomains = [
   "dramaqueen.com.tw",
 ];
 
+const twEntertainmentTrackedPriorityDomains = [
+  "tw.news.yahoo.com",
+  "stars.udn.com",
+  "udn.com",
+  "cna.com.tw",
+  "mirrordaily.news",
+  "n.yam.com",
+  "setn.com",
+  "news.tvbs.com.tw",
+  "news.ttv.com.tw",
+];
+
 const twEntertainmentTaiwanSignals = [
   "台灣", "臺灣", "台劇", "臺劇", "國片", "台片", "華語", "本土", "金馬", "金鐘", "北影", "台北電影", "台北", "臺北", "新北", "桃園", "台中", "臺中", "台南", "臺南", "高雄", "金門", "文策院", "文化部", "影視局", "公視", "台視", "臺視", "華視", "民視", "三立", "八大", "客家電視", "客台", "全國電影票房", "八點檔", "偶像劇", "影視基地", "殺青宴", "盧彥澤", "何宜珊", "林健寰", "尹昭德", "周渝民", "薛仕凌", "劉子銓", "白潤音", "詹懷雲", "温貞菱", "溫貞菱", "寶島西米樂", "我們與惡的距離", "便利商店1999", "便利商店", "不算AI情", "打狗", "哥哥可以跟我打勾勾嗎", "絕勝",
 ];
@@ -2455,10 +2467,11 @@ function buildSocialSearchEntry(source, keyword) {
   };
 }
 
-async function fetchTwEntertainmentNewsResults(keyword, range) {
+async function fetchTwEntertainmentNewsResults(keyword, range, options = {}) {
   const allResults = [];
-  const sourceLimit = 10;
-  for (const source of twEntertainmentNewsSources) {
+  const sourceLimit = options.sourceLimit || 10;
+  const sources = options.sources || twEntertainmentNewsSources;
+  for (const source of sources) {
     const sourceQuery = `${keyword} site:${source.domain} ${rangeQuery(range)}`.trim();
     try {
       const rows = await fetchGoogleNewsRss(sourceQuery, sourceLimit);
@@ -2468,6 +2481,32 @@ async function fetchTwEntertainmentNewsResults(keyword, range) {
     }
   }
   return dedupeTwEntertainmentResults(allResults, "articleUrl").slice(0, 50);
+}
+
+function parseTrackedKeywords(value) {
+  return [...new Set(String(value || "")
+    .split(/[,，\n]/)
+    .map((item) => item.trim())
+    .filter(Boolean))]
+    .slice(0, 8);
+}
+
+function buildTrackedSearchQueries(keyword, trackedKeywords) {
+  const baseKeyword = String(keyword || "").trim();
+  return trackedKeywords
+    .filter((tracked) => !baseKeyword.includes(tracked))
+    .map((tracked) => `${tracked} ${baseKeyword}`.trim());
+}
+
+async function fetchTwEntertainmentTrackedNewsResults(keyword, range, trackedKeywords) {
+  const trackedQueries = buildTrackedSearchQueries(keyword, trackedKeywords);
+  if (!trackedQueries.length) return [];
+  const prioritySources = twEntertainmentNewsSources.filter((source) => twEntertainmentTrackedPriorityDomains.includes(source.domain));
+  const batches = await Promise.all(trackedQueries.map((query) => fetchTwEntertainmentNewsResults(query, range, {
+    sources: prioritySources,
+    sourceLimit: 6,
+  })));
+  return dedupeTwEntertainmentResults(batches.flat(), "articleUrl").slice(0, 50);
 }
 
 async function fetchTwEntertainmentSocialResults(keyword, range) {
@@ -2632,6 +2671,7 @@ async function handleTwEntertainmentNewsSearch(request, response, url) {
   const sort = String(url.searchParams.get("sort") || "latest");
   const includeSocial = String(url.searchParams.get("includeSocial") || "true") !== "false";
   const includeAi = String(url.searchParams.get("includeAi") || "true") !== "false";
+  const trackedKeywords = parseTrackedKeywords(url.searchParams.get("trackedKeywords") || "");
 
   if (!keyword) {
     sendJson(response, 400, { error: "請先輸入搜尋關鍵字。" });
@@ -2639,11 +2679,12 @@ async function handleTwEntertainmentNewsSearch(request, response, url) {
   }
 
   try {
-    const [rawNewsResults, rawSocialResults] = await Promise.all([
+    const [rawNewsResults, rawTrackedNewsResults, rawSocialResults] = await Promise.all([
       fetchTwEntertainmentNewsResults(keyword, range),
+      fetchTwEntertainmentTrackedNewsResults(keyword, range, trackedKeywords),
       includeSocial ? fetchTwEntertainmentSocialResults(keyword, range) : Promise.resolve([]),
     ]);
-    const newsFilter = stripLowRelatedResults(rawNewsResults);
+    const newsFilter = stripLowRelatedResults([...rawNewsResults, ...rawTrackedNewsResults]);
     const socialFilter = stripLowRelatedResults(rawSocialResults);
     const newsResults = dedupeTwEntertainmentResults(sortTwEntertainmentItems(newsFilter.filtered, sort), "articleUrl").slice(0, 50);
     const socialResults = dedupeTwEntertainmentResults(sortTwEntertainmentItems(socialFilter.filtered, sort), "postUrl").slice(0, 40);
@@ -2657,6 +2698,8 @@ async function handleTwEntertainmentNewsSearch(request, response, url) {
     sendJson(response, 200, {
       summary: {
         keyword,
+        trackedKeywords,
+        trackedKeywordCount: trackedKeywords.length,
         range,
         sort,
         searchedAt: new Date().toISOString(),
