@@ -1,0 +1,44 @@
+name: Film Daily Report Cloud
+
+on:
+  schedule:
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+
+jobs:
+  build-and-email:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      OPENAI_MODEL: ${{ secrets.OPENAI_MODEL }}
+      RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+      REPORT_EMAIL_TO: ${{ secrets.REPORT_EMAIL_TO }}
+      REPORT_EMAIL_FROM: ${{ secrets.REPORT_EMAIL_FROM }}
+      CLOUD_REPORT_OUTPUT_DIR: outputs
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: automations/film-daily-report/package.json
+
+      - name: Install dependencies
+        working-directory: automations/film-daily-report
+        run: npm install
+
+      - name: Generate report and send email
+        working-directory: automations/film-daily-report
+        run: npm run daily:cloud
+
+      - name: Upload generated files
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: film-daily-report-${{ github.run_id }}
+          path: automations/film-daily-report/outputs/
+          if-no-files-found: ignore

@@ -1,0 +1,658 @@
+import fs from "node:fs/promises";
+import path from "node:path";
+import AdmZip from "adm-zip";
+
+export const ROOT = path.resolve(new URL("..", import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1"));
+export const CONFIG_PATH = path.join(ROOT, "config", "film-daily-sources.json");
+export const TEMPLATE_PATH = path.join(ROOT, "templates", "film_daily_report_template.docx");
+
+export function parseArgs(argv) {
+  const args = {};
+  for (let i = 0; i < argv.length; i += 1) {
+    const arg = argv[i];
+    if (arg === "--date") args.date = argv[++i];
+    else if (arg === "--out-dir") args.outDir = argv[++i];
+    else if (arg === "--config") args.config = argv[++i];
+    else if (arg === "--max-items") args.maxItems = Number(argv[++i]);
+    else if (arg === "--email-only") args.emailOnly = true;
+    else if (arg === "--generate-only") args.generateOnly = true;
+  }
+  return args;
+}
+
+export async function loadEnvFile(filePath) {
+  try {
+    const text = await fs.readFile(filePath, "utf8");
+    for (const line of text.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("#") || !trimmed.includes("=")) continue;
+      const idx = trimmed.indexOf("=");
+      const key = trimmed.slice(0, idx).trim();
+      const raw = trimmed.slice(idx + 1).trim().replace(/^['"]|['"]$/g, "");
+      if (!process.env[key]) process.env[key] = raw;
+    }
+  } catch {
+    // Optional env files.
+  }
+}
+
+export async function loadProjectEnv() {
+  await loadEnvFile(path.join(ROOT, ".env.local"));
+  await loadEnvFile(path.join(ROOT, ".env"));
+}
+
+export function taipeiDateParts(dateArg) {
+  const date = dateArg ? new Date(`${dateArg}T12:00:00+08:00`) : new Date();
+  const parts = new Intl.DateTimeFormat("zh-TW", {
+    timeZone: "Asia/Taipei",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    weekday: "long"
+  }).formatToParts(date);
+  const pick = (type) => parts.find((p) => p.type === type)?.value;
+  return {
+    ymdSlash: `${pick("year")}/${pick("month")}/${pick("day")}`,
+    ymdDash: `${pick("year")}-${pick("month")}-${pick("day")}`,
+    weekday: pick("weekday"),
+    dateLine: `${pick("year")} / ${pick("month")} / ${pick("day")}　（${pick("weekday")}）　　整理：AJ`
+  };
+}
+
+function decodeEntities(text = "") {
+  const map = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " " };
+  return text
+    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
+    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)))
+    .replace(/&([a-z]+);/gi, (_, name) => map[name] ?? `&${name};`);
+}
+
+function stripTags(text = "") {
+  return decodeEntities(text.replace(/<[^>]+>/g, " ")).replace(/\s+/g, " ").trim();
+}
+
+function extractTag(block, tag) {
+  const match = block.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`, "i"));
+  return match ? decodeEntities(match[1]).trim() : "";
+}
+
+function extractRssItems(xml, source) {
+  const itemBlocks = [...xml.matchAll(/<item\b[\s\S]*?<\/item>/gi)].map((m) => m[0]);
+  const entryBlocks = [...xml.matchAll(/<entry\b[\s\S]*?<\/entry>/gi)].map((m) => m[0]);
+  return [...itemBlocks, ...entryBlocks].map((block) => {
+    const href = block.match(/<link[^>]+href=["']([^"']+)["']/i)?.[1];
+    const link = stripTags(extractTag(block, "link")) || href || "";
+    return {
+      title: stripTags(extractTag(block, "title")),
+      link: decodeEntities(link),
+      published: stripTags(extractTag(block, "pubDate") || extractTag(block, "published") || extractTag(block, "updated")),
+      snippet: stripTags(extractTag(block, "description") || extractTag(block, "summary") || extractTag(block, "content")),
+      sourceName: source.name,
+      sourceRegion: source.region,
+      sourceUrl: source.url
+    };
+  }).filter((item) => item.title && item.link);
+}
+
+async function fetchText(url, timeoutMs = 15000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, {
+      signal: controller.signal,
+      headers: {
+        "user-agent": "film-daily-report-generator/2.0 (+cloud)",
+        accept: "application/rss+xml, application/xml, text/xml, text/html;q=0.9, */*;q=0.8"
+      }
+    });
+    if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+    return await res.text();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function googleNewsRssUrl(query) {
+  const params = new URLSearchParams({
+    q: `${query} when:7d`,
+    hl: "zh-TW",
+    gl: "TW",
+    ceid: "TW:zh-Hant"
+  });
+  return `https://news.google.com/rss/search?${params.toString()}`;
+}
+
+function sourceDomain(url) {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return "";
+  }
+}
+
+function shouldExclude(item, excludeKeywords = []) {
+  const haystack = `${item.title} ${item.snippet}`.toLowerCase();
+  return excludeKeywords.some((kw) => haystack.includes(String(kw).toLowerCase()));
+}
+
+function isRelevant(item, relevanceKeywords = []) {
+  if (!relevanceKeywords.length) return true;
+  const haystack = `${item.title} ${item.snippet} ${item.sourceName} ${item.sourceUrl}`.toLowerCase();
+  return relevanceKeywords.some((kw) => haystack.includes(String(kw).toLowerCase()));
+}
+
+function dedupe(items) {
+  const seen = new Set();
+  const output = [];
+  for (const item of items) {
+    const key = (item.link || item.title).replace(/[?#].*$/, "").toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    output.push(item);
+  }
+  return output;
+}
+
+export async function collectCandidates(config, maxItems) {
+  const items = [];
+  const errors = [];
+
+  for (const source of config.sources.filter((s) => s.feed)) {
+    try {
+      const xml = await fetchText(source.feed);
+      items.push(...extractRssItems(xml, source));
+    } catch (error) {
+      errors.push(`${source.name} feed 抓取失敗：${error.message}`);
+    }
+  }
+
+  const domains = config.sources.map((s) => sourceDomain(s.url)).filter(Boolean);
+  const searchQueries = [...config.searchKeywords];
+  for (const keyword of config.searchKeywords.slice(0, 12)) {
+    const groupedSites = domains.slice(0, 16).map((d) => `site:${d}`).join(" OR ");
+    searchQueries.push(`(${groupedSites}) ${keyword}`);
+  }
+
+  for (const query of searchQueries.slice(0, 40)) {
+    try {
+      const xml = await fetchText(googleNewsRssUrl(query));
+      items.push(...extractRssItems(xml, { name: "Google News RSS", region: "跨區", url: "https://news.google.com/" }));
+    } catch (error) {
+      errors.push(`Google News RSS 查詢失敗「${query}」：${error.message}`);
+    }
+  }
+
+  return {
+    items: dedupe(items)
+      .filter((item) => !shouldExclude(item, config.excludeKeywords))
+      .filter((item) => isRelevant(item, config.relevanceKeywords))
+      .slice(0, maxItems),
+    errors
+  };
+}
+
+function formatCandidateDigest(items) {
+  return items.map((item, idx) => [
+    `#${idx + 1}`,
+    `標題：${item.title}`,
+    `來源：${item.sourceName}`,
+    `地區線索：${item.sourceRegion}`,
+    `日期：${item.published || "來源未提供"}`,
+    `連結：${item.link}`,
+    `摘要線索：${item.snippet || "無"}`
+  ].join("\n")).join("\n\n");
+}
+
+function cleanJsonText(text) {
+  const trimmed = text.trim().replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```$/i, "").trim();
+  const start = trimmed.indexOf("{");
+  const end = trimmed.lastIndexOf("}");
+  return start >= 0 && end > start ? trimmed.slice(start, end + 1) : trimmed;
+}
+
+function truncate(text, max) {
+  const value = String(text || "").replace(/\s+/g, " ").trim();
+  if (!value) return "";
+  return value.length > max ? `${value.slice(0, max - 1).trim()}…` : value;
+}
+
+function normalizeCard(card = {}, defaults = {}) {
+  return {
+    country: truncate(card.country || defaults.country || "未定", 10),
+    label: truncate(card.label || defaults.label || "產業焦點", 20),
+    title: truncate(card.title || defaults.title || "未提供標題", 60),
+    source: truncate(card.source || defaults.source || "來源未提供", 50),
+    date: truncate(card.date || defaults.date || "來源未提供", 20),
+    summary: truncate(card.summary || defaults.summary || "來源未提供", 140),
+    why: truncate(card.why || defaults.why || "來源未提供", 170),
+    action: truncate(card.action || defaults.action || "來源未提供", 170)
+  };
+}
+
+function fillCards(items, count, defaults) {
+  const list = Array.isArray(items) ? items.slice(0, count) : [];
+  while (list.length < count) list.push({});
+  return list.map((card) => normalizeCard(card, defaults));
+}
+
+function normalizeBulletGroup(items, fallbackPrefix) {
+  const list = Array.isArray(items) ? items : [];
+  while (list.length < 3) list.push({ headline: `${fallbackPrefix}${list.length + 1}`, body: "待補充。" });
+  return list.slice(0, 3).map((item, idx) => ({
+    headline: truncate(item.headline || `${fallbackPrefix}${idx + 1}`, 28),
+    body: truncate(item.body || "待補充。", 90)
+  }));
+}
+
+export function normalizeStructuredReport(raw, dateInfo, reporter) {
+  const data = raw || {};
+  return {
+    reportTitle: truncate(data.report_title || data.reportTitle || "影劇產業日報摘要", 20),
+    dateLine: `${dateInfo.ymdSlash.replace(/\//g, " / ")}　（${dateInfo.weekday}）　　整理：${reporter}`,
+    highlights: (Array.isArray(data.highlight_cards) ? data.highlight_cards : []).slice(0, 3).map((item, idx) => ({
+      title: truncate(item?.title || `重點 ${idx + 1}`, 50),
+      body: truncate(item?.body || "待補充。", 120),
+      action: truncate(item?.action || "待補充。", 100)
+    })).concat(Array.from({ length: Math.max(0, 3 - (data.highlight_cards?.length || 0)) }, (_, idx) => ({
+      title: `重點 ${idx + 1}`,
+      body: "待補充。",
+      action: "待補充。"
+    }))).slice(0, 3),
+    taiwanFocus: fillCards(data.taiwan_focus, 3, { country: "台灣" }),
+    internationalFocus: fillCards(data.international_focus, 3, { country: "美國" }),
+    seriesFocus: fillCards(data.series_focus, 3, { country: "美國", label: "影集" }),
+    ottFilm: normalizeCard(data.ott_film, { country: "跨區", label: "OTT 電影" }),
+    ottSeries: fillCards(data.ott_series, 3, { country: "跨區", label: "OTT 影集" }),
+    releaseBox: {
+      headline: truncate(data.release_box?.headline || "今日台灣端可公開驗證的即時上新有限", 40),
+      body: truncate(data.release_box?.body || "建議同步對照本週票房與提案／補助節點，不必被娛樂零訊號牽著走。", 90)
+    },
+    featured: {
+      title: truncate(data.featured?.title || "2026 TCCF PITCHING", 50),
+      meta: truncate(data.featured?.meta || "提案市場　台灣", 30),
+      reason: truncate(data.featured?.reason || "台灣內容對接國際買家與合製夥伴的核心節點。", 140),
+      watch: truncate(data.featured?.watch || "觀察報名進度、國際案比例與成熟商務提案。", 100)
+    },
+    watchSections: {
+      themes: normalizeBulletGroup(data.watch_sections?.themes, "題材趨勢"),
+      market: normalizeBulletGroup(data.watch_sections?.market, "市場風向"),
+      promotion: normalizeBulletGroup(data.watch_sections?.promotion, "宣傳操作"),
+      observables: {
+        institutions: truncate(data.watch_sections?.observables?.institutions || "TAICCA、全國電影票房統計資訊、TCCF PITCHING", 100),
+        genres: truncate(data.watch_sections?.observables?.genres || "文化科技內容、可國際合製的影集／電影案", 100),
+        metrics: truncate(data.watch_sections?.observables?.metrics || "票房平台、提案節點、補助名單", 100),
+        actions: truncate(data.watch_sections?.observables?.actions || "確定主提案案、完成商務包與對外敘事", 100)
+      }
+    }
+  };
+}
+
+export async function callOpenAIStructured({ config, dateInfo, items, errors }) {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) {
+    throw new Error("找不到 OPENAI_API_KEY。請在雲端環境變數中設定。");
+  }
+
+  const model = process.env.OPENAI_MODEL || config.defaultModel || "gpt-5.2";
+  const instructions = [
+    "你是影劇產業日報的總編與策略分析師。",
+    "請使用繁體中文，禁止輸出簡體中文。",
+    "受眾是影視公司老闆、主管、製片、發行與行銷團隊。",
+    "內容必須是決策用情報，不是娛樂八卦摘要。",
+    "台灣產業資訊必須進入主體，至少要有 3 則台灣焦點，優先考慮 TAICCA、TCCF、票房、補助、台灣影集與國片動態。",
+    "只可使用提供的候選新聞，不要捏造來源、日期、標題、連結或事件。",
+    "若資訊不足，請寫『來源未提供』或以保守表述處理，不要臆測。",
+    "請只輸出 JSON，不要加 Markdown、註解或程式碼區塊。",
+    "所有欄位都要填滿。",
+    "標題請控制精準、可上版；摘要與公司參考請偏具體，避免空泛形容。",
+    "JSON schema:",
+    JSON.stringify({
+      report_title: "影劇產業日報摘要",
+      highlight_cards: [{ title: "", body: "", action: "" }],
+      taiwan_focus: [{ country: "台灣", label: "", title: "", source: "", date: "", summary: "", why: "", action: "" }],
+      international_focus: [{ country: "", label: "", title: "", source: "", date: "", summary: "", why: "", action: "" }],
+      series_focus: [{ country: "", label: "", title: "", source: "", date: "", summary: "", why: "", action: "" }],
+      ott_film: { country: "", label: "", title: "", source: "", date: "", summary: "", why: "", action: "" },
+      ott_series: [{ country: "", label: "", title: "", source: "", date: "", summary: "", why: "", action: "" }],
+      release_box: { headline: "", body: "" },
+      featured: { title: "", meta: "", reason: "", watch: "" },
+      watch_sections: {
+        themes: [{ headline: "", body: "" }],
+        market: [{ headline: "", body: "" }],
+        promotion: [{ headline: "", body: "" }],
+        observables: { institutions: "", genres: "", metrics: "", actions: "" }
+      }
+    })
+  ].join("\n");
+
+  const input = [
+    `請產出 ${dateInfo.ymdSlash}（${dateInfo.weekday}）的影劇產業日報資料。`,
+    "版型限制：必須適合固定 DOCX 模板，每個欄位請精煉，避免過長。",
+    "候選新聞如下：",
+    formatCandidateDigest(items),
+    errors.length ? `抓取警告：\n${errors.join("\n")}` : ""
+  ].join("\n\n");
+
+  const res = await fetch("https://api.openai.com/v1/responses", {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${apiKey}`,
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({ model, instructions, input })
+  });
+
+  const json = await res.json();
+  if (!res.ok) throw new Error(`OpenAI API 失敗：${res.status} ${JSON.stringify(json)}`);
+  const text = json.output_text || json.output?.flatMap((item) => item.content ?? []).map((part) => part.text || "").join("\n") || "";
+  return JSON.parse(cleanJsonText(text));
+}
+
+export function buildReplacementMap(data) {
+  const replacements = {};
+  const set = (idx, value = "") => { replacements[String(idx)] = value; };
+
+  set(1, data.reportTitle);
+  set(2, data.dateLine);
+
+  set(7, data.highlights[0].title);
+  set(8, data.highlights[0].body);
+  set(9, "——");
+  set(10, data.highlights[0].action);
+  set(12, data.highlights[1].title);
+  set(13, data.highlights[1].body);
+  set(14, "");
+  set(15, "");
+  set(17, data.highlights[2].title);
+  set(18, data.highlights[2].body);
+  set(19, "");
+  set(20, "");
+  set(21, " ");
+  set(22, data.highlights[2].action);
+
+  const cardSlots = [
+    [data.taiwanFocus[0], { country: 28, label: 30, title: 31, source: 33, date: 36, summary: 38, why: 40, action: 42 }],
+    [data.taiwanFocus[1], { country: 43, label: 45, title: 46, source: 48, date: 51, summary: 53, why: 57, action: 59 }],
+    [data.taiwanFocus[2], { country: 60, label: 62, title: 63, source: 65, date: 68, summary: 70, why: 72, action: 74 }],
+    [data.internationalFocus[0], { country: 75, label: 77, title: 78, source: 80, date: 83, summary: 85, why: 89, action: 93, clear: [86, 87, 90, 91, 94, 95] }],
+    [data.internationalFocus[1], { country: 96, label: 98, title: 99, source: 101, date: 104, summary: 106, why: 108, action: 112, clear: [109, 110, 113, 114, 115, 116] }],
+    [data.internationalFocus[2], { country: 117, label: 119, title: 120, source: 124, date: 127, summary: 129, why: 133, action: 135, clear: [121, 122, 130, 131] }],
+    [data.seriesFocus[0], { country: 138, label: 140, title: 141, source: 143, date: 146, summary: 148, why: 150, action: 152 }],
+    [data.seriesFocus[1], { country: 153, label: 155, title: 156, source: 160, date: 163, summary: 165, why: 169, action: 171, clear: [157, 158, 166, 167] }],
+    [data.seriesFocus[2], { country: 172, label: 174, title: 175, source: 177, date: 180, summary: 182, why: 186, action: 188, clear: [183, 184] }],
+    [data.ottFilm, { country: 191, label: 193, title: 195, source: 198, date: 201, summary: 203, why: 205, action: 207, clear: [194, 196] }],
+    [data.ottSeries[0], { country: 210, label: 212, title: 213, source: 215, date: 218, summary: 220, why: 224, action: 226, clear: [221, 222] }],
+    [data.ottSeries[1], { country: 227, label: 229, title: 231, source: 238, date: 241, summary: 243, why: 249, action: 251, clear: [232, 233, 234, 235, 236, 244, 245, 246, 247] }],
+    [data.ottSeries[2], { country: 252, label: 254, title: 255, source: 257, date: 260, summary: 262, why: 264, action: 266 }]
+  ];
+
+  for (const [card, slots] of cardSlots) {
+    set(slots.country, card.country);
+    set(slots.label, card.label);
+    set(slots.title, card.title);
+    set(slots.source, card.source);
+    set(slots.date, card.date);
+    set(slots.summary, card.summary);
+    set(slots.why, card.why);
+    set(slots.action, card.action);
+    for (const idx of slots.clear || []) set(idx, "");
+  }
+
+  set(270, `⚠ ${data.releaseBox.headline}`);
+  set(271, "");
+  set(272, "");
+  set(273, data.releaseBox.body);
+
+  set(277, data.featured.title);
+  set(278, data.featured.meta);
+  set(280, data.featured.reason);
+  set(282, "");
+  set(283, "");
+  set(284, data.featured.watch);
+  set(285, " ");
+  set(286, " ");
+
+  set(292, `◆ ${data.watchSections.themes[0].headline}`);
+  set(293, data.watchSections.themes[0].body);
+  set(294, `◆ ${data.watchSections.themes[1].headline}`);
+  set(295, data.watchSections.themes[1].body);
+  set(296, "");
+  set(297, "");
+  set(298, "");
+  set(299, "");
+  set(300, `◆ ${data.watchSections.themes[2].headline}`);
+  set(301, data.watchSections.themes[2].body);
+  set(302, "");
+  set(303, "");
+  set(306, `◆ ${data.watchSections.market[0].headline}`);
+  set(307, data.watchSections.market[0].body);
+  set(308, "");
+  set(309, "");
+  set(310, `◆ ${data.watchSections.market[1].headline}`);
+  set(311, data.watchSections.market[1].body);
+  set(312, "");
+  set(313, "");
+  set(314, `◆ ${data.watchSections.market[2].headline}`);
+  set(315, data.watchSections.market[2].body);
+  set(316, "");
+  set(318, `◆ ${data.watchSections.promotion[0].headline}`);
+  set(319, data.watchSections.promotion[0].body);
+  set(320, "");
+  set(321, "");
+  set(324, `◆ ${data.watchSections.promotion[1].headline}`);
+  set(325, data.watchSections.promotion[1].body);
+  set(326, "");
+  set(327, "");
+  set(330, `◆ ${data.watchSections.promotion[2].headline}`);
+  set(331, data.watchSections.promotion[2].body);
+  set(332, "");
+  set(333, "");
+
+  set(338, "機構　");
+  set(339, data.watchSections.observables.institutions);
+  set(340, "");
+  set(341, "");
+  set(342, "");
+  set(343, "");
+  set(344, "");
+  set(345, "");
+  set(346, "題材　");
+  set(347, data.watchSections.observables.genres);
+  set(348, "");
+  set(349, "決策指標　");
+  set(350, data.watchSections.observables.metrics);
+  set(351, "優先動作　");
+  set(352, data.watchSections.observables.actions);
+  set(353, "");
+  set(354, " ");
+  set(355, " ");
+  set(356, " ");
+
+  return replacements;
+}
+
+function forceFont(xmlText, fontName) {
+  return xmlText
+    .replace(/新細明體/g, fontName)
+    .replace(/PMingLiU/g, "Microsoft JhengHei")
+    .replace(/Microsoft JhengHei/g, fontName)
+    .replace(/Aptos Display/g, fontName)
+    .replace(/Aptos/g, fontName)
+    .replace(/Times New Roman/g, fontName)
+    .replace(/Arial/g, fontName)
+    .replace(/w:asciiTheme="[^"]+"/g, `w:ascii="${fontName}"`)
+    .replace(/w:hAnsiTheme="[^"]+"/g, `w:hAnsi="${fontName}"`)
+    .replace(/w:eastAsiaTheme="[^"]+"/g, `w:eastAsia="${fontName}"`)
+    .replace(/w:cstheme="[^"]+"/g, `w:cs="${fontName}"`)
+    .replace(/<a:latin typeface="[^"]*"/g, `<a:latin typeface="${fontName}"`)
+    .replace(/<a:ea typeface="[^"]*"/g, `<a:ea typeface="${fontName}"`)
+    .replace(/<a:cs typeface="[^"]*"/g, `<a:cs typeface="${fontName}"`)
+    .replace(/script="Hant" typeface="[^"]*"/g, `script="Hant" typeface="${fontName}"`)
+    .replace(/script="Bopo" typeface="[^"]*"/g, `script="Bopo" typeface="${fontName}"`);
+}
+
+export async function applyTemplate({ templatePath = TEMPLATE_PATH, replacements, outputDocx, fontName = "微軟正黑體" }) {
+  const buffer = await fs.readFile(templatePath);
+  const zip = new AdmZip(buffer);
+  const documentEntry = zip.getEntry("word/document.xml");
+  if (!documentEntry) throw new Error("模板缺少 word/document.xml。");
+  let documentXml = zip.readAsText(documentEntry, "utf8");
+
+  let counter = 0;
+  documentXml = documentXml.replace(/<w:t\b[^>]*>([\s\S]*?)<\/w:t>/g, (match, inner) => {
+    counter += 1;
+    if (!(String(counter) in replacements)) return match;
+    const value = String(replacements[String(counter)] ?? "");
+    const escaped = value
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+    return match.replace(inner, escaped);
+  });
+  zip.updateFile("word/document.xml", Buffer.from(documentXml, "utf8"));
+
+  for (const entryName of ["word/styles.xml", "word/document.xml", "word/fontTable.xml", "word/theme/theme1.xml"]) {
+    const entry = zip.getEntry(entryName);
+    if (!entry) continue;
+    const updated = forceFont(zip.readAsText(entry, "utf8"), fontName);
+    zip.updateFile(entryName, Buffer.from(updated, "utf8"));
+  }
+
+  await fs.mkdir(path.dirname(outputDocx), { recursive: true });
+  zip.writeZip(outputDocx);
+}
+
+export async function ensureOutputDir(primary, fallback) {
+  try {
+    await fs.mkdir(primary, { recursive: true });
+    await fs.access(primary);
+    return primary;
+  } catch {
+    await fs.mkdir(fallback, { recursive: true });
+    return fallback;
+  }
+}
+
+export function renderMarkdown(data, dateInfo) {
+  const lines = [];
+  const pushCard = (card) => {
+    lines.push(`- [${card.country}｜${card.label}] ${card.title}`);
+    lines.push(`  來源：${card.source}`);
+    lines.push(`  日期：${card.date}`);
+    lines.push(`  摘要：${card.summary}`);
+    lines.push(`  值得注意：${card.why}`);
+    lines.push(`  公司參考：${card.action}`);
+    lines.push("");
+  };
+
+  lines.push(data.reportTitle);
+  lines.push(`${dateInfo.ymdSlash}（${dateInfo.weekday}） 整理：AJ`);
+  lines.push("");
+  lines.push("一 今日重點");
+  lines.push("");
+  data.highlights.forEach((item, idx) => {
+    lines.push(`${idx + 1}. ${item.title}`);
+    lines.push(`   ${item.body}`);
+    lines.push(`   管理提示：${item.action}`);
+    lines.push("");
+  });
+
+  lines.push("二 新聞摘要");
+  lines.push("");
+  lines.push("台灣焦點");
+  lines.push("");
+  data.taiwanFocus.forEach(pushCard);
+  lines.push("國際電影與市場");
+  lines.push("");
+  data.internationalFocus.forEach(pushCard);
+  lines.push("影集焦點");
+  lines.push("");
+  data.seriesFocus.forEach(pushCard);
+  lines.push("OTT 電影");
+  lines.push("");
+  pushCard(data.ottFilm);
+  lines.push("OTT 影集");
+  lines.push("");
+  data.ottSeries.forEach(pushCard);
+
+  lines.push("三 新上映／新上線");
+  lines.push("");
+  lines.push(`${data.releaseBox.headline}：${data.releaseBox.body}`);
+  lines.push("");
+  lines.push("四 備受期待");
+  lines.push("");
+  lines.push(`${data.featured.title}`);
+  lines.push(`期待原因：${data.featured.reason}`);
+  lines.push(`可持續觀察：${data.featured.watch}`);
+  lines.push("");
+  lines.push("五 值得關注");
+  lines.push("");
+  lines.push("題材趨勢");
+  data.watchSections.themes.forEach((item) => lines.push(`- ${item.headline}：${item.body}`));
+  lines.push("");
+  lines.push("市場風向");
+  data.watchSections.market.forEach((item) => lines.push(`- ${item.headline}：${item.body}`));
+  lines.push("");
+  lines.push("可借鏡的宣傳操作");
+  data.watchSections.promotion.forEach((item) => lines.push(`- ${item.headline}：${item.body}`));
+  lines.push("");
+  lines.push("可觀察對象");
+  lines.push(`- 機構：${data.watchSections.observables.institutions}`);
+  lines.push(`- 題材：${data.watchSections.observables.genres}`);
+  lines.push(`- 決策指標：${data.watchSections.observables.metrics}`);
+  lines.push(`- 優先動作：${data.watchSections.observables.actions}`);
+  lines.push("");
+
+  return lines.join("\n");
+}
+
+export async function writeReportFiles({ markdown, docxSourceTemplate = TEMPLATE_PATH, replacements, outDir, dateInfo }) {
+  const stem = `film_daily_report_${dateInfo.ymdDash}`;
+  const mdPath = path.join(outDir, `${stem}.md`);
+  const docxPath = path.join(outDir, `${stem}.docx`);
+  await fs.writeFile(mdPath, markdown.trimEnd() + "\n", "utf8");
+  await applyTemplate({ templatePath: docxSourceTemplate, replacements, outputDocx: docxPath, fontName: "微軟正黑體" });
+  return { mdPath, docxPath };
+}
+
+export async function generateCloudReport({ dateArg, outDirArg, configPathArg, maxItemsArg }) {
+  await loadProjectEnv();
+  const configFile = configPathArg ? path.resolve(configPathArg) : CONFIG_PATH;
+  const config = JSON.parse(await fs.readFile(configFile, "utf8"));
+  const dateInfo = taipeiDateParts(dateArg);
+  const maxItems = maxItemsArg || config.maxCandidateItems || 80;
+  const { items, errors } = await collectCandidates(config, maxItems);
+  const raw = await callOpenAIStructured({ config, dateInfo, items, errors });
+  const data = normalizeStructuredReport(raw, dateInfo, config.reporter || "AJ");
+
+  const primaryOut = outDirArg || process.env.CLOUD_REPORT_OUTPUT_DIR || path.join(ROOT, "outputs");
+  const fallbackOut = path.join(ROOT, config.fallbackOutputDirectory || "outputs");
+  const outDir = await ensureOutputDir(primaryOut, fallbackOut);
+  const markdown = renderMarkdown(data, dateInfo);
+  const replacements = buildReplacementMap(data);
+  const files = await writeReportFiles({ markdown, replacements, outDir, dateInfo });
+  return { config, dateInfo, outDir, markdown, replacements, errors, items, data, ...files };
+}
+
+export async function sendViaResend({ to, from, subject, html, text, attachments = [] }) {
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) throw new Error("找不到 RESEND_API_KEY。");
+  const res = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      from,
+      to: Array.isArray(to) ? to : [to],
+      subject,
+      html,
+      text,
+      attachments
+    })
+  });
+  const json = await res.json();
+  if (!res.ok) throw new Error(`Resend API 失敗：${res.status} ${JSON.stringify(json)}`);
+  return json;
+}

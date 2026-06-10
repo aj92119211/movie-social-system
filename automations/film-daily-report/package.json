@@ -1,0 +1,14 @@
+{
+  "name": "film-daily-report-cloud",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "daily:cloud": "node scripts/run-film-report-cloud.mjs",
+    "daily:cloud:generate": "node scripts/generate-film-daily-report-cloud.mjs",
+    "daily:cloud:email": "node scripts/send-film-report-email.mjs"
+  },
+  "dependencies": {
+    "adm-zip": "^0.5.16"
+  }
+}
