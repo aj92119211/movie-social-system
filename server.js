@@ -2505,6 +2505,33 @@ function buildSocialSearchEntry(source, keyword) {
   };
 }
 
+function buildDcardSocialEntry(keyword) {
+  const isDramaSearch = /台劇|臺劇/.test(String(keyword || ""));
+  const dcardUrl = isDramaSearch ? "https://www.dcard.tw/topics/%E5%8F%B0%E5%8A%87" : "https://www.dcard.tw/f/movie";
+  const dcardLabel = isDramaSearch ? "Dcard 台劇話題" : "Dcard 電影版";
+  return {
+    resultType: "social",
+    title: `${dcardLabel}｜${keyword}`,
+    sourceName: "Dcard",
+    platform: "Dcard",
+    accountName: dcardLabel,
+    articleUrl: "",
+    postUrl: dcardUrl,
+    publishedDate: "",
+    relatedTitle: keyword,
+    category: "社群口碑",
+    tags: inferEntertainmentTags(`Dcard ${keyword}`, "social"),
+    snippet: "Dcard 以固定入口提供社群討論線索，避免跳到不相關看板。",
+    aiSummary: `可用這個入口快速查看 Dcard 上與「${keyword}」相關的公開討論。`,
+    keyPoint: isDramaSearch ? "Dcard 台劇搜尋固定連到台劇話題頁。" : "Dcard 台灣電影搜尋固定連到電影版。",
+    usefulFor: ["口碑追蹤", "社群靈感"],
+    interactionObservation: "請進入 Dcard 後，再用站內搜尋或瀏覽最新討論確認口碑方向。",
+    note: `固定入口：${dcardLabel}。`,
+    rawContent: `${dcardLabel} 固定入口：${dcardUrl}`,
+    searchKeyword: keyword,
+  };
+}
+
 async function fetchTwEntertainmentNewsResults(keyword, range, options = {}) {
   const allResults = [];
   const sourceLimit = options.sourceLimit || 10;
@@ -2551,14 +2578,7 @@ async function fetchTwEntertainmentSocialResults(keyword, range) {
   const results = [];
   const dcardSource = twEntertainmentSocialSources.find((source) => source.platform === "Dcard");
   if (dcardSource) {
-    results.push({
-      ...buildSocialSearchEntry(dcardSource, keyword),
-      title: `Dcard 電影版｜${keyword}`,
-      postUrl: dcardSource.searchUrl,
-      keyPoint: "Dcard 固定連到電影版，避免跳到 topics 或其他不相關看板。",
-      interactionObservation: "請進入 Dcard 電影版後，再用站內搜尋或瀏覽最新討論確認口碑方向。",
-      note: "固定入口：Dcard 電影版。",
-    });
+    results.push(buildDcardSocialEntry(keyword));
   }
 
   for (const source of twEntertainmentSocialSources.filter((item) => item.platform !== dcardSource?.platform)) {
