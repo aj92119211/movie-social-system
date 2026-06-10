@@ -12,7 +12,8 @@ jobs:
     env:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       OPENAI_MODEL: ${{ secrets.OPENAI_MODEL }}
-      RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+      GMAIL_USER: ${{ secrets.GMAIL_USER }}
+      GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
       REPORT_EMAIL_TO: ${{ secrets.REPORT_EMAIL_TO }}
       REPORT_EMAIL_FROM: ${{ secrets.REPORT_EMAIL_FROM }}
       CLOUD_REPORT_OUTPUT_DIR: outputs

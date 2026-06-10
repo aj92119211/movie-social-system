@@ -9,6 +9,7 @@
     "daily:cloud:email": "node scripts/send-film-report-email.mjs"
   },
   "dependencies": {
-    "adm-zip": "^0.5.16"
+    "adm-zip": "^0.5.16",
+    "nodemailer": "^6.9.15"
   }
 }

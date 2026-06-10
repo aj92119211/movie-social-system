@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import AdmZip from "adm-zip";
+import nodemailer from "nodemailer";
 
 export const ROOT = path.resolve(new URL("..", import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1"));
 export const CONFIG_PATH = path.join(ROOT, "config", "film-daily-sources.json");
@@ -655,4 +656,27 @@ export async function sendViaResend({ to, from, subject, html, text, attachments
   const json = await res.json();
   if (!res.ok) throw new Error(`Resend API 失敗：${res.status} ${JSON.stringify(json)}`);
   return json;
+}
+
+export async function sendViaGmail({ to, from, subject, html, text, attachments = [] }) {
+  const user = process.env.GMAIL_USER;
+  const pass = process.env.GMAIL_APP_PASSWORD;
+  if (!user || !pass) throw new Error("找不到 GMAIL_USER 或 GMAIL_APP_PASSWORD。");
+
+  const transporter = nodemailer.createTransport({
+    service: "gmail",
+    auth: { user, pass }
+  });
+
+  return transporter.sendMail({
+    from: from || user,
+    to: Array.isArray(to) ? to.join(", ") : to,
+    subject,
+    text,
+    html,
+    attachments: attachments.map((item) => ({
+      filename: item.filename,
+      content: Buffer.from(item.content, "base64")
+    }))
+  });
 }

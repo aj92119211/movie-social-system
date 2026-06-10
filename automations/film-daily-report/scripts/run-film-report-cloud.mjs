@@ -1,4 +1,4 @@
-import { parseArgs, generateCloudReport, loadProjectEnv, sendViaResend } from "./film-report-cloud-lib.mjs";
+import { parseArgs, generateCloudReport, loadProjectEnv, sendViaGmail } from "./film-report-cloud-lib.mjs";
 import fs from "node:fs/promises";
 import path from "node:path";
 
@@ -21,10 +21,10 @@ async function main() {
   });
 
   const to = process.env.REPORT_EMAIL_TO;
-  const from = process.env.REPORT_EMAIL_FROM;
+  const from = process.env.REPORT_EMAIL_FROM || process.env.GMAIL_USER;
   if (!to || !from) {
     console.log(`雲端版日報已產出：${result.mdPath}；${result.docxPath}`);
-    console.log("尚未寄信，因為未設定 REPORT_EMAIL_TO / REPORT_EMAIL_FROM。");
+    console.log("尚未寄信，因為未設定 REPORT_EMAIL_TO / REPORT_EMAIL_FROM（或 GMAIL_USER）。");
     return;
   }
 
@@ -33,7 +33,7 @@ async function main() {
     fs.readFile(result.docxPath)
   ]);
 
-  await sendViaResend({
+  await sendViaGmail({
     to,
     from,
     subject: `每日影劇日報 ${result.dateInfo.ymdDash}`,

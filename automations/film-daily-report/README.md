@@ -16,9 +16,17 @@
 
 - `OPENAI_API_KEY`
 - `OPENAI_MODEL`（可省略）
-- `RESEND_API_KEY`
+- `GMAIL_USER`
+- `GMAIL_APP_PASSWORD`
 - `REPORT_EMAIL_TO`
 - `REPORT_EMAIL_FROM`
+
+建議：
+
+- `GMAIL_USER`：你專門用來寄日報的 Gmail
+- `GMAIL_APP_PASSWORD`：Google 兩步驟驗證後建立的 App Password
+- `REPORT_EMAIL_TO`：收件人，可填 1 個或多個，若多個請用逗號分隔
+- `REPORT_EMAIL_FROM`：可先直接填和 `GMAIL_USER` 相同
 
 ## 手動執行
 

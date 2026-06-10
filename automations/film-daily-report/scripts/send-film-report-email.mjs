@@ -6,7 +6,7 @@ import {
   parseArgs,
   taipeiDateParts,
   generateCloudReport,
-  sendViaResend
+  sendViaGmail
 } from "./film-report-cloud-lib.mjs";
 
 function htmlEscape(text) {
@@ -45,9 +45,9 @@ async function main() {
   const args = parseArgs(process.argv.slice(2));
   await loadProjectEnv();
   const to = process.env.REPORT_EMAIL_TO;
-  const from = process.env.REPORT_EMAIL_FROM;
+  const from = process.env.REPORT_EMAIL_FROM || process.env.GMAIL_USER;
   if (!to || !from) {
-    throw new Error("請設定 REPORT_EMAIL_TO 與 REPORT_EMAIL_FROM。");
+    throw new Error("請設定 REPORT_EMAIL_TO 與 REPORT_EMAIL_FROM（或至少設定 GMAIL_USER）。");
   }
 
   const dateInfo = taipeiDateParts(args.date);
@@ -65,7 +65,7 @@ async function main() {
     </div>
   `;
 
-  await sendViaResend({
+  await sendViaGmail({
     to,
     from,
     subject,
