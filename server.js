@@ -2479,7 +2479,7 @@ function shouldKeepTwEntertainmentNewsItem(raw, source, keyword = "") {
 
 function buildSocialSearchEntry(source, keyword) {
   const query = `site:${source.domain} ${keyword}`;
-  const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(query)}`;
+  const searchUrl = source.searchUrl || `https://www.google.com/search?q=${encodeURIComponent(query)}`;
   const title = `${source.platform}｜${keyword} 搜尋入口`;
   const text = `${title} ${keyword}`;
   return {
@@ -2500,7 +2500,7 @@ function buildSocialSearchEntry(source, keyword) {
     usefulFor: ["口碑追蹤", "社群靈感"],
     interactionObservation: "需進入平台後人工確認互動量、留言方向與是否有口碑訊號。",
     note: "不是假貼文，這是平台搜尋入口。",
-    rawContent: query,
+    rawContent: source.searchUrl ? `${source.platform} 固定入口：${source.searchUrl}` : query,
     searchKeyword: keyword,
   };
 }
@@ -2550,28 +2550,15 @@ async function fetchTwEntertainmentTrackedNewsResults(keyword, range, trackedKey
 async function fetchTwEntertainmentSocialResults(keyword, range) {
   const results = [];
   const dcardSource = twEntertainmentSocialSources.find((source) => source.platform === "Dcard");
-  try {
-    const rows = await fetchGoogleNewsRss(`${keyword} site:dcard.tw/f/movie ${rangeQuery(range)}`, 20);
-    const movieRows = rows.filter((row) => {
-      const link = String(row.link || "");
-      return isNewsDateWithinRange(row.publishedDate, range) && /dcard\.tw\/f\/movie/i.test(link);
+  if (dcardSource) {
+    results.push({
+      ...buildSocialSearchEntry(dcardSource, keyword),
+      title: `Dcard 電影版｜${keyword}`,
+      postUrl: dcardSource.searchUrl,
+      keyPoint: "Dcard 固定連到電影版，避免跳到 topics 或其他不相關看板。",
+      interactionObservation: "請進入 Dcard 電影版後，再用站內搜尋或瀏覽最新討論確認口碑方向。",
+      note: "固定入口：Dcard 電影版。",
     });
-    results.push(...movieRows.map((row) => ({
-      ...normalizeTwNewsItem(row, { name: "Dcard", domain: "dcard.tw" }, keyword),
-      resultType: "social",
-      platform: "Dcard",
-      sourceName: "Dcard",
-      accountName: "Dcard 電影版",
-      postUrl: row.link,
-      articleUrl: "",
-      relatedTitle: keyword,
-      category: "社群口碑",
-      tags: inferEntertainmentTags(`${row.title} ${keyword}`, "social"),
-      interactionObservation: "請開啟原文確認留言方向、按讚數與討論情緒。",
-      usefulFor: inferUsefulFor(row.title, "social"),
-    })));
-  } catch (error) {
-    console.warn("[TW_SOCIAL_DCARD_SKIPPED]", error.message);
   }
 
   for (const source of twEntertainmentSocialSources.filter((item) => item.platform !== dcardSource?.platform)) {
