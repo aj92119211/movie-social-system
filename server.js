@@ -2134,7 +2134,7 @@ const twEntertainmentNewsSources = [
 ];
 
 const twEntertainmentSocialSources = [
-  { platform: "Dcard", domain: "dcard.tw", accountName: "Dcard 搜尋" },
+  { platform: "Dcard", domain: "dcard.tw/f/movie", accountName: "Dcard 電影版", searchUrl: "https://www.dcard.tw/f/movie" },
   { platform: "Threads", domain: "threads.net", accountName: "Threads 搜尋入口", searchOnly: true },
   { platform: "Facebook", domain: "facebook.com", accountName: "Facebook 搜尋入口", searchOnly: true },
   { platform: "Instagram", domain: "instagram.com", accountName: "Instagram 搜尋入口", searchOnly: true },
@@ -2551,13 +2551,17 @@ async function fetchTwEntertainmentSocialResults(keyword, range) {
   const results = [];
   const dcardSource = twEntertainmentSocialSources.find((source) => source.platform === "Dcard");
   try {
-    const rows = await fetchGoogleNewsRss(`${keyword} site:dcard.tw ${rangeQuery(range)}`, 20);
-    results.push(...rows.filter((row) => isNewsDateWithinRange(row.publishedDate, range)).map((row) => ({
+    const rows = await fetchGoogleNewsRss(`${keyword} site:dcard.tw/f/movie ${rangeQuery(range)}`, 20);
+    const movieRows = rows.filter((row) => {
+      const link = String(row.link || "");
+      return isNewsDateWithinRange(row.publishedDate, range) && /dcard\.tw\/f\/movie/i.test(link);
+    });
+    results.push(...movieRows.map((row) => ({
       ...normalizeTwNewsItem(row, { name: "Dcard", domain: "dcard.tw" }, keyword),
       resultType: "social",
       platform: "Dcard",
       sourceName: "Dcard",
-      accountName: "Dcard 搜尋",
+      accountName: "Dcard 電影版",
       postUrl: row.link,
       articleUrl: "",
       relatedTitle: keyword,
