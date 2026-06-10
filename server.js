@@ -2203,6 +2203,14 @@ const twEntertainmentDramaTopicSignals = [
   "都會劇", "家庭劇", "職人劇", "愛情劇", "喜劇影集", "情境喜劇", "青春校園劇", "懸疑劇", "犯罪劇", "驚悚劇", "恐怖劇", "科幻劇", "奇幻劇", "歷史劇", "古裝劇", "武俠劇", "政治劇", "醫療劇", "律政劇", "警匪劇", "黑幫劇", "社會寫實劇", "女性成長劇", "BL劇", "GL劇", "偶像劇", "職場劇", "家庭倫理劇", "單元劇", "迷你劇", "長壽劇", "動畫影集", "紀錄影集", "實境影集", "綜藝節目", "選秀節目", "談話節目", "旅遊節目", "美食節目", "音樂節目", "兒少節目", "親子節目",
 ];
 
+const twEntertainmentDramaStrongSignals = [
+  "台劇", "臺劇", "影集", "劇集", "劇組", "八點檔", "偶像劇", "迷你劇", "單元劇", "長壽劇", "公視", "台視", "臺視", "華視", "民視", "三立戲劇", "八大戲劇", "客家電視", "OTT", "Netflix", "Disney", "LINE TV", "MyVideo", "friDay", "CATCHPLAY", "金鐘", "都會劇", "家庭劇", "職人劇", "愛情劇", "喜劇影集", "情境喜劇", "青春校園劇", "懸疑劇", "犯罪劇", "驚悚劇", "恐怖劇", "科幻劇", "奇幻劇", "歷史劇", "古裝劇", "武俠劇", "政治劇", "醫療劇", "律政劇", "警匪劇", "黑幫劇", "社會寫實劇", "女性成長劇", "BL劇", "GL劇", "職場劇", "家庭倫理劇", "動畫影集", "紀錄影集", "實境影集", "寶島西米樂", "我們與惡的距離", "便利商店",
+];
+
+const twEntertainmentDramaNoiseSignals = [
+  "外送", "外送員", "雷區", "黃仁勳", "SK會長", "半導體", "科技業", "金融理財", "基金會", "反毒劇", "紙風車劇團", "校園巡演", "如何辨識台灣人", "大阪妹", "暴雨", "梅雨", "大雨特報", "雨衣", "機車族", "北投", "艾草", "粽子", "經痛", "止痛藥", "中醫", "生活 -", "社會 -", "產經 -",
+];
+
 const twEntertainmentFilmTopicSignals = [
   "電影", "國片", "台片", "臺片", "院線", "上映", "定檔", "預告", "海報", "劇照", "主視覺", "開拍", "開鏡", "開機", "殺青", "殺青宴", "導演", "編劇", "演員", "主演", "監製", "製片", "片商", "發行", "票房", "影展", "金馬", "北影", "台北電影", "金穗", "入圍", "得獎", "紀錄片", "劇情片", "喜劇片", "愛情片", "動作片", "犯罪片", "懸疑片", "驚悚片", "恐怖片", "科幻片", "奇幻片", "動畫片", "短片", "造山者", "不算AI情", "打狗", "哥哥可以跟我打勾勾嗎", "絕勝",
 ];
@@ -2308,12 +2316,26 @@ function stripLowRelatedResults(items) {
   return { filtered, excludedCount };
 }
 
+function hasTaiwanDramaSearchContext(text) {
+  const value = String(text || "");
+  if (twEntertainmentDramaNoiseSignals.some((signal) => value.includes(signal))) return false;
+  if (twEntertainmentDramaStrongSignals.some((signal) => value.includes(signal))) return true;
+
+  const hasProductionSignal = /開拍|開鏡|開機|殺青|殺青宴|定檔|播出|首播|上架/.test(value);
+  const hasDramaWorkSignal = /影集|劇集|劇組|八點檔|偶像劇|迷你劇|單元劇|長壽劇|台劇|臺劇/.test(value);
+  return hasProductionSignal && hasDramaWorkSignal;
+}
+
 function hasTaiwanEntertainmentContext(raw, source) {
   const domain = String(source?.domain || "");
   if (twEntertainmentOfficialDomains.includes(domain)) return true;
 
   const text = `${raw?.title || ""} ${raw?.sourceName || ""} ${source?.name || ""}`;
   const query = String(raw?.searchKeyword || "");
+  if (/台劇|臺劇/.test(query)) {
+    return hasTaiwanDramaSearchContext(text);
+  }
+
   const hasTaiwanSignal = twEntertainmentTaiwanSignals.some((signal) => text.includes(signal));
   if (hasTaiwanSignal) return true;
 
@@ -2324,7 +2346,7 @@ function hasTaiwanEntertainmentContext(raw, source) {
     return false;
   }
 
-  if (twEntertainmentTrustedTaiwanMediaDomains.includes(domain) && /台劇|臺劇/.test(query) && twEntertainmentDramaTopicSignals.some((signal) => text.includes(signal))) {
+  if (twEntertainmentTrustedTaiwanMediaDomains.includes(domain) && /台劇|臺劇/.test(query) && hasTaiwanDramaSearchContext(text)) {
     return true;
   }
 
@@ -2341,7 +2363,7 @@ function matchesSearchIntent(raw, keyword) {
   if (/台灣電影|臺灣電影|國片|台片/.test(query) && !twEntertainmentFilmTopicSignals.some((signal) => text.includes(signal))) {
     return false;
   }
-  if (/台劇|臺劇/.test(query) && !twEntertainmentDramaTopicSignals.some((signal) => text.includes(signal))) {
+  if (/台劇|臺劇/.test(query) && !hasTaiwanDramaSearchContext(text)) {
     return false;
   }
   const intentGroups = [
