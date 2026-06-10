@@ -2141,7 +2141,7 @@ const twEntertainmentSocialSources = [
 ];
 
 const twEntertainmentExcludedKeywords = [
-  "影評", "心得", "推薦", "懶人包", "片單", "劇透", "雷文", "八卦", "私生活", "星座", "炎上", "穿搭", "感情", "緋聞", "戀情", "結婚", "離婚", "不倫", "家暴", "吵架", "粉絲", "網友反應", "網友熱議", "18禁", "成人", "情色", "情趣", "情趣用品", "西斯", "性事", "約炮",
+  "影評", "心得", "推薦", "懶人包", "片單", "劇透", "雷文", "八卦", "私生活", "星座", "炎上", "穿搭", "感情", "緋聞", "戀情", "結婚", "離婚", "不倫", "家暴", "吵架", "粉絲", "網友反應", "網友熱議", "18禁", "成人", "情色", "情趣", "情趣用品", "西斯", "性事", "約炮", "麥當勞", "厚鬆餅", "台股", "外資", "IC設計", "記憶體", "大立光", "國巨", "金像電", "SpaceX", "馬斯克", "AI算力", "軌道", "股票", "投顧", "電子股", "化工", "美伊", "道奇", "Glasnow", "畢業生", "國小", "社區警衛", "掛屍", "夜市",
 ];
 
 const twEntertainmentUnsafeSocialUrlPatterns = [
@@ -2195,6 +2195,10 @@ const twEntertainmentTaiwanSignals = [
 
 const twEntertainmentForeignSignals = [
   "日本", "韓國", "韓星", "日劇", "韓劇", "好萊塢", "美國", "中國", "陸劇", "香港", "港片", "泰國", "越南", "法國", "英國", "紐倫堡", "雷米馬利克", "雷米馬利克", "羅素克洛", "羅素克洛",
+];
+
+const twEntertainmentDramaTopicSignals = [
+  "台劇", "臺劇", "戲劇", "影集", "劇集", "劇組", "演員", "主演", "導演", "編劇", "製作人", "監製", "開拍", "開鏡", "開機", "殺青", "殺青宴", "定檔", "播出", "首播", "上架", "OTT", "Netflix", "Disney", "公視", "台視", "臺視", "華視", "民視", "三立", "八大", "客家電視", "八點檔", "金鐘", "周渝民", "薛仕凌", "劉子銓", "白潤音", "盧彥澤", "何宜珊", "林健寰", "尹昭德", "詹懷雲", "温貞菱", "溫貞菱", "寶島西米樂", "我們與惡的距離", "便利商店",
 ];
 
 function decodeBasicHtml(value) {
@@ -2314,7 +2318,7 @@ function hasTaiwanEntertainmentContext(raw, source) {
     return false;
   }
 
-  if (twEntertainmentTrustedTaiwanMediaDomains.includes(domain) && /台劇|臺劇/.test(query)) {
+  if (twEntertainmentTrustedTaiwanMediaDomains.includes(domain) && /台劇|臺劇/.test(query) && twEntertainmentDramaTopicSignals.some((signal) => text.includes(signal))) {
     return true;
   }
 
@@ -2328,6 +2332,9 @@ function hasTaiwanEntertainmentContext(raw, source) {
 function matchesSearchIntent(raw, keyword) {
   const text = `${raw?.title || ""} ${raw?.sourceName || ""}`;
   const query = String(keyword || "");
+  if (/台劇|臺劇/.test(query) && !twEntertainmentDramaTopicSignals.some((signal) => text.includes(signal))) {
+    return false;
+  }
   const intentGroups = [
     { query: /開拍|開鏡/, result: /開拍|開鏡|開機|開工|開鏡/ },
     { query: /殺青/, result: /殺青|殺青宴/ },
