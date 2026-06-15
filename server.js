@@ -2516,7 +2516,11 @@ function normalizeTwNewsItem(raw, source, keyword) {
 
 function shouldKeepTwEntertainmentNewsItem(raw, source, keyword = "") {
   const link = String(raw?.link || "");
+  const title = stripNewsSourceSuffix(raw?.title || "");
   if (!link) return false;
+  if (/^#\s*.+/.test(title) || /相關新聞|新聞報導\s*第?\d*頁|搜尋結果|標籤|Tag$/i.test(title)) {
+    return false;
+  }
   if (twEntertainmentUnsafeSocialUrlPatterns.some((pattern) => pattern.test(link))) {
     return false;
   }
@@ -2587,10 +2591,8 @@ function buildDcardSocialEntry(keyword) {
   };
 }
 
-async function fetchTwEntertainmentNewsResults(keyword, range, options = {}) {
+async function fetchTwEntertainmentNewsBatch(keyword, range, sources, sourceLimit) {
   const allResults = [];
-  const sourceLimit = options.sourceLimit || 10;
-  const sources = options.sources || twEntertainmentNewsSources;
   for (const source of sources) {
     const searchKeyword = /今日影劇/.test(String(keyword || ""))
       ? "(台灣電影 OR 台劇 OR 影集 OR OTT OR 影視產業 OR 票房 OR 影展)"
@@ -2603,7 +2605,19 @@ async function fetchTwEntertainmentNewsResults(keyword, range, options = {}) {
       console.warn("[TW_NEWS_SOURCE_SKIPPED]", source.name, error.message);
     }
   }
-  return dedupeTwEntertainmentResults(allResults, "articleUrl").slice(0, 50);
+  return allResults;
+}
+
+async function fetchTwEntertainmentNewsResults(keyword, range, options = {}) {
+  const sourceLimit = options.sourceLimit || 10;
+  const sources = options.sources || twEntertainmentNewsSources;
+  const allResults = await fetchTwEntertainmentNewsBatch(keyword, range, sources, sourceLimit);
+  const deduped = dedupeTwEntertainmentResults(allResults, "articleUrl");
+  if (!isBroadTwEntertainmentPreset(keyword) && deduped.length < 6 && range !== "30d" && range !== "year") {
+    const expandedResults = await fetchTwEntertainmentNewsBatch(keyword, "30d", sources, sourceLimit);
+    return dedupeTwEntertainmentResults([...deduped, ...expandedResults], "articleUrl").slice(0, 50);
+  }
+  return deduped.slice(0, 50);
 }
 
 function parseTrackedKeywords(value) {
