@@ -2608,13 +2608,34 @@ async function fetchTwEntertainmentNewsBatch(keyword, range, sources, sourceLimi
   return allResults;
 }
 
+async function fetchTwEntertainmentGeneralKeywordResults(keyword, range, limit = 30) {
+  const query = `"${String(keyword || "").replace(/"/g, "")}" ${rangeQuery(range)}`.trim();
+  try {
+    const rows = await fetchGoogleNewsRss(query, limit);
+    return rows
+      .filter((row) => isNewsDateWithinRange(row.publishedDate, range))
+      .filter((row) => shouldKeepTwEntertainmentNewsItem(row, { name: "", domain: "" }, keyword))
+      .map((row) => normalizeTwNewsItem(row, { name: "", domain: "" }, keyword));
+  } catch (error) {
+    console.warn("[TW_NEWS_GENERAL_KEYWORD_SKIPPED]", error.message);
+    return [];
+  }
+}
+
 async function fetchTwEntertainmentNewsResults(keyword, range, options = {}) {
   const sourceLimit = options.sourceLimit || 10;
   const sources = options.sources || twEntertainmentNewsSources;
-  const allResults = await fetchTwEntertainmentNewsBatch(keyword, range, sources, sourceLimit);
+  const isCustomKeyword = !isBroadTwEntertainmentPreset(keyword);
+  const allResults = [
+    ...await fetchTwEntertainmentNewsBatch(keyword, range, sources, sourceLimit),
+    ...(isCustomKeyword ? await fetchTwEntertainmentGeneralKeywordResults(keyword, range, 30) : []),
+  ];
   const deduped = dedupeTwEntertainmentResults(allResults, "articleUrl");
-  if (!isBroadTwEntertainmentPreset(keyword) && deduped.length < 6 && range !== "30d" && range !== "year") {
-    const expandedResults = await fetchTwEntertainmentNewsBatch(keyword, "30d", sources, sourceLimit);
+  if (isCustomKeyword && deduped.length < 10 && range !== "30d" && range !== "year") {
+    const expandedResults = [
+      ...await fetchTwEntertainmentNewsBatch(keyword, "30d", sources, sourceLimit),
+      ...await fetchTwEntertainmentGeneralKeywordResults(keyword, "30d", 40),
+    ];
     return dedupeTwEntertainmentResults([...deduped, ...expandedResults], "articleUrl").slice(0, 50);
   }
   return deduped.slice(0, 50);
