@@ -2356,14 +2356,15 @@ function keywordAppearsInText(keyword, text) {
 }
 
 function hasTaiwanEntertainmentContext(raw, source) {
+  const text = `${raw?.title || ""} ${raw?.sourceName || ""} ${source?.name || ""}`;
+  const query = String(raw?.searchKeyword || "");
+  if (!isBroadTwEntertainmentPreset(query)) {
+    return keywordAppearsInText(query, text);
+  }
+
   const domain = String(source?.domain || "");
   if (twEntertainmentOfficialDomains.includes(domain)) return true;
 
-  const text = `${raw?.title || ""} ${raw?.sourceName || ""} ${source?.name || ""}`;
-  const query = String(raw?.searchKeyword || "");
-  if (!isBroadTwEntertainmentPreset(query) && keywordAppearsInText(query, text)) {
-    return true;
-  }
   if (/今日影劇/.test(query)) {
     return hasGeneralEntertainmentSearchContext(text);
   }
