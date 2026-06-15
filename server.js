@@ -2215,6 +2215,14 @@ const twEntertainmentFilmTopicSignals = [
   "電影", "國片", "台片", "臺片", "院線", "上映", "定檔", "預告", "海報", "劇照", "主視覺", "開拍", "開鏡", "開機", "殺青", "殺青宴", "導演", "編劇", "演員", "主演", "監製", "製片", "片商", "發行", "票房", "影展", "金馬", "北影", "台北電影", "金穗", "入圍", "得獎", "紀錄片", "劇情片", "喜劇片", "愛情片", "動作片", "犯罪片", "懸疑片", "驚悚片", "恐怖片", "科幻片", "奇幻片", "動畫片", "短片", "造山者", "不算AI情", "打狗", "哥哥可以跟我打勾勾嗎", "絕勝",
 ];
 
+const twEntertainmentGeneralTopicSignals = [
+  "影劇", "影視", "娛樂", "電影", "國片", "台片", "臺片", "院線", "上映", "定檔", "預告", "海報", "劇照", "主視覺", "票房", "影展", "金馬", "北影", "台北電影", "金穗", "金鐘", "入圍", "得獎", "文策院", "文化部", "影視局", "補助", "輔導金", "OTT", "Netflix", "Disney", "公視", "台視", "臺視", "華視", "民視", "八點檔", "影集", "劇集", "台劇", "臺劇",
+];
+
+const twEntertainmentGeneralNoiseSignals = [
+  "模範女警", "警察節", "水蜜桃", "賄選", "地檢署", "好茶宣導", "城市科大", "畢典", "修車職人", "薪資", "天氣預報", "鋒面", "全台轉雨", "暴雨", "梅雨", "端午", "讀者投書", "醫美", "檢法醫界", "便利商店攜手環境部", "乘涼站", "攝影獎", "科技", "電力", "吸金", "檳榔攤", "酒駕", "異世界合成圖", "資安", "微軟", "零信任", "國安情資", "相關新聞報導 第1頁",
+];
+
 function decodeBasicHtml(value) {
   return String(value || "")
     .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
@@ -2326,12 +2334,23 @@ function hasTaiwanDramaSearchContext(text) {
   return hasProductionSignal && hasDramaWorkSignal;
 }
 
+function hasGeneralEntertainmentSearchContext(text) {
+  const value = String(text || "");
+  if (twEntertainmentGeneralNoiseSignals.some((signal) => value.includes(signal))) return false;
+  if (twEntertainmentFilmTopicSignals.some((signal) => value.includes(signal))) return true;
+  if (hasTaiwanDramaSearchContext(value)) return true;
+  return twEntertainmentGeneralTopicSignals.some((signal) => value.includes(signal));
+}
+
 function hasTaiwanEntertainmentContext(raw, source) {
   const domain = String(source?.domain || "");
   if (twEntertainmentOfficialDomains.includes(domain)) return true;
 
   const text = `${raw?.title || ""} ${raw?.sourceName || ""} ${source?.name || ""}`;
   const query = String(raw?.searchKeyword || "");
+  if (/今日影劇/.test(query)) {
+    return hasGeneralEntertainmentSearchContext(text);
+  }
   if (/台劇|臺劇/.test(query)) {
     return hasTaiwanDramaSearchContext(text);
   }
@@ -2360,6 +2379,9 @@ function hasTaiwanEntertainmentContext(raw, source) {
 function matchesSearchIntent(raw, keyword) {
   const text = `${raw?.title || ""} ${raw?.sourceName || ""}`;
   const query = String(keyword || "");
+  if (/今日影劇/.test(query) && !hasGeneralEntertainmentSearchContext(text)) {
+    return false;
+  }
   if (/台灣電影|臺灣電影|國片|台片/.test(query) && !twEntertainmentFilmTopicSignals.some((signal) => text.includes(signal))) {
     return false;
   }
@@ -2537,7 +2559,10 @@ async function fetchTwEntertainmentNewsResults(keyword, range, options = {}) {
   const sourceLimit = options.sourceLimit || 10;
   const sources = options.sources || twEntertainmentNewsSources;
   for (const source of sources) {
-    const sourceQuery = `${keyword} site:${source.domain} ${rangeQuery(range)}`.trim();
+    const searchKeyword = /今日影劇/.test(String(keyword || ""))
+      ? "(台灣電影 OR 台劇 OR 影集 OR OTT OR 影視產業 OR 票房 OR 影展)"
+      : keyword;
+    const sourceQuery = `${searchKeyword} site:${source.domain} ${rangeQuery(range)}`.trim();
     try {
       const rows = await fetchGoogleNewsRss(sourceQuery, sourceLimit);
       allResults.push(...rows.filter((row) => isNewsDateWithinRange(row.publishedDate, range)).filter((row) => shouldKeepTwEntertainmentNewsItem(row, source, keyword)).map((row) => normalizeTwNewsItem(row, source, keyword)));
