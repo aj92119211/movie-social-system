@@ -2141,7 +2141,7 @@ const twEntertainmentSocialSources = [
 ];
 
 const twEntertainmentExcludedKeywords = [
-  "影評", "心得", "推薦", "懶人包", "片單", "劇透", "雷文", "八卦", "私生活", "星座", "炎上", "穿搭", "感情", "緋聞", "戀情", "結婚", "離婚", "不倫", "家暴", "吵架", "粉絲", "網友反應", "網友熱議", "18禁", "成人", "情色", "情趣", "情趣用品", "西斯", "性事", "約炮", "麥當勞", "厚鬆餅", "台股", "外資", "IC設計", "記憶體", "大立光", "國巨", "金像電", "SpaceX", "馬斯克", "AI算力", "軌道", "股票", "投顧", "電子股", "化工", "美伊", "道奇", "Glasnow", "畢業生", "國小", "社區警衛", "掛屍", "夜市",
+  "影評", "心得", "推薦", "懶人包", "片單", "劇透", "雷文", "八卦", "私生活", "星座", "炎上", "穿搭", "感情", "緋聞", "戀情", "結婚", "離婚", "不倫", "家暴", "吵架", "粉絲", "網友反應", "網友熱議", "18禁", "成人", "情色", "情趣", "情趣用品", "西斯", "性事", "約炮", "麥當勞", "厚鬆餅", "台股", "外資", "IC設計", "記憶體", "大立光", "國巨", "金像電", "SpaceX", "馬斯克", "AI算力", "軌道", "股票", "投顧", "電子股", "化工", "美伊", "道奇", "Glasnow", "畢業生", "國小", "社區警衛", "掛屍", "夜市", "雨彈", "淹水", "國民黨", "民進黨", "鄭麗文", "毒駕", "撞死", "張善政", "世足", "世界盃", "紅牌", "墨西哥", "南非",
 ];
 
 const twEntertainmentUnsafeSocialUrlPatterns = [
@@ -2220,7 +2220,7 @@ const twEntertainmentGeneralTopicSignals = [
 ];
 
 const twEntertainmentGeneralNoiseSignals = [
-  "模範女警", "警察節", "水蜜桃", "賄選", "地檢署", "好茶宣導", "城市科大", "畢典", "修車職人", "薪資", "天氣預報", "鋒面", "全台轉雨", "暴雨", "梅雨", "端午", "讀者投書", "醫美", "檢法醫界", "便利商店攜手環境部", "乘涼站", "攝影獎", "科技", "電力", "吸金", "檳榔攤", "酒駕", "異世界合成圖", "資安", "微軟", "零信任", "國安情資", "相關新聞報導 第1頁",
+  "模範女警", "警察節", "水蜜桃", "賄選", "地檢署", "好茶宣導", "城市科大", "畢典", "修車職人", "薪資", "天氣預報", "鋒面", "全台轉雨", "暴雨", "梅雨", "端午", "讀者投書", "醫美", "檢法醫界", "便利商店攜手環境部", "乘涼站", "攝影獎", "科技", "電力", "吸金", "檳榔攤", "酒駕", "異世界合成圖", "資安", "微軟", "零信任", "國安情資", "相關新聞報導 第1頁", "雨彈", "淹水", "國民黨", "民進黨", "毒駕", "世足",
 ];
 
 function decodeBasicHtml(value) {
@@ -2418,17 +2418,33 @@ function normalizeResultTitleKey(title) {
     .trim();
 }
 
+function normalizeEventTitleKey(title) {
+  const normalized = normalizeResultTitleKey(title)
+    .replace(/20\d{2}/g, "")
+    .replace(/第\d+度|第\d+年|第\d+屆|第\d+週年|\d+週年|\d+部|\d+年/g, "")
+    .replace(/啟航|邁入|攜手|飛向世界|飛向國際|登長榮航班|登機上娛樂系統|隨航線|紀錄片|國際|世界|歡慶|舉辦|舉行|正式|新聞|報導/g, "");
+
+  if (normalized.includes("新北") && normalized.includes("天際影展") && normalized.includes("長榮")) {
+    return "新北天際影展長榮航空";
+  }
+  return normalized.slice(0, 18);
+}
+
 function dedupeTwEntertainmentResults(items, urlKey) {
   const byUrl = new Set();
   const byTitle = new Set();
+  const byEvent = new Set();
   const results = [];
   for (const item of items) {
     const url = String(item[urlKey] || item.articleUrl || item.postUrl || "").trim();
     const titleKey = normalizeResultTitleKey(item.title || item.relatedTitle);
+    const eventKey = normalizeEventTitleKey(item.title || item.relatedTitle);
     if (url && byUrl.has(url)) continue;
     if (titleKey && byTitle.has(titleKey)) continue;
+    if (eventKey && eventKey.length >= 8 && byEvent.has(eventKey)) continue;
     if (url) byUrl.add(url);
     if (titleKey) byTitle.add(titleKey);
+    if (eventKey && eventKey.length >= 8) byEvent.add(eventKey);
     results.push(item);
   }
   return results;
