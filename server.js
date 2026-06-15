@@ -2342,12 +2342,28 @@ function hasGeneralEntertainmentSearchContext(text) {
   return twEntertainmentGeneralTopicSignals.some((signal) => value.includes(signal));
 }
 
+function isBroadTwEntertainmentPreset(keyword) {
+  return /今日影劇|台灣電影|臺灣電影|國片|台片|台劇|臺劇|OTT|票房|開拍|開鏡|殺青|定檔|上映|文策院|文化部|補助|影展|獎項/.test(String(keyword || ""));
+}
+
+function keywordAppearsInText(keyword, text) {
+  const value = String(text || "");
+  return String(keyword || "")
+    .split(/\s+/)
+    .map((token) => token.trim())
+    .filter((token) => token.length >= 2)
+    .some((token) => value.includes(token));
+}
+
 function hasTaiwanEntertainmentContext(raw, source) {
   const domain = String(source?.domain || "");
   if (twEntertainmentOfficialDomains.includes(domain)) return true;
 
   const text = `${raw?.title || ""} ${raw?.sourceName || ""} ${source?.name || ""}`;
   const query = String(raw?.searchKeyword || "");
+  if (!isBroadTwEntertainmentPreset(query) && keywordAppearsInText(query, text)) {
+    return true;
+  }
   if (/今日影劇/.test(query)) {
     return hasGeneralEntertainmentSearchContext(text);
   }

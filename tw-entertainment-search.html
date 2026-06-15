@@ -628,7 +628,7 @@
             sort: sortSelect.value,
             includeSocial: socialSelect.value === "yes" ? "true" : "false",
             includeAi: "false",
-            trackedKeywords: trackedKeywords.join(","),
+            trackedKeywords: manualKeywordEdited ? "" : trackedKeywords.join(","),
           });
           const response = await fetch(`/api/tw-entertainment-news/search?${params.toString()}`);
           const payload = await response.json().catch(() => ({}));
