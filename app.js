@@ -234,6 +234,9 @@ let editingAssetId = null;
 let isScheduleModalOpen = false;
 let editingScheduleId = null;
 let currentScheduleWeekStart = null;
+let scheduleError = "";
+let scheduleNotice = "";
+let isScheduleSaving = false;
 let isActivityModalOpen = false;
 let editingActivityId = null;
 let isQuestionModalOpen = false;
@@ -1567,6 +1570,8 @@ function schedulePage() {
       <button class="secondary-button" type="button" data-action="schedule-week-next">下一週</button>
     </div>
     <div class="task-item" style="margin-bottom:16px"><strong>${escapeHtml(selectedMovie?.title || "尚無電影")}</strong><span class="muted">${formatWeekDate(start)} - ${formatWeekDate(end)}，共 ${visibleSchedules.length} 筆排程</span></div>
+    ${scheduleNotice ? `<div class="task-item" style="margin-bottom:16px"><strong>更新成功</strong><span class="muted">${escapeHtml(scheduleNotice)}</span></div>` : ""}
+    ${scheduleError ? `<div class="task-item" style="margin-bottom:16px"><strong>儲存失敗</strong><span class="muted">${escapeHtml(scheduleError)}</span></div>` : ""}
     <section class="card">
       <div class="card-header"><div><h2>社群排程清單</h2><p>依目前選取電影與發文日期顯示週次排程。</p></div></div>
       <div class="card-body table-wrap">
@@ -1602,7 +1607,8 @@ function scheduleModal() {
         <div class="field"><label>素材連結</label><div class="link-input-row"><input class="input" id="scheduleAssetLinkUrl" name="assetLinkUrl" type="url" value="${escapeHtml(scheduleAssetLink(schedule))}" placeholder="https://drive.google.com/... 或圖片 / 影片連結" /><button class="secondary-button" type="button" data-action="enable-schedule-link">新增連結</button></div><small class="muted">可貼上 Google Drive、雲端圖片或影片連結；若素材庫已有連結，選取素材時會自動帶入。</small></div>
         <div class="field"><label>狀態</label><select class="select" name="status" style="width:100%">${scheduleStatuses.map((item) => option(item, schedule?.status || "草稿")).join("")}</select></div>
         <div class="field"><label>負責人</label><input class="input" name="owner" required value="${escapeHtml(schedule?.owner || "")}" /></div>
-        <div class="modal-actions"><button class="secondary-button" type="button" data-action="close-schedule-modal">取消</button><button class="primary-button" type="submit">儲存</button></div>
+        ${scheduleError ? `<p class="status red">${escapeHtml(scheduleError)}</p>` : ""}
+        <div class="modal-actions"><button class="secondary-button" type="button" data-action="close-schedule-modal" ${isScheduleSaving ? "disabled" : ""}>取消</button><button class="primary-button" type="submit" ${isScheduleSaving ? "disabled" : ""}>${isScheduleSaving ? "儲存中..." : "儲存"}</button></div>
       </form>
     </section></div>`;
 }
@@ -3332,6 +3338,9 @@ function render() {
   if (page.id !== "schedule") {
     isScheduleModalOpen = false;
     editingScheduleId = null;
+    isScheduleSaving = false;
+    scheduleError = "";
+    scheduleNotice = "";
   }
   if (page.id !== "dashboard") {
     isActivityModalOpen = false;
@@ -3431,7 +3440,7 @@ document.addEventListener("compositionend", (event) => {
   }
 });
 
-document.addEventListener("change", (event) => {
+document.addEventListener("change", async (event) => {
   if (event.target.id === "assetMovieSelect") {
     selectedAssetMovieId = event.target.value;
     localStorage.setItem(storageKeys.assetMovie, selectedAssetMovieId);
@@ -3445,6 +3454,8 @@ document.addEventListener("change", (event) => {
     localStorage.setItem(storageKeys.scheduleMovie, selectedScheduleMovieId);
     isScheduleModalOpen = false;
     editingScheduleId = null;
+    scheduleError = "";
+    scheduleNotice = "";
     render();
     return;
   }
@@ -3504,9 +3515,21 @@ document.addEventListener("change", (event) => {
   if (event.target.classList.contains("schedule-status-select")) {
     const schedule = mockData.schedules.find((item) => item.id === event.target.dataset.scheduleId);
     if (schedule) {
+      const previousStatus = schedule.status;
+      scheduleError = "";
+      scheduleNotice = "";
       schedule.status = event.target.value;
-      writeStorage(storageKeys.schedules, mockData.schedules);
+      try {
+        await saveSchedulesAndSync(mockData.schedules);
+        scheduleNotice = "排程狀態已儲存。";
+      } catch (error) {
+        schedule.status = previousStatus;
+        writeLocalStorageOnly(storageKeys.schedules, mockData.schedules);
+        scheduleError = error.message || "排程狀態儲存失敗，請稍後再試。";
+      }
+      render();
     }
+    return;
   }
   if (event.target.classList.contains("question-filter")) {
     questionFilters[event.target.dataset.filter] = event.target.value;
@@ -3663,11 +3686,15 @@ document.addEventListener("click", async (event) => {
   }
   if (action === "open-schedule-modal") {
     if (!getSelectedScheduleMovie()) return window.alert("請先新增電影，再建立社群排程。");
+    scheduleError = "";
+    scheduleNotice = "";
     isScheduleModalOpen = true;
     editingScheduleId = null;
     render();
   }
   if (action === "edit-schedule") {
+    scheduleError = "";
+    scheduleNotice = "";
     editingScheduleId = actionElement.dataset.scheduleId;
     isScheduleModalOpen = true;
     render();
@@ -3689,19 +3716,23 @@ document.addEventListener("click", async (event) => {
     if (!window.confirm("確定要刪除這筆排程嗎？")) return;
     const previousSchedules = [...mockData.schedules];
     const nextSchedules = mockData.schedules.filter((schedule) => schedule.id !== actionElement.dataset.scheduleId);
+    scheduleError = "";
+    scheduleNotice = "";
     try {
       await saveSchedulesAndSync(nextSchedules);
+      scheduleNotice = "排程已刪除。";
       render();
     } catch (error) {
       mockData.schedules = previousSchedules;
       writeLocalStorageOnly(storageKeys.schedules, mockData.schedules);
-      window.alert(error.message || "刪除排程失敗，請稍後再試。");
+      scheduleError = error.message || "刪除排程失敗，請稍後再試。";
       render();
     }
   }
   if (action === "close-schedule-modal") {
     isScheduleModalOpen = false;
     editingScheduleId = null;
+    isScheduleSaving = false;
     render();
   }
   if (action === "open-activity-modal") {
@@ -4253,6 +4284,7 @@ document.addEventListener("submit", async (event) => {
   }
 
   if (event.target.id === "scheduleForm") {
+    if (isScheduleSaving) return;
     const scheduleData = {
       movieId: formData.get("movieId") || selectedScheduleMovieId || "",
       date: formatDateForDisplay(formData.get("date")),
@@ -4264,17 +4296,34 @@ document.addEventListener("submit", async (event) => {
       status: formData.get("status") || "草稿",
       owner: formData.get("owner") || "未指定",
     };
-    const editingSchedule = mockData.schedules.find((schedule) => schedule.id === editingScheduleId);
-    if (editingSchedule) Object.assign(editingSchedule, scheduleData);
-    else mockData.schedules.push({ id: `sch-${Date.now()}`, ...scheduleData });
-    writeStorage(storageKeys.schedules, mockData.schedules);
-    selectedScheduleMovieId = scheduleData.movieId;
-    if (selectedScheduleMovieId) localStorage.setItem(storageKeys.scheduleMovie, selectedScheduleMovieId);
-    const date = parseLocalDate(scheduleData.date);
-    if (date) currentScheduleWeekStart = startOfWeek(date);
-    isScheduleModalOpen = false;
-    editingScheduleId = null;
+    const previousSchedules = mockData.schedules.map((schedule) => ({ ...schedule }));
+    const nextSchedules = mockData.schedules.map((schedule) => ({ ...schedule }));
+    const editingScheduleIndex = nextSchedules.findIndex((schedule) => schedule.id === editingScheduleId);
+    if (editingScheduleIndex >= 0) nextSchedules[editingScheduleIndex] = { ...nextSchedules[editingScheduleIndex], ...scheduleData };
+    else nextSchedules.push({ id: `sch-${Date.now()}`, ...scheduleData });
+    scheduleError = "";
+    scheduleNotice = "";
+    isScheduleSaving = true;
     render();
+    try {
+      await saveSchedulesAndSync(nextSchedules);
+      selectedScheduleMovieId = scheduleData.movieId;
+      if (selectedScheduleMovieId) localStorage.setItem(storageKeys.scheduleMovie, selectedScheduleMovieId);
+      const date = parseLocalDate(scheduleData.date);
+      if (date) currentScheduleWeekStart = startOfWeek(date);
+      isScheduleModalOpen = false;
+      editingScheduleId = null;
+      isScheduleSaving = false;
+      scheduleNotice = "排程已儲存，畫面已更新。";
+      render();
+    } catch (error) {
+      mockData.schedules = previousSchedules;
+      writeLocalStorageOnly(storageKeys.schedules, mockData.schedules);
+      isScheduleSaving = false;
+      scheduleError = error.message || "社群排程儲存失敗，請稍後再試。";
+      render();
+    }
+    return;
   }
   if (event.target.id === "questionForm") {
     const selectedQuestionMovieId = String(formData.get("movieId") || "");
@@ -4305,6 +4354,8 @@ document.addEventListener("submit", async (event) => {
   }
   if (event.target.id === "questionScheduleForm") {
     const question = mockData.questions.find((item) => item.id === schedulingQuestionId);
+    const previousSchedules = mockData.schedules.map((schedule) => ({ ...schedule }));
+    const previousQuestion = question ? { ...question } : null;
     const scheduleData = {
       id: `sch-${Date.now()}`,
       movieId: question?.movieId || selectedScheduleMovieId || "",
@@ -4316,19 +4367,31 @@ document.addEventListener("submit", async (event) => {
       status: formData.get("status") || "草稿",
       owner: formData.get("owner") || "社群小編",
     };
-    mockData.schedules.push(scheduleData);
+    const nextSchedules = [...mockData.schedules, scheduleData];
     if (question) {
       question.status = "已排程";
       question.uses += 1;
       question.lastUsed = scheduleData.date;
     }
-    writeStorage(storageKeys.schedules, mockData.schedules);
-    writeStorage(storageKeys.questions, mockData.questions);
-    const date = parseLocalDate(scheduleData.date);
-    if (date) currentScheduleWeekStart = startOfWeek(date);
-    isQuestionScheduleModalOpen = false;
-    schedulingQuestionId = null;
-    render();
+    scheduleError = "";
+    scheduleNotice = "";
+    try {
+      await saveSchedulesAndSync(nextSchedules);
+      writeStorage(storageKeys.questions, mockData.questions);
+      const date = parseLocalDate(scheduleData.date);
+      if (date) currentScheduleWeekStart = startOfWeek(date);
+      isQuestionScheduleModalOpen = false;
+      schedulingQuestionId = null;
+      scheduleNotice = "互動題已排入社群排程。";
+      render();
+    } catch (error) {
+      mockData.schedules = previousSchedules;
+      writeLocalStorageOnly(storageKeys.schedules, mockData.schedules);
+      if (question && previousQuestion) Object.assign(question, previousQuestion);
+      scheduleError = error.message || "互動題排程儲存失敗，請稍後再試。";
+      render();
+    }
+    return;
   }
   if (event.target.id === "metricForm") {
     const metricData = {
