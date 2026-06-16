@@ -156,18 +156,17 @@ async function syncStatus(request, response) {
   try {
     const movies = await supabaseRequest("/movies?select=id&limit=1000");
     const moviesWithCover = await supabaseRequest("/movies?select=id&cover_url=neq.&limit=1000");
-    const collections = await supabaseRequest("/workflow_collections?select=kind,data");
+    const collections = mergeWorkflowCollectionRows(await supabaseRequest("/workflow_collections?select=kind,data"));
     const styleExamples = await supabaseRequest("/ai_style_examples?select=id&limit=1000").catch(() => []);
-    const counts = Object.fromEntries((collections || []).map((row) => [row.kind, Array.isArray(row.data) ? row.data.length : 0]));
     sendJson(response, 200, {
       movies: Array.isArray(movies) ? movies.length : 0,
       movieCovers: Array.isArray(moviesWithCover) ? moviesWithCover.length : 0,
       styleExamples: Array.isArray(styleExamples) ? styleExamples.length : 0,
-      assets: counts.assets || 0,
-      schedules: counts.schedules || 0,
-      questions: counts.questions || 0,
-      activities: counts.activities || 0,
-      postAnalyses: counts.postAnalyses || 0,
+      assets: collections.assets.length,
+      schedules: collections.schedules.length,
+      questions: collections.questions.length,
+      activities: collections.activities.length,
+      postAnalyses: collections.postAnalyses.length,
     });
   } catch (error) {
     sendJson(response, error.statusCode || 500, { error: error.message || "同步狀態讀取失敗。" });
@@ -1010,14 +1009,41 @@ async function handleSocialAnalyticsApi(request, response, url) {
 
 const workflowCollectionKinds = new Set(["assets", "schedules", "activities", "questions", "socialMetrics", "postAnalyses"]);
 
+function mergeWorkflowCollectionItems(existingItems, incomingItems) {
+  const merged = new Map();
+  const anonymousItems = [];
+  for (const item of [...existingItems, ...incomingItems]) {
+    if (!item || typeof item !== "object") {
+      const key = JSON.stringify(item);
+      if (!anonymousItems.some((value) => JSON.stringify(value) === key)) anonymousItems.push(item);
+      continue;
+    }
+    const id = String(item.id || "").trim();
+    if (id) {
+      merged.set(id, { ...(merged.get(id) || {}), ...item });
+    } else {
+      const key = JSON.stringify(item);
+      if (!anonymousItems.some((value) => JSON.stringify(value) === key)) anonymousItems.push(item);
+    }
+  }
+  return [...merged.values(), ...anonymousItems];
+}
+
+function mergeWorkflowCollectionRows(rows = []) {
+  const collections = Object.fromEntries(workflowCollectionKinds.keys().map((item) => [item, []]));
+  for (const row of rows || []) {
+    if (!workflowCollectionKinds.has(row.kind)) continue;
+    const data = Array.isArray(row.data) ? row.data : [];
+    collections[row.kind] = mergeWorkflowCollectionItems(collections[row.kind], data);
+  }
+  return collections;
+}
+
 async function handleWorkflowDataApi(request, response, kind) {
   try {
     if (request.method === "GET" && !kind) {
       const rows = await supabaseRequest("/workflow_collections?select=kind,data");
-      const collections = Object.fromEntries(workflowCollectionKinds.keys().map((item) => [item, []]));
-      for (const row of rows || []) {
-        if (workflowCollectionKinds.has(row.kind)) collections[row.kind] = Array.isArray(row.data) ? row.data : [];
-      }
+      const collections = mergeWorkflowCollectionRows(rows);
       sendJson(response, 200, { collections });
       return;
     }
@@ -1025,11 +1051,18 @@ async function handleWorkflowDataApi(request, response, kind) {
     if (request.method === "PUT" && kind && workflowCollectionKinds.has(kind)) {
       const body = await readJsonBody(request);
       const data = Array.isArray(body.data) ? body.data : [];
-      await supabaseRequest("/workflow_collections?on_conflict=kind", {
-        method: "POST",
-        headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
-        body: JSON.stringify({ kind, data }),
+      const rows = await supabaseRequest(`/workflow_collections?kind=eq.${encodeURIComponent(kind)}&select=kind`, {
+        method: "PATCH",
+        headers: { Prefer: "return=representation" },
+        body: JSON.stringify({ data }),
       });
+      if (!Array.isArray(rows) || !rows.length) {
+        await supabaseRequest("/workflow_collections", {
+          method: "POST",
+          headers: { Prefer: "return=minimal" },
+          body: JSON.stringify({ kind, data }),
+        });
+      }
       sendJson(response, 200, { ok: true });
       return;
     }
