@@ -1034,9 +1034,51 @@ function mergeWorkflowCollectionRows(rows = []) {
   for (const row of rows || []) {
     if (!workflowCollectionKinds.has(row.kind)) continue;
     const data = Array.isArray(row.data) ? row.data : [];
-    collections[row.kind] = mergeWorkflowCollectionItems(collections[row.kind], data);
+    collections[row.kind] = normalizeWorkflowCollectionData(row.kind, mergeWorkflowCollectionItems(collections[row.kind], data));
   }
   return collections;
+}
+
+function scheduleContentKey(schedule) {
+  return [
+    schedule.movieId,
+    schedule.date,
+    schedule.platform,
+    schedule.topic,
+    schedule.copy,
+    schedule.assetId,
+    schedule.assetLinkUrl,
+    schedule.status,
+    schedule.owner,
+  ].map((value) => String(value || "").trim()).join("\u001f");
+}
+
+function dedupeSchedules(schedules) {
+  const byId = new Map();
+  const byContent = new Map();
+  for (const schedule of schedules || []) {
+    if (!schedule || typeof schedule !== "object") continue;
+    const id = String(schedule.id || "").trim();
+    const normalized = { ...schedule, id: id || `sch-${Date.now()}-${byId.size}` };
+    const contentKey = scheduleContentKey(normalized);
+    if (id && byId.has(id)) {
+      byId.set(id, { ...byId.get(id), ...normalized });
+      continue;
+    }
+    if (byContent.has(contentKey)) {
+      const existingId = byContent.get(contentKey);
+      byId.set(existingId, { ...byId.get(existingId), ...normalized, id: existingId });
+      continue;
+    }
+    byId.set(normalized.id, normalized);
+    byContent.set(contentKey, normalized.id);
+  }
+  return [...byId.values()];
+}
+
+function normalizeWorkflowCollectionData(kind, data) {
+  if (kind === "schedules") return dedupeSchedules(data);
+  return data;
 }
 
 async function handleWorkflowDataApi(request, response, kind) {
@@ -1050,7 +1092,7 @@ async function handleWorkflowDataApi(request, response, kind) {
 
     if (request.method === "PUT" && kind && workflowCollectionKinds.has(kind)) {
       const body = await readJsonBody(request);
-      const data = Array.isArray(body.data) ? body.data : [];
+      const data = normalizeWorkflowCollectionData(kind, Array.isArray(body.data) ? body.data : []);
       const rows = await supabaseRequest(`/workflow_collections?kind=eq.${encodeURIComponent(kind)}&select=kind`, {
         method: "PATCH",
         headers: { Prefer: "return=representation" },

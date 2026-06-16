@@ -357,12 +357,58 @@ function syncWorkflowStorageRequest(key, value) {
 }
 
 async function saveSchedulesAndSync(schedules) {
-  mockData.schedules = schedules;
+  const requestedSchedules = dedupeSchedules(schedules);
+  mockData.schedules = requestedSchedules;
   writeLocalStorageOnly(storageKeys.schedules, mockData.schedules);
   workflowLastLoadedAt = Date.now();
   if (!isGitHubPagesMode()) {
     await syncWorkflowStorageRequest(storageKeys.schedules, mockData.schedules);
+    const payload = await requestJson("/api/workflow-data");
+    const serverSchedules = Array.isArray(payload.collections?.schedules) ? payload.collections.schedules : [];
+    const serverIds = new Set(serverSchedules.map((schedule) => String(schedule?.id || "")));
+    const missingSavedSchedule = requestedSchedules.find((schedule) => schedule?.id && !serverIds.has(String(schedule.id)));
+    if (missingSavedSchedule) throw new Error("排程尚未成功寫入伺服器，請重新儲存。");
+    mockData.schedules = dedupeSchedules(serverSchedules);
+    writeLocalStorageOnly(storageKeys.schedules, mockData.schedules);
   }
+}
+
+function scheduleContentKey(schedule) {
+  return [
+    scheduleMovieId(schedule),
+    schedule.date,
+    schedule.platform,
+    schedule.topic,
+    schedule.copy,
+    schedule.assetId,
+    schedule.assetLinkUrl,
+    schedule.status,
+    schedule.owner,
+  ].map((value) => String(value || "").trim()).join("\u001f");
+}
+
+function dedupeSchedules(schedules) {
+  const byId = new Map();
+  const byContent = new Map();
+  for (const schedule of schedules || []) {
+    if (!schedule || typeof schedule !== "object") continue;
+    const id = String(schedule.id || "").trim();
+    const contentKey = scheduleContentKey(schedule);
+    const currentKey = id || contentKey;
+    const normalized = { ...schedule, id: id || `sch-${Date.now()}-${byId.size}` };
+    if (id && byId.has(id)) {
+      byId.set(id, { ...byId.get(id), ...normalized });
+      continue;
+    }
+    if (byContent.has(contentKey)) {
+      const existingId = byContent.get(contentKey);
+      byId.set(existingId, { ...byId.get(existingId), ...normalized, id: existingId });
+      continue;
+    }
+    byId.set(normalized.id, normalized);
+    byContent.set(contentKey, normalized.id);
+  }
+  return [...byId.values()];
 }
 
 function escapeHtml(value) {
