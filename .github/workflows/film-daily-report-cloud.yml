@@ -2,13 +2,23 @@ name: Film Daily Report Cloud
 
 on:
   schedule:
-    - cron: "0 4 * * *"
+    - cron: "0,10,20,30,40,50 4-7 * * *"
   workflow_dispatch:
+  repository_dispatch:
+    types:
+      - film-daily-report
+
+concurrency:
+  group: film-daily-report-cloud
+  cancel-in-progress: false
 
 jobs:
   build-and-email:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    permissions:
+      actions: read
+      contents: read
     env:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       OPENAI_MODEL: ${{ secrets.OPENAI_MODEL }}
@@ -18,10 +28,60 @@ jobs:
       REPORT_EMAIL_FROM: ${{ secrets.REPORT_EMAIL_FROM }}
       CLOUD_REPORT_OUTPUT_DIR: outputs
     steps:
+      - name: Decide whether to send now
+        id: gate
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const event = context.eventName;
+            if (event === "workflow_dispatch" || event === "repository_dispatch") {
+              core.setOutput("should_run", "true");
+              core.setOutput("reason", `manual trigger via ${event}`);
+              return;
+            }
+
+            const fmt = new Intl.DateTimeFormat("en-CA", {
+              timeZone: "Asia/Taipei",
+              year: "numeric",
+              month: "2-digit",
+              day: "2-digit"
+            });
+            const todayTaipei = fmt.format(new Date());
+
+            const runs = await github.paginate(github.rest.actions.listWorkflowRuns, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: "film-daily-report-cloud.yml",
+              branch: "main",
+              per_page: 100
+            });
+
+            const alreadySent = runs.some((run) => {
+              if (run.id === context.runId) return false;
+              if (run.conclusion !== "success") return false;
+              if (!["schedule", "workflow_dispatch", "repository_dispatch"].includes(run.event)) {
+                return false;
+              }
+              const startedAt = run.run_started_at || run.created_at;
+              if (!startedAt) return false;
+              return fmt.format(new Date(startedAt)) === todayTaipei;
+            });
+
+            core.setOutput("should_run", alreadySent ? "false" : "true");
+            core.setOutput(
+              "reason",
+              alreadySent ? `already sent for ${todayTaipei}` : `first send for ${todayTaipei}`
+            );
+
+      - name: Log gating decision
+        run: echo "${{ steps.gate.outputs.reason }}"
+
       - name: Checkout
+        if: steps.gate.outputs.should_run == 'true'
         uses: actions/checkout@v4
 
       - name: Setup Node
+        if: steps.gate.outputs.should_run == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -29,15 +89,17 @@ jobs:
           cache-dependency-path: automations/film-daily-report/package.json
 
       - name: Install dependencies
+        if: steps.gate.outputs.should_run == 'true'
         working-directory: automations/film-daily-report
         run: npm install
 
       - name: Generate report and send email
+        if: steps.gate.outputs.should_run == 'true'
         working-directory: automations/film-daily-report
         run: npm run daily:cloud
 
       - name: Upload generated files
-        if: always()
+        if: steps.gate.outputs.should_run == 'true' && always()
         uses: actions/upload-artifact@v4
         with:
           name: film-daily-report-${{ github.run_id }}
