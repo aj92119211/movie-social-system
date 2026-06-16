@@ -2591,6 +2591,33 @@ function buildDcardSocialEntry(keyword) {
   };
 }
 
+function buildGoogleGeneralSearchEntry(keyword) {
+  const query = String(keyword || "").trim();
+  const url = `https://www.google.com/search?q=${encodeURIComponent(query)}`;
+  return {
+    resultType: "news",
+    title: `Google 全網搜尋｜${query}`,
+    sourceName: "Google 搜尋入口",
+    platform: "",
+    accountName: "",
+    articleUrl: url,
+    postUrl: "",
+    publishedDate: "",
+    relatedTitle: query,
+    category: "搜尋入口",
+    tags: ["搜尋入口"],
+    snippet: `Google News 未完整收錄時，可用這個入口查看一般 Google 搜尋中的「${query}」相關結果。`,
+    aiSummary: `這是一般 Google 搜尋入口，不是新聞本文。適合補查 Google News RSS 漏掉的頁面。`,
+    keyPoint: "一般 Google 搜尋和 Google News RSS 是不同資料池，這個入口用來補查漏網結果。",
+    usefulFor: ["補查資料"],
+    interactionObservation: "",
+    note: "搜尋入口，不會當作新聞存入資料庫。",
+    rawContent: `Google Search: ${query}`,
+    searchKeyword: query,
+    isSearchEntry: true,
+  };
+}
+
 async function fetchTwEntertainmentNewsBatch(keyword, range, sources, sourceLimit) {
   const allResults = [];
   for (const source of sources) {
@@ -2758,6 +2785,7 @@ ${JSON.stringify(compactResults, null, 2)}
 async function saveTwEntertainmentItems(items) {
   const saved = [];
   for (const item of items) {
+    if (item.isSearchEntry) continue;
     const url = item.resultType === "social" ? item.postUrl : item.articleUrl;
     if (!url) continue;
     try {
@@ -2828,7 +2856,10 @@ async function handleTwEntertainmentNewsSearch(request, response, url) {
     ]);
     const newsFilter = stripLowRelatedResults([...rawNewsResults, ...rawTrackedNewsResults]);
     const socialFilter = stripLowRelatedResults(rawSocialResults);
-    const newsResults = dedupeTwEntertainmentResults(sortTwEntertainmentItems(newsFilter.filtered, sort), "articleUrl").slice(0, 50);
+    const baseNewsResults = dedupeTwEntertainmentResults(sortTwEntertainmentItems(newsFilter.filtered, sort), "articleUrl").slice(0, 50);
+    const newsResults = !isBroadTwEntertainmentPreset(keyword) && baseNewsResults.length < 5
+      ? [...baseNewsResults, buildGoogleGeneralSearchEntry(keyword)]
+      : baseNewsResults;
     const socialResults = dedupeTwEntertainmentResults(sortTwEntertainmentItems(socialFilter.filtered, sort), "postUrl").slice(0, 40);
     const { aiNotes, aiFailed } = includeAi
       ? await organizeTwEntertainmentResultsWithAi(keyword, newsResults, socialResults)
