@@ -2570,14 +2570,14 @@ function buildDcardSocialEntry(keyword) {
   const dcardLabel = isDramaSearch ? "Dcard 台劇話題" : "Dcard 電影版";
   return {
     resultType: "social",
-    title: `${dcardLabel}｜${keyword}`,
+    title: "電影討論入口",
     sourceName: "Dcard",
     platform: "Dcard",
     accountName: dcardLabel,
     articleUrl: "",
     postUrl: dcardUrl,
     publishedDate: "",
-    relatedTitle: keyword,
+    relatedTitle: "電影討論入口",
     category: "社群口碑",
     tags: inferEntertainmentTags(`Dcard ${keyword}`, "social"),
     snippet: "Dcard 以固定入口提供社群討論線索，避免跳到不相關看板。",
