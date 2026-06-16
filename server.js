@@ -2516,54 +2516,109 @@ function normalizeGoogleWebSearchUrl(value) {
   return raw.replaceAll("&amp;", "&");
 }
 
+function titleFromGoogleUrl(url, keyword) {
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname.replace(/^www\./, "");
+    const path = decodeURIComponent(parsed.pathname || "").replace(/^\/+|\/+$/g, "");
+    return path ? `${host}｜${path.split("/").slice(0, 2).join(" / ")}` : `${host}｜${keyword}`;
+  } catch {
+    return `Google 全網結果｜${keyword}`;
+  }
+}
+
+function googleWebResultItem({ keyword, url, title }) {
+  const query = String(keyword || "").trim();
+  const safeTitle = String(title || "").trim() || titleFromGoogleUrl(url, query);
+  return {
+    resultType: "news",
+    title: safeTitle,
+    sourceName: "Google 全網搜尋",
+    platform: "",
+    accountName: "",
+    articleUrl: url,
+    postUrl: "",
+    publishedDate: "",
+    relatedTitle: query,
+    category: "搜尋入口",
+    tags: ["Google全網"],
+    snippet: safeTitle,
+    aiSummary: `這是 Google 一般搜尋結果，適合補查 Google News RSS 沒收錄的「${query}」相關頁面。`,
+    keyPoint: "一般 Google 搜尋結果，請開啟後確認是否為正式新聞或可靠來源。",
+    usefulFor: ["補查資料"],
+    interactionObservation: "",
+    note: "Google 全網搜尋結果，不會當作新聞存入資料庫。",
+    rawContent: safeTitle,
+    searchKeyword: query,
+    isSearchEntry: true,
+  };
+}
+
+function extractGoogleWebResultsFromHtml(html, keyword, limit) {
+  const query = String(keyword || "").trim();
+  const results = [];
+  const seenUrls = new Set();
+
+  function addResult(url, title = "") {
+    const normalizedUrl = normalizeGoogleWebSearchUrl(url);
+    if (!isUsableGoogleWebUrl(normalizedUrl) || seenUrls.has(normalizedUrl)) return;
+    const cleanTitle = decodeBasicHtml(title).replace(/\s+/g, " ").trim();
+    if (/圖片|新聞|影片|地圖|登入|更多|Google|搜尋工具/.test(cleanTitle)) return;
+    seenUrls.add(normalizedUrl);
+    results.push(googleWebResultItem({ keyword: query, url: normalizedUrl, title: cleanTitle }));
+  }
+
+  const linkPattern = /<a[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
+  for (const match of html.matchAll(linkPattern)) {
+    addResult(match[1], match[2]);
+    if (results.length >= limit) return results;
+  }
+
+  const encodedUrlPattern = /https%3A%2F%2F[^"'&<>\s]+/gi;
+  for (const match of html.matchAll(encodedUrlPattern)) {
+    addResult(decodeURIComponent(match[0]));
+    if (results.length >= limit) return results;
+  }
+
+  const rawUrlPattern = /https?:\/\/(?![^"' <]*google\.)[^"' <]+/gi;
+  for (const match of html.matchAll(rawUrlPattern)) {
+    addResult(match[0]);
+    if (results.length >= limit) return results;
+  }
+
+  return results;
+}
+
 async function fetchGoogleWebSearchResults(keyword, limit = 30) {
   const query = String(keyword || "").trim();
   if (!query) return [];
-  const googleUrl = `https://www.google.com/search?q=${encodeURIComponent(query)}&num=${Math.min(limit, 30)}&hl=zh-TW&gl=TW&pws=0`;
+  const googleUrls = [
+    `https://www.google.com/search?q=${encodeURIComponent(query)}&num=${Math.min(limit, 30)}&hl=zh-TW&gl=TW&pws=0`,
+    `https://www.google.com/search?q=${encodeURIComponent(query)}&num=${Math.min(limit, 30)}&hl=zh-TW&gl=TW&gbv=1&pws=0`,
+    `https://www.google.com/search?q=${encodeURIComponent(query)}&num=${Math.min(limit, 30)}&hl=zh-TW&gl=TW&udm=14&pws=0`,
+  ];
+  const collected = [];
+  const seenUrls = new Set();
   try {
-    const response = await fetch(googleUrl, {
-      headers: {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125 Safari/537.36",
-        Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-      },
-    });
-    if (!response.ok) return [];
-    const html = await response.text();
-    const results = [];
-    const seenUrls = new Set();
-    const linkPattern = /<a[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
-    for (const match of html.matchAll(linkPattern)) {
-      const url = normalizeGoogleWebSearchUrl(match[1]);
-      if (!isUsableGoogleWebUrl(url) || seenUrls.has(url)) continue;
-      const title = decodeBasicHtml(match[2]).replace(/\s+/g, " ").trim();
-      if (!title || title.length < 4 || /圖片|新聞|影片|地圖|登入|更多|Google/.test(title)) continue;
-      if (!keywordAppearsInText(query, `${title} ${url}`)) continue;
-      seenUrls.add(url);
-      results.push({
-        resultType: "news",
-        title,
-        sourceName: "Google 全網搜尋",
-        platform: "",
-        accountName: "",
-        articleUrl: url,
-        postUrl: "",
-        publishedDate: "",
-        relatedTitle: query,
-        category: "搜尋入口",
-        tags: ["Google全網"],
-        snippet: title,
-        aiSummary: `這是 Google 一般搜尋結果，適合補查 Google News RSS 沒收錄的「${query}」相關頁面。`,
-        keyPoint: "一般 Google 搜尋結果，請開啟後確認是否為正式新聞或可靠來源。",
-        usefulFor: ["補查資料"],
-        interactionObservation: "",
-        note: "Google 全網搜尋結果，不會當作新聞存入資料庫。",
-        rawContent: title,
-        searchKeyword: query,
-        isSearchEntry: true,
+    for (const googleUrl of googleUrls) {
+      const response = await fetch(googleUrl, {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125 Safari/537.36",
+          Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+          "Accept-Language": "zh-TW,zh;q=0.9,en;q=0.8",
+        },
       });
-      if (results.length >= limit) break;
+      if (!response.ok) continue;
+      const html = await response.text();
+      const parsedResults = extractGoogleWebResultsFromHtml(html, query, limit);
+      for (const item of parsedResults) {
+        if (seenUrls.has(item.articleUrl)) continue;
+        seenUrls.add(item.articleUrl);
+        collected.push(item);
+        if (collected.length >= limit) return collected;
+      }
     }
-    return results;
+    return collected;
   } catch (error) {
     console.warn("[GOOGLE_WEB_SEARCH_SKIPPED]", error.message);
     return [];
