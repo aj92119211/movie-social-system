@@ -11,6 +11,7 @@
   styleExamples: "movieSocialOps.aiStyleExamples",
   assetMovie: "movieSocialOps.selectedAssetMovie",
   scheduleMovie: "movieSocialOps.selectedScheduleMovie",
+  scheduleWeekStart: "movieSocialOps.selectedScheduleWeekStart",
   analyticsMovie: "movieSocialOps.selectedAnalyticsMovie",
   copyMovie: "movieSocialOps.selectedCopyMovie",
   copyScenario: "movieSocialOps.copyScenario",
@@ -503,9 +504,24 @@ function formatWeekDate(date) {
 
 function getScheduleWeekStart() {
   if (currentScheduleWeekStart) return currentScheduleWeekStart;
-  const first = mockData.schedules.map((item) => parseLocalDate(item.date)).filter(Boolean).sort((a, b) => a - b)[0];
-  currentScheduleWeekStart = startOfWeek(first || new Date());
+  const savedWeekStart = parseLocalDate(localStorage.getItem(storageKeys.scheduleWeekStart));
+  if (savedWeekStart) {
+    currentScheduleWeekStart = startOfWeek(savedWeekStart);
+    return currentScheduleWeekStart;
+  }
+  const selectedMovie = getSelectedScheduleMovie();
+  const first = mockData.schedules
+    .filter((item) => !selectedMovie || scheduleMovieId(item) === selectedMovie.id)
+    .map((item) => parseLocalDate(item.date))
+    .filter(Boolean)
+    .sort((a, b) => a - b)[0];
+  setScheduleWeekStart(first || new Date());
   return currentScheduleWeekStart;
+}
+
+function setScheduleWeekStart(date) {
+  currentScheduleWeekStart = startOfWeek(date);
+  localStorage.setItem(storageKeys.scheduleWeekStart, formatWeekDate(currentScheduleWeekStart));
 }
 
 function schedulesForCurrentWeek() {
@@ -3500,6 +3516,7 @@ document.addEventListener("change", async (event) => {
     localStorage.setItem(storageKeys.scheduleMovie, selectedScheduleMovieId);
     isScheduleModalOpen = false;
     editingScheduleId = null;
+    currentScheduleWeekStart = null;
     scheduleError = "";
     scheduleNotice = "";
     render();
@@ -3723,11 +3740,11 @@ document.addEventListener("click", async (event) => {
     render();
   }
   if (action === "schedule-week-prev") {
-    currentScheduleWeekStart = addDays(getScheduleWeekStart(), -7);
+    setScheduleWeekStart(addDays(getScheduleWeekStart(), -7));
     render();
   }
   if (action === "schedule-week-next") {
-    currentScheduleWeekStart = addDays(getScheduleWeekStart(), 7);
+    setScheduleWeekStart(addDays(getScheduleWeekStart(), 7));
     render();
   }
   if (action === "open-schedule-modal") {
@@ -4356,7 +4373,7 @@ document.addEventListener("submit", async (event) => {
       selectedScheduleMovieId = scheduleData.movieId;
       if (selectedScheduleMovieId) localStorage.setItem(storageKeys.scheduleMovie, selectedScheduleMovieId);
       const date = parseLocalDate(scheduleData.date);
-      if (date) currentScheduleWeekStart = startOfWeek(date);
+      if (date) setScheduleWeekStart(date);
       isScheduleModalOpen = false;
       editingScheduleId = null;
       isScheduleSaving = false;
@@ -4425,7 +4442,7 @@ document.addEventListener("submit", async (event) => {
       await saveSchedulesAndSync(nextSchedules);
       writeStorage(storageKeys.questions, mockData.questions);
       const date = parseLocalDate(scheduleData.date);
-      if (date) currentScheduleWeekStart = startOfWeek(date);
+      if (date) setScheduleWeekStart(date);
       isQuestionScheduleModalOpen = false;
       schedulingQuestionId = null;
       scheduleNotice = "互動題已排入社群排程。";
