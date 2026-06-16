@@ -2487,6 +2487,89 @@ async function fetchGoogleNewsRss(query, limit = 5) {
   }).filter((item) => item.title && item.link);
 }
 
+function isUsableGoogleWebUrl(value) {
+  try {
+    const parsed = new URL(value);
+    const host = parsed.hostname.replace(/^www\./, "");
+    return Boolean(parsed.protocol.startsWith("http") && ![
+      "google.com",
+      "accounts.google.com",
+      "support.google.com",
+      "policies.google.com",
+      "webcache.googleusercontent.com",
+    ].includes(host));
+  } catch {
+    return false;
+  }
+}
+
+function normalizeGoogleWebSearchUrl(value) {
+  const raw = String(value || "");
+  if (raw.startsWith("/url?")) {
+    try {
+      const parsed = new URL(`https://www.google.com${raw.replaceAll("&amp;", "&")}`);
+      return parsed.searchParams.get("q") || "";
+    } catch {
+      return "";
+    }
+  }
+  return raw.replaceAll("&amp;", "&");
+}
+
+async function fetchGoogleWebSearchResults(keyword, limit = 30) {
+  const query = String(keyword || "").trim();
+  if (!query) return [];
+  const googleUrl = `https://www.google.com/search?q=${encodeURIComponent(query)}&num=${Math.min(limit, 30)}&hl=zh-TW&gl=TW&pws=0`;
+  try {
+    const response = await fetch(googleUrl, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125 Safari/537.36",
+        Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+      },
+    });
+    if (!response.ok) return [];
+    const html = await response.text();
+    const results = [];
+    const seenUrls = new Set();
+    const linkPattern = /<a[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
+    for (const match of html.matchAll(linkPattern)) {
+      const url = normalizeGoogleWebSearchUrl(match[1]);
+      if (!isUsableGoogleWebUrl(url) || seenUrls.has(url)) continue;
+      const title = decodeBasicHtml(match[2]).replace(/\s+/g, " ").trim();
+      if (!title || title.length < 4 || /圖片|新聞|影片|地圖|登入|更多|Google/.test(title)) continue;
+      if (!keywordAppearsInText(query, `${title} ${url}`)) continue;
+      seenUrls.add(url);
+      results.push({
+        resultType: "news",
+        title,
+        sourceName: "Google 全網搜尋",
+        platform: "",
+        accountName: "",
+        articleUrl: url,
+        postUrl: "",
+        publishedDate: "",
+        relatedTitle: query,
+        category: "搜尋入口",
+        tags: ["Google全網"],
+        snippet: title,
+        aiSummary: `這是 Google 一般搜尋結果，適合補查 Google News RSS 沒收錄的「${query}」相關頁面。`,
+        keyPoint: "一般 Google 搜尋結果，請開啟後確認是否為正式新聞或可靠來源。",
+        usefulFor: ["補查資料"],
+        interactionObservation: "",
+        note: "Google 全網搜尋結果，不會當作新聞存入資料庫。",
+        rawContent: title,
+        searchKeyword: query,
+        isSearchEntry: true,
+      });
+      if (results.length >= limit) break;
+    }
+    return results;
+  } catch (error) {
+    console.warn("[GOOGLE_WEB_SEARCH_SKIPPED]", error.message);
+    return [];
+  }
+}
+
 function normalizeTwNewsItem(raw, source, keyword) {
   const cleanTitle = stripNewsSourceSuffix(raw.title);
   const text = `${cleanTitle} ${source.name} ${keyword}`;
@@ -2857,9 +2940,15 @@ async function handleTwEntertainmentNewsSearch(request, response, url) {
     const newsFilter = stripLowRelatedResults([...rawNewsResults, ...rawTrackedNewsResults]);
     const socialFilter = stripLowRelatedResults(rawSocialResults);
     const baseNewsResults = dedupeTwEntertainmentResults(sortTwEntertainmentItems(newsFilter.filtered, sort), "articleUrl").slice(0, 50);
-    const newsResults = !isBroadTwEntertainmentPreset(keyword) && baseNewsResults.length < 5
-      ? [...baseNewsResults, buildGoogleGeneralSearchEntry(keyword)]
-      : baseNewsResults;
+    let newsResults = baseNewsResults;
+    if (!isBroadTwEntertainmentPreset(keyword) && baseNewsResults.length < 5) {
+      const googleWebResults = await fetchGoogleWebSearchResults(keyword, 30);
+      newsResults = dedupeTwEntertainmentResults([
+        ...baseNewsResults,
+        ...googleWebResults,
+        ...(googleWebResults.length ? [] : [buildGoogleGeneralSearchEntry(keyword)]),
+      ], "articleUrl").slice(0, 50);
+    }
     const socialResults = dedupeTwEntertainmentResults(sortTwEntertainmentItems(socialFilter.filtered, sort), "postUrl").slice(0, 40);
     const { aiNotes, aiFailed } = includeAi
       ? await organizeTwEntertainmentResultsWithAi(keyword, newsResults, socialResults)
