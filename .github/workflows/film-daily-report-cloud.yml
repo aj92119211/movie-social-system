@@ -2,7 +2,7 @@ name: Film Daily Report Cloud
 
 on:
   schedule:
-    - cron: "0,10,20,30,40,50 4-7 * * *"
+    - cron: "3,13,23,33,43,53 4-8 * * *"
   workflow_dispatch:
   repository_dispatch:
     types:
