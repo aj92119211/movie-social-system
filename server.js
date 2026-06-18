@@ -2514,10 +2514,43 @@ function normalizeEventTitleKey(title) {
   const normalized = normalizeResultTitleKey(title)
     .replace(/20\d{2}/g, "")
     .replace(/第\d+度|第\d+年|第\d+屆|第\d+週年|\d+週年|\d+部|\d+年/g, "")
-    .replace(/啟航|邁入|攜手|飛向世界|飛向國際|登長榮航班|登機上娛樂系統|隨航線|紀錄片|國際|世界|歡慶|舉辦|舉行|正式|新聞|報導/g, "");
+    .replace(/啟航|邁入|攜手|飛向世界|飛向國際|登長榮航班|登機上娛樂系統|隨航線|紀錄片|國際|世界|歡慶|舉辦|舉行|正式|新聞|報導|太猛|神片|圈粉|強片|免費|放映|開跑|回來了|重返大銀幕|共同記憶|睽違|主持棒|接受挑戰|首波|曝光|快訊|巨星殞落/g, "");
 
   if (normalized.includes("新北") && normalized.includes("天際影展") && normalized.includes("長榮")) {
     return "新北天際影展長榮航空";
+  }
+  if (normalized.includes("政大") && normalized.includes("台灣電影") && (normalized.includes("愛沙尼亞") || normalized.includes("陳儒修"))) {
+    return "政大陳儒修愛沙尼亞台灣電影課";
+  }
+  if (normalized.includes("白鷹") && /逝世|過世|辭世|享壽/.test(normalized)) {
+    return "白鷹逝世";
+  }
+  if (normalized.includes("台中") && (normalized.includes("funin") || normalized.includes("電影季"))) {
+    return "台中電影funin季";
+  }
+  if (normalized.includes("魯冰花") && /修復|重返|上映|大銀幕/.test(normalized)) {
+    return "魯冰花數位修復上映";
+  }
+  if ((normalized.includes("北臺灣") || normalized.includes("北台灣")) && (normalized.includes("螢火蟲") || normalized.includes("造山者"))) {
+    return "北臺灣螢火蟲電影院造山者";
+  }
+  if (normalized.includes("苗可麗") && (normalized.includes("台北電影") || normalized.includes("北影"))) {
+    return "苗可麗台北電影節主持";
+  }
+  if ((normalized.includes("北影") || normalized.includes("台北電影節") || normalized.includes("鼠一般的你")) && /票券|套票|開賣|完售/.test(normalized)) {
+    return "台北電影節票券開賣";
+  }
+  if (normalized.includes("對台十項措施") && normalized.includes("台灣電影")) {
+    return "國台辦對台十項措施台灣電影";
+  }
+  if (normalized.includes("伊朗") && (normalized.includes("換我吹了沒") || normalized.includes("片名"))) {
+    return "伊朗電影中文譯名爭議";
+  }
+  if (normalized.includes("金馬海外工作坊")) {
+    return "金馬海外工作坊";
+  }
+  if (normalized.includes("taicca") && (normalized.includes("釜山") || normalized.includes("afis"))) {
+    return "taicca釜山afis";
   }
   return normalized.slice(0, 18);
 }
@@ -3040,6 +3073,52 @@ async function saveTwEntertainmentItems(items) {
   return saved.length;
 }
 
+async function fetchRecentTwEntertainmentSeenKeys(days = 3) {
+  const empty = { urls: new Set(), titles: new Set(), events: new Set() };
+  try {
+    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+    const rows = await supabaseRequest(`/tw_entertainment_news_items?created_at=gte.${encodeURIComponent(since)}&select=title,article_url,post_url,created_at&limit=1000`);
+    if (!Array.isArray(rows)) return empty;
+    const urls = new Set();
+    const titles = new Set();
+    const events = new Set();
+    for (const row of rows) {
+      const url = String(row.article_url || row.post_url || "").trim();
+      const title = String(row.title || "").trim();
+      const titleKey = normalizeResultTitleKey(title);
+      const eventKey = normalizeEventTitleKey(title);
+      if (url) urls.add(url);
+      if (titleKey) titles.add(titleKey);
+      if (eventKey && eventKey.length >= 8) events.add(eventKey);
+    }
+    return { urls, titles, events };
+  } catch (error) {
+    console.warn("[TW_ENTERTAINMENT_HISTORY_FILTER_SKIPPED]", error.message);
+    return empty;
+  }
+}
+
+function filterRecentlySeenTwEntertainmentItems(items, seenKeys) {
+  const filtered = [];
+  let excludedCount = 0;
+  for (const item of items) {
+    if (item.isSearchEntry) {
+      filtered.push(item);
+      continue;
+    }
+    const url = String(item.articleUrl || item.postUrl || "").trim();
+    const title = String(item.title || item.relatedTitle || "").trim();
+    const titleKey = normalizeResultTitleKey(title);
+    const eventKey = normalizeEventTitleKey(title);
+    if ((url && seenKeys.urls.has(url)) || (titleKey && seenKeys.titles.has(titleKey)) || (eventKey && eventKey.length >= 8 && seenKeys.events.has(eventKey))) {
+      excludedCount += 1;
+      continue;
+    }
+    filtered.push(item);
+  }
+  return { filtered, excludedCount };
+}
+
 function sortTwEntertainmentItems(items, sort) {
   const sorted = [...items];
   if (sort === "source") sorted.sort((a, b) => String(a.sourceName || a.platform).localeCompare(String(b.sourceName || b.platform), "zh-Hant"));
@@ -3079,7 +3158,12 @@ async function handleTwEntertainmentNewsSearch(request, response, url) {
         ...(googleWebResults.length ? [] : [buildGoogleGeneralSearchEntry(keyword)]),
       ], "articleUrl").slice(0, 50);
     }
-    const socialResults = dedupeTwEntertainmentResults(sortTwEntertainmentItems(socialFilter.filtered, sort), "postUrl").slice(0, 40);
+    let socialResults = dedupeTwEntertainmentResults(sortTwEntertainmentItems(socialFilter.filtered, sort), "postUrl").slice(0, 40);
+    const seenKeys = await fetchRecentTwEntertainmentSeenKeys(3);
+    const recentNewsFilter = filterRecentlySeenTwEntertainmentItems(newsResults, seenKeys);
+    const recentSocialFilter = filterRecentlySeenTwEntertainmentItems(socialResults, seenKeys);
+    newsResults = recentNewsFilter.filtered;
+    socialResults = recentSocialFilter.filtered;
     const { aiNotes, aiFailed } = includeAi
       ? await organizeTwEntertainmentResultsWithAi(keyword, newsResults, socialResults)
       : { aiNotes: [], aiFailed: false };
@@ -3097,7 +3181,7 @@ async function handleTwEntertainmentNewsSearch(request, response, url) {
         searchedAt: new Date().toISOString(),
         newsCount: newsResults.length,
         socialCount: socialResults.length,
-        excludedCount: newsFilter.excludedCount + socialFilter.excludedCount,
+        excludedCount: newsFilter.excludedCount + socialFilter.excludedCount + recentNewsFilter.excludedCount + recentSocialFilter.excludedCount,
         categoryCounts,
         focusPoints: fallbackTwEntertainmentAiNotes(keyword, newsResults, socialResults)[0].items,
         savedCount,
