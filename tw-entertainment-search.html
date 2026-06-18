@@ -263,6 +263,37 @@
 
       .tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
 
+      .related-reports {
+        margin-top: 12px;
+        border-top: 1px solid var(--line);
+        padding-top: 10px;
+      }
+
+      .related-title {
+        color: #0f766e;
+        font-size: 13px;
+        font-weight: 900;
+        margin-bottom: 6px;
+      }
+
+      .related-item {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 10px;
+        align-items: baseline;
+        padding: 5px 0;
+        font-size: 14px;
+      }
+
+      .related-item a {
+        color: var(--ink);
+        font-weight: 800;
+        text-decoration: none;
+      }
+
+      .related-item a:hover { text-decoration: underline; }
+      .related-item small { color: var(--muted); white-space: nowrap; }
+
       .tag {
         display: inline-flex;
         align-items: center;
@@ -578,8 +609,34 @@
         document.getElementById("searchFocusList").innerHTML = points.length ? points.map((item) => `<li>${escapeHtml(item)}</li>`).join("") : "";
       }
 
+      function resultTotalCount(items = []) {
+        return items.reduce((count, item) => count + 1 + (Array.isArray(item.relatedReports) ? item.relatedReports.length : 0), 0);
+      }
+
+      function relatedReportsHtml(item = {}) {
+        const related = Array.isArray(item.relatedReports) ? item.relatedReports : [];
+        if (!related.length) return "";
+        return `
+          <div class="related-reports">
+            <div class="related-title">相關報導 ${related.length} 則</div>
+            ${related.slice(0, 6).map((report) => {
+              const url = report.articleUrl || report.postUrl || "";
+              const source = report.sourceName || report.platform || "來源未提供";
+              const date = report.publishedDate || "日期未提供";
+              const title = report.title || url || "未命名報導";
+              return `
+                <div class="related-item">
+                  ${url ? `<a href="${escapeHtml(url)}" target="_blank" rel="noreferrer">${escapeHtml(title)}</a>` : `<span>${escapeHtml(title)}</span>`}
+                  <small>${escapeHtml(source)}｜${escapeHtml(date)}</small>
+                </div>
+              `;
+            }).join("")}
+          </div>
+        `;
+      }
+
       function renderNews(items = []) {
-        document.getElementById("newsCount").textContent = `${items.length} 筆`;
+        document.getElementById("newsCount").textContent = `${resultTotalCount(items)} 筆`;
         document.getElementById("newsResults").innerHTML = items.length ? items.map((item) => `
           <article class="result-row">
             <div class="result-top">
@@ -589,13 +646,14 @@
               </div>
               <div class="tags">${tagList(item.tags)}</div>
             </div>
+            ${relatedReportsHtml(item)}
             ${resultActions(item, "開啟原文")}
           </article>
         `).join("") : `<div class="empty">本次未找到相關新聞或官方來源。</div>`;
       }
 
       function renderSocial(items = []) {
-        document.getElementById("socialCount").textContent = `${items.length} 筆`;
+        document.getElementById("socialCount").textContent = `${resultTotalCount(items)} 筆`;
         document.getElementById("socialResults").innerHTML = items.length ? items.map((item) => `
           <article class="result-row">
             <div class="result-top">
@@ -605,6 +663,7 @@
               </div>
               <div class="tags">${tagList(item.tags)}</div>
             </div>
+            ${relatedReportsHtml(item)}
             ${resultActions(item, "開啟貼文")}
           </article>
         `).join("") : `<div class="empty">本次未找到相關社群或討論入口。</div>`;

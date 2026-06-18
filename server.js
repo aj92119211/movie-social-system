@@ -2557,19 +2557,48 @@ function normalizeEventTitleKey(title) {
 
 function dedupeTwEntertainmentResults(items, urlKey) {
   const byUrl = new Set();
-  const byTitle = new Set();
-  const byEvent = new Set();
+  const byTitle = new Map();
+  const byEvent = new Map();
   const results = [];
+
+  function attachRelated(parent, duplicate) {
+    if (!parent || !duplicate) return;
+    const relatedUrl = String(duplicate[urlKey] || duplicate.articleUrl || duplicate.postUrl || "").trim();
+    const relatedTitle = String(duplicate.title || duplicate.relatedTitle || "").trim();
+    if (!relatedTitle && !relatedUrl) return;
+    parent.relatedReports = Array.isArray(parent.relatedReports) ? parent.relatedReports : [];
+    const exists = parent.relatedReports.some((item) => {
+      const itemUrl = String(item.articleUrl || item.postUrl || "").trim();
+      const itemTitle = normalizeResultTitleKey(item.title || item.relatedTitle);
+      return (relatedUrl && itemUrl === relatedUrl) || (relatedTitle && itemTitle === normalizeResultTitleKey(relatedTitle));
+    });
+    if (exists) return;
+    parent.relatedReports.push({
+      title: relatedTitle || relatedUrl,
+      sourceName: duplicate.sourceName || duplicate.platform || "",
+      platform: duplicate.platform || "",
+      articleUrl: duplicate.articleUrl || "",
+      postUrl: duplicate.postUrl || "",
+      publishedDate: duplicate.publishedDate || "",
+    });
+  }
+
   for (const item of items) {
     const url = String(item[urlKey] || item.articleUrl || item.postUrl || "").trim();
     const titleKey = normalizeResultTitleKey(item.title || item.relatedTitle);
     const eventKey = normalizeEventTitleKey(item.title || item.relatedTitle);
     if (url && byUrl.has(url)) continue;
-    if (titleKey && byTitle.has(titleKey)) continue;
-    if (eventKey && eventKey.length >= 8 && byEvent.has(eventKey)) continue;
+    if (titleKey && byTitle.has(titleKey)) {
+      attachRelated(byTitle.get(titleKey), item);
+      continue;
+    }
+    if (eventKey && eventKey.length >= 8 && byEvent.has(eventKey)) {
+      attachRelated(byEvent.get(eventKey), item);
+      continue;
+    }
     if (url) byUrl.add(url);
-    if (titleKey) byTitle.add(titleKey);
-    if (eventKey && eventKey.length >= 8) byEvent.add(eventKey);
+    if (titleKey) byTitle.set(titleKey, item);
+    if (eventKey && eventKey.length >= 8) byEvent.set(eventKey, item);
     results.push(item);
   }
   return results;
@@ -2896,7 +2925,7 @@ async function fetchTwEntertainmentGeneralKeywordResults(keyword, range, limit =
 }
 
 async function fetchTwEntertainmentNewsResults(keyword, range, options = {}) {
-  const sourceLimit = options.sourceLimit || 10;
+  const sourceLimit = options.sourceLimit || 15;
   const sources = options.sources || twEntertainmentNewsSources;
   const isCustomKeyword = !isBroadTwEntertainmentPreset(keyword);
   const allResults = [
@@ -2911,7 +2940,7 @@ async function fetchTwEntertainmentNewsResults(keyword, range, options = {}) {
     ];
     return dedupeTwEntertainmentResults([...deduped, ...expandedResults], "articleUrl").slice(0, 50);
   }
-  return deduped.slice(0, 50);
+  return deduped.slice(0, 80);
 }
 
 function parseTrackedKeywords(value) {
@@ -3109,14 +3138,17 @@ function filterRecentlySeenTwEntertainmentItems(items, seenKeys) {
     const url = String(item.articleUrl || item.postUrl || "").trim();
     const title = String(item.title || item.relatedTitle || "").trim();
     const titleKey = normalizeResultTitleKey(title);
-    const eventKey = normalizeEventTitleKey(title);
-    if ((url && seenKeys.urls.has(url)) || (titleKey && seenKeys.titles.has(titleKey)) || (eventKey && eventKey.length >= 8 && seenKeys.events.has(eventKey))) {
+    if ((url && seenKeys.urls.has(url)) || (titleKey && seenKeys.titles.has(titleKey))) {
       excludedCount += 1;
       continue;
     }
     filtered.push(item);
   }
   return { filtered, excludedCount };
+}
+
+function countTwEntertainmentVisibleItems(items) {
+  return items.reduce((count, item) => count + 1 + (Array.isArray(item.relatedReports) ? item.relatedReports.length : 0), 0);
 }
 
 function sortTwEntertainmentItems(items, sort) {
@@ -3179,8 +3211,8 @@ async function handleTwEntertainmentNewsSearch(request, response, url) {
         range,
         sort,
         searchedAt: new Date().toISOString(),
-        newsCount: newsResults.length,
-        socialCount: socialResults.length,
+        newsCount: countTwEntertainmentVisibleItems(newsResults),
+        socialCount: countTwEntertainmentVisibleItems(socialResults),
         excludedCount: newsFilter.excludedCount + socialFilter.excludedCount + recentNewsFilter.excludedCount + recentSocialFilter.excludedCount,
         categoryCounts,
         focusPoints: fallbackTwEntertainmentAiNotes(keyword, newsResults, socialResults)[0].items,
