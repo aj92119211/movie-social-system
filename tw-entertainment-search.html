@@ -423,8 +423,8 @@
               <span>搜尋深度</span>
               <select id="depthSelect" class="select">
                 <option value="quick">快速搜尋：抓 20 筆</option>
-                <option value="standard" selected>標準搜尋：抓 50 筆</option>
-                <option value="deep">深度搜尋：抓 100 筆</option>
+                <option value="standard" selected>標準搜尋：抓 40 筆</option>
+                <option value="deep">深度搜尋：抓 80 筆</option>
               </select>
             </label>
             <label class="field">
@@ -452,6 +452,12 @@
                 <label class="check-pill"><input class="social-source-toggle" type="checkbox" value="Dcard" />Dcard</label>
                 <label class="check-pill"><input class="social-source-toggle" type="checkbox" value="Threads" />Threads</label>
                 <label class="check-pill"><input class="social-source-toggle" type="checkbox" value="Facebook" />Facebook</label>
+              </div>
+            </div>
+            <div class="field">
+              <span>防呆設定</span>
+              <div class="source-options">
+                <label class="check-pill"><input id="autoExpandRange" type="checkbox" checked />自動放寬時間範圍</label>
               </div>
             </div>
           </div>
@@ -519,6 +525,7 @@
       const rangeSelect = document.getElementById("rangeSelect");
       const sortSelect = document.getElementById("sortSelect");
       const includeTrackedKeywords = document.getElementById("includeTrackedKeywords");
+      const autoExpandRange = document.getElementById("autoExpandRange");
       const socialSourceToggles = [...document.querySelectorAll(".social-source-toggle")];
       const statusBox = document.getElementById("searchStatus");
       const toast = document.getElementById("toast");
@@ -667,6 +674,9 @@
         if (categoryText) points.unshift(`主要分類統計：${categoryText}`);
         if (Array.isArray(summary.usedQueries) && summary.usedQueries.length) points.push(`使用搜尋關鍵字：${summary.usedQueries.slice(0, 12).join("、")}`);
         if (Array.isArray(summary.usedSources) && summary.usedSources.length) points.push(`加強來源：${summary.usedSources.slice(0, 12).join("、")}`);
+        if (Array.isArray(summary.fallbackMessages) && summary.fallbackMessages.length) {
+          for (const message of summary.fallbackMessages) points.push(message);
+        }
         document.getElementById("searchFocusList").innerHTML = points.length ? points.map((item) => `<li>${escapeHtml(item)}</li>`).join("") : "";
       }
 
@@ -764,6 +774,7 @@
           keyword,
           selectedOptions,
           includeTrackedKeywords: useTrackedKeywords,
+          autoExpandRange: autoExpandRange.checked,
           socialPlatforms: platforms,
           depth: depthSelect.value,
           range: rangeSelect.value,
@@ -791,10 +802,11 @@
             depth: depthSelect.value,
             range: rangeSelect.value,
             sort: sortSelect.value,
-            includeSocial: "false",
-            includeAi: "false",
-            trackedKeywords: useTrackedKeywords ? trackedKeywords.join(",") : "",
-          });
+          includeSocial: "false",
+          includeAi: "false",
+          autoExpandRange: autoExpandRange.checked ? "true" : "false",
+          trackedKeywords: useTrackedKeywords ? trackedKeywords.join(",") : "",
+        });
           showStatus("正在搜尋新聞與官方來源...");
           const payload = await fetchWithUiTimeout(newsParams, 18000, "news");
           showStatus("正在整理搜尋結果...");
@@ -846,7 +858,10 @@
           }
           const hasAnyResult = (payload.summary?.newsCount || 0) + (payload.summary?.relatedNewsCount || 0) + (payload.summary?.socialCount || 0) > 0;
           if (!hasAnyResult) {
-            showStatus("本次搜尋沒有取得結果，請減少搜尋條件或放寬時間範圍。", "warning");
+            const fallbackText = Array.isArray(payload.summary?.fallbackMessages) && payload.summary.fallbackMessages.length
+              ? ` ${payload.summary.fallbackMessages.join(" ")}`
+              : "";
+            showStatus(`本次搜尋沒有取得結果。${fallbackText || "新聞來源沒有回傳結果，請檢查搜尋條件、來源設定或放寬時間範圍。"}`, "warning");
           } else if (payload.summary?.partialFailure) {
             showStatus(`部分來源搜尋逾時，已先顯示目前取得的結果。建議關閉討論來源，或改用快速搜尋。${limitationText}`, "warning");
           } else {

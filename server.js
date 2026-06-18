@@ -2273,9 +2273,9 @@ const twEntertainmentTrackedPriorityDomains = [
 ];
 
 const twEntertainmentSearchDepthConfig = {
-  quick: { label: "快速搜尋", queryLimit: 5, generalLimit: 18, sourceLimit: 2, sourceTaskLimit: 20, resultLimit: 45, timeoutMs: 3500, concurrency: 14 },
-  standard: { label: "標準搜尋", queryLimit: 10, generalLimit: 24, sourceLimit: 3, sourceTaskLimit: 48, resultLimit: 85, timeoutMs: 3500, concurrency: 18 },
-  deep: { label: "深度搜尋", queryLimit: 20, generalLimit: 32, sourceLimit: 4, sourceTaskLimit: 72, resultLimit: 130, timeoutMs: 3000, concurrency: 24 },
+  quick: { label: "快速搜尋", queryLimit: 4, generalLimit: 14, sourceLimit: 2, sourceTaskLimit: 16, resultLimit: 25, timeoutMs: 3500, concurrency: 10 },
+  standard: { label: "標準搜尋", queryLimit: 8, generalLimit: 18, sourceLimit: 2, sourceTaskLimit: 36, resultLimit: 50, timeoutMs: 3500, concurrency: 12 },
+  deep: { label: "深度搜尋", queryLimit: 15, generalLimit: 22, sourceLimit: 3, sourceTaskLimit: 60, resultLimit: 90, timeoutMs: 3500, concurrency: 14 },
 };
 
 const twEntertainmentPrioritySourceDomains = [
@@ -2540,10 +2540,43 @@ function getTwEntertainmentDepthConfig(depth) {
   return twEntertainmentSearchDepthConfig[depth] || twEntertainmentSearchDepthConfig.standard;
 }
 
+function parseTwEntertainmentSearchIntent(keyword) {
+  const raw = String(keyword || "").trim();
+  const topicSet = new Set();
+  const eventSet = new Set();
+  if (/台灣電影|臺灣電影|台片/.test(raw)) topicSet.add("台灣電影");
+  if (/國片/.test(raw) || topicSet.has("台灣電影")) topicSet.add("國片");
+  if (/台劇|臺劇/.test(raw)) topicSet.add("台劇");
+  if (/台灣影集|臺灣影集|影集/.test(raw) && !/台灣電影|臺灣電影|國片/.test(raw)) topicSet.add("台灣影集");
+  if (/OTT|Netflix|Disney|公視/.test(raw)) topicSet.add("OTT");
+
+  if (/開拍|開機/.test(raw)) eventSet.add("開拍");
+  if (/開鏡|開拍|開機/.test(raw)) eventSet.add("開鏡");
+  if (/殺青/.test(raw)) eventSet.add("殺青");
+  if (/定檔/.test(raw)) eventSet.add("定檔");
+  if (/上映/.test(raw)) eventSet.add("上映");
+  if (/上架/.test(raw)) eventSet.add("上架");
+  if (/票房/.test(raw)) eventSet.add("票房");
+  if (/入選|入圍/.test(raw)) eventSet.add("入選");
+  if (/補助|輔導金/.test(raw)) eventSet.add("補助");
+
+  return {
+    raw,
+    topics: [...topicSet],
+    events: [...eventSet],
+  };
+}
+
 function getTwEntertainmentExpandedQueries(keyword, depth) {
   const raw = String(keyword || "").trim();
   const config = getTwEntertainmentDepthConfig(depth);
   const querySet = new Set();
+  const parsed = parseTwEntertainmentSearchIntent(raw);
+  if (parsed.topics.length && parsed.events.length) {
+    for (const topic of parsed.topics) {
+      for (const event of parsed.events) querySet.add(`${topic} ${event}`);
+    }
+  }
   const hasFilmTopic = /台灣電影|臺灣電影|國片|台片/.test(raw);
   const hasDramaTopic = /台劇|臺劇|台灣影集/.test(raw);
   const hasShootIntent = /開拍|開鏡|開機|殺青/.test(raw);
@@ -2569,7 +2602,33 @@ function getTwEntertainmentExpandedQueries(keyword, depth) {
   for (const token of raw.split(/\s+/).map((item) => item.trim()).filter(Boolean)) {
     if (token.length >= 2) querySet.add(token);
   }
-  return [...querySet].slice(0, config.queryLimit);
+  const queries = [...querySet].slice(0, config.queryLimit);
+  console.log("[TW_ENTERTAINMENT_QUERY_PARSE]", {
+    raw,
+    topics: parsed.topics,
+    events: parsed.events,
+    queries,
+  });
+  return queries;
+}
+
+function getTwEntertainmentFallbackQueries(keyword, depth) {
+  const raw = String(keyword || "").trim();
+  const config = getTwEntertainmentDepthConfig(depth);
+  const querySet = new Set();
+  const hasFilmTopic = /台灣電影|臺灣電影|國片|台片/.test(raw);
+  const hasDramaTopic = /台劇|臺劇|台灣影集/.test(raw);
+  const hasShootIntent = /開拍|開鏡|開機|殺青/.test(raw);
+  if (hasFilmTopic && hasShootIntent) {
+    ["台灣電影 開鏡", "國片 開鏡", "台灣電影 製作", "國片 製作", "台灣電影 新片", "國片 新片"].forEach((query) => querySet.add(query));
+  }
+  if (hasDramaTopic && hasShootIntent) {
+    ["台劇 開鏡", "台灣影集 開鏡", "台劇 製作", "台灣影集 新戲", "台劇 新戲"].forEach((query) => querySet.add(query));
+  }
+  if (!querySet.size) {
+    [`${raw} 最新消息`, `${raw} 新聞`, `${raw} 製作`, `${raw} 新片`].forEach((query) => querySet.add(query));
+  }
+  return [...querySet].slice(0, Math.max(4, Math.floor(config.queryLimit / 2)));
 }
 
 function getTwEntertainmentPrioritySources() {
@@ -3228,7 +3287,7 @@ async function fetchTwEntertainmentNewsResults(keyword, range, options = {}) {
   const sources = options.sources || twEntertainmentNewsSources;
   const isCustomKeyword = !isBroadTwEntertainmentPreset(keyword);
   const expandedPromise = isBroadTwEntertainmentPreset(keyword)
-    ? fetchTwEntertainmentExpandedNewsResults(keyword, range, depth, { sources: getTwEntertainmentPrioritySources(), sourceLimit })
+    ? fetchTwEntertainmentExpandedNewsResults(keyword, range, depth, { sources: getTwEntertainmentPrioritySources(), sourceLimit, queries: options.queries })
     : Promise.resolve({ items: [], queries: [keyword], sourceNames: sources.map((source) => source.name), rawCount: 0, failedQueryCount: 0 });
   const baseBatchPromise = fetchTwEntertainmentNewsBatch(keyword, range, sources, sourceLimit);
   const generalKeywordPromise = isCustomKeyword ? fetchTwEntertainmentGeneralKeywordResults(keyword, range, 30) : Promise.resolve([]);
@@ -3492,6 +3551,31 @@ function sortTwEntertainmentItems(items, sort) {
   return sorted;
 }
 
+async function buildTwEntertainmentNewsPayload({ keyword, range, sort, depth, trackedKeywords }) {
+  const [rawNewsResults, rawTrackedNewsResults] = await Promise.allSettled([
+    fetchTwEntertainmentNewsResults(keyword, range, { depth }),
+    fetchTwEntertainmentTrackedNewsResults(keyword, range, trackedKeywords),
+  ]).then((settled) => [
+    settled[0].status === "fulfilled" ? settled[0].value : [],
+    settled[1].status === "fulfilled" ? settled[1].value : [],
+  ]);
+  const newsFilter = stripLowRelatedResults([...rawNewsResults, ...rawTrackedNewsResults]);
+  const rawNewsSearchMeta = rawNewsResults.searchMeta || {};
+  const newsCandidates = [...newsFilter.filtered, ...newsFilter.related];
+  const dedupedNewsCandidates = dedupeTwEntertainmentResults(sortTwEntertainmentItems(newsCandidates, sort), "articleUrl").slice(0, getTwEntertainmentDepthConfig(depth).resultLimit);
+  const classifiedNews = splitTwEntertainmentResultClasses(dedupedNewsCandidates, keyword);
+  return {
+    rawNewsResults,
+    rawTrackedNewsResults,
+    rawNewsSearchMeta,
+    newsFilter,
+    newsResults: classifiedNews.primary,
+    relatedNewsResults: classifiedNews.related,
+    excludedClassifiedCount: classifiedNews.excluded.length,
+    dedupedNewsCandidates,
+  };
+}
+
 async function handleTwEntertainmentNewsSearch(request, response, url) {
   const keyword = String(url.searchParams.get("q") || "").trim();
   const range = String(url.searchParams.get("range") || "7d");
@@ -3499,6 +3583,7 @@ async function handleTwEntertainmentNewsSearch(request, response, url) {
   const depth = String(url.searchParams.get("depth") || "standard");
   const includeSocial = String(url.searchParams.get("includeSocial") || "true") !== "false";
   const onlySocial = String(url.searchParams.get("onlySocial") || "false") === "true";
+  const autoExpandRange = String(url.searchParams.get("autoExpandRange") || "true") !== "false";
   const socialPlatforms = String(url.searchParams.get("socialPlatforms") || "")
     .split(",")
     .map((item) => item.trim())
@@ -3512,7 +3597,7 @@ async function handleTwEntertainmentNewsSearch(request, response, url) {
   }
 
   try {
-    console.log("[TW_ENTERTAINMENT_SEARCH_START]", { keyword, range, sort, depth, onlySocial, socialPlatforms, trackedKeywordCount: trackedKeywords.length });
+    console.log("[TW_ENTERTAINMENT_SEARCH_START]", { keyword, range, sort, depth, onlySocial, autoExpandRange, socialPlatforms, trackedKeywordCount: trackedKeywords.length });
     if (onlySocial) {
       const rawSocialResults = includeSocial ? filterTwEntertainmentSocialPlatforms(await fetchTwEntertainmentSocialResults(keyword, range), socialPlatforms) : [];
       const socialFilter = stripLowRelatedResults(rawSocialResults);
@@ -3551,39 +3636,85 @@ async function handleTwEntertainmentNewsSearch(request, response, url) {
       });
       return;
     }
-    const settledSearches = await Promise.allSettled([
-      fetchTwEntertainmentNewsResults(keyword, range, { depth }),
-      fetchTwEntertainmentTrackedNewsResults(keyword, range, trackedKeywords),
-      includeSocial ? fetchTwEntertainmentSocialResults(keyword, range).then((items) => filterTwEntertainmentSocialPlatforms(items, socialPlatforms)) : Promise.resolve([]),
-    ]);
-    const rawNewsResults = settledSearches[0].status === "fulfilled" ? settledSearches[0].value : [];
-    const rawTrackedNewsResults = settledSearches[1].status === "fulfilled" ? settledSearches[1].value : [];
-    const rawSocialResults = settledSearches[2].status === "fulfilled" ? settledSearches[2].value : [];
-    const settledFailures = settledSearches
-      .map((result, index) => ({ result, label: ["news", "tracked", "social"][index] }))
-      .filter((item) => item.result.status === "rejected")
-      .map((item) => ({ label: item.label, error: item.result.reason?.message || "unknown error" }));
-    if (settledFailures.length) console.warn("[TW_ENTERTAINMENT_SEARCH_PARTIAL_FAILURE]", settledFailures);
-    const newsFilter = stripLowRelatedResults([...rawNewsResults, ...rawTrackedNewsResults]);
-    const socialFilter = stripLowRelatedResults(rawSocialResults);
-    const rawNewsSearchMeta = rawNewsResults.searchMeta || {};
-    const newsCandidates = [...newsFilter.filtered, ...newsFilter.related];
-    const dedupedNewsCandidates = dedupeTwEntertainmentResults(sortTwEntertainmentItems(newsCandidates, sort), "articleUrl").slice(0, getTwEntertainmentDepthConfig(depth).resultLimit);
-    const classifiedNews = splitTwEntertainmentResultClasses(dedupedNewsCandidates, keyword);
-    let newsResults = classifiedNews.primary;
-    let relatedNewsResults = classifiedNews.related;
-    if (!isBroadTwEntertainmentPreset(keyword) && newsResults.length < 5) {
-      const googleWebResults = await fetchGoogleWebSearchResults(keyword, 30);
-      const fallbackResults = dedupeTwEntertainmentResults([
-        ...newsResults,
-        ...googleWebResults,
-        ...(googleWebResults.length ? [] : [buildGoogleGeneralSearchEntry(keyword)]),
-      ], "articleUrl").slice(0, 50);
-      const fallbackClassified = splitTwEntertainmentResultClasses(fallbackResults, keyword);
-      newsResults = fallbackClassified.primary;
-      relatedNewsResults = [...relatedNewsResults, ...fallbackClassified.related];
+    const fallbackMessages = [];
+    let newsPayload = await buildTwEntertainmentNewsPayload({ keyword, range, sort, depth, trackedKeywords });
+    let rawNewsSearchMeta = newsPayload.rawNewsSearchMeta;
+    let newsResults = newsPayload.newsResults;
+    let relatedNewsResults = newsPayload.relatedNewsResults;
+    let dedupedNewsCandidates = newsPayload.dedupedNewsCandidates;
+    let newsFilter = newsPayload.newsFilter;
+    let rawNewsResults = newsPayload.rawNewsResults;
+    let rawTrackedNewsResults = newsPayload.rawTrackedNewsResults;
+    let excludedClassifiedCount = newsPayload.excludedClassifiedCount;
+
+    if (countTwEntertainmentVisibleItems([...newsResults, ...relatedNewsResults]) < 5) {
+      const fallbackQueries = getTwEntertainmentFallbackQueries(keyword, depth);
+      console.log("[TW_ENTERTAINMENT_FALLBACK_QUERIES]", { keyword, fallbackQueries });
+      const fallbackDirect = await fetchTwEntertainmentExpandedNewsResults(keyword, range, depth, {
+        sources: getTwEntertainmentPrioritySources(),
+        sourceLimit: getTwEntertainmentDepthConfig(depth).sourceLimit,
+        queries: fallbackQueries,
+      }).catch((error) => {
+        console.warn("[TW_ENTERTAINMENT_FALLBACK_DIRECT_FAILED]", error.message);
+        return { items: [], queries: fallbackQueries, sourceNames: [], rawCount: 0, failedQueryCount: 1 };
+      });
+      const mergedCandidates = dedupeTwEntertainmentResults([
+        ...dedupedNewsCandidates,
+        ...fallbackDirect.items,
+      ], "articleUrl");
+      const classifiedMerged = splitTwEntertainmentResultClasses(sortTwEntertainmentItems(mergedCandidates, sort), keyword);
+      newsResults = classifiedMerged.primary;
+      relatedNewsResults = classifiedMerged.related;
+      dedupedNewsCandidates = mergedCandidates;
+      rawNewsSearchMeta = {
+        rawCount: (rawNewsSearchMeta.rawCount || 0) + (fallbackDirect.rawCount || 0),
+        queries: [...new Set([...(rawNewsSearchMeta.queries || []), ...(fallbackQueries || [])])],
+        sourceNames: [...new Set([...(rawNewsSearchMeta.sourceNames || []), ...(fallbackDirect.sourceNames || [])])],
+        failedQueryCount: (rawNewsSearchMeta.failedQueryCount || 0) + (fallbackDirect.failedQueryCount || 0),
+      };
+      excludedClassifiedCount += classifiedMerged.excluded.length;
+      fallbackMessages.push("本次搜尋結果不足，系統已嘗試拆分關鍵字與放寬搜尋。");
     }
-    let socialResults = dedupeTwEntertainmentResults(sortTwEntertainmentItems(socialFilter.filtered, sort), "postUrl").slice(0, 40);
+
+    if (autoExpandRange && range === "7d" && countTwEntertainmentVisibleItems([...newsResults, ...relatedNewsResults]) < 5) {
+      const rangeFallback = await buildTwEntertainmentNewsPayload({ keyword, range: "30d", sort, depth, trackedKeywords: [] });
+      const mergedCandidates = dedupeTwEntertainmentResults([...dedupedNewsCandidates, ...rangeFallback.dedupedNewsCandidates], "articleUrl");
+      const classifiedMerged = splitTwEntertainmentResultClasses(sortTwEntertainmentItems(mergedCandidates, sort), keyword);
+      newsResults = classifiedMerged.primary;
+      relatedNewsResults = classifiedMerged.related;
+      dedupedNewsCandidates = mergedCandidates;
+      rawNewsSearchMeta = {
+        rawCount: (rawNewsSearchMeta.rawCount || 0) + (rangeFallback.rawNewsSearchMeta.rawCount || 0),
+        queries: [...new Set([...(rawNewsSearchMeta.queries || []), ...(rangeFallback.rawNewsSearchMeta.queries || [])])],
+        sourceNames: [...new Set([...(rawNewsSearchMeta.sourceNames || []), ...(rangeFallback.rawNewsSearchMeta.sourceNames || [])])],
+        failedQueryCount: (rawNewsSearchMeta.failedQueryCount || 0) + (rangeFallback.rawNewsSearchMeta.failedQueryCount || 0),
+      };
+      newsFilter = {
+        ...newsFilter,
+        excludedCount: newsFilter.excludedCount + rangeFallback.newsFilter.excludedCount,
+      };
+      rawNewsResults = [...rawNewsResults, ...rangeFallback.rawNewsResults];
+      rawTrackedNewsResults = [...rawTrackedNewsResults, ...rangeFallback.rawTrackedNewsResults];
+      excludedClassifiedCount += rangeFallback.excludedClassifiedCount;
+      fallbackMessages.push("最近 7 天結果不足，已自動放寬至最近 30 天。");
+    }
+
+    let socialResults = [];
+    let socialFilter = { excludedCount: 0 };
+    let rawSocialResults = [];
+    let settledFailures = [];
+    if (includeSocial) {
+      const socialSettled = await Promise.allSettled([
+        fetchTwEntertainmentSocialResults(keyword, range).then((items) => filterTwEntertainmentSocialPlatforms(items, socialPlatforms)),
+      ]);
+      if (socialSettled[0].status === "fulfilled") {
+        rawSocialResults = socialSettled[0].value;
+        socialFilter = stripLowRelatedResults(rawSocialResults);
+        socialResults = dedupeTwEntertainmentResults(sortTwEntertainmentItems(socialFilter.filtered, sort), "postUrl").slice(0, 40);
+      } else {
+        settledFailures = [{ label: "social", error: socialSettled[0].reason?.message || "unknown error" }];
+      }
+    }
     const seenKeys = await fetchRecentTwEntertainmentSeenKeys(3);
     const recentNewsFilter = filterRecentlySeenTwEntertainmentItems(newsResults, seenKeys);
     const recentRelatedNewsFilter = filterRecentlySeenTwEntertainmentItems(relatedNewsResults, seenKeys);
@@ -3612,11 +3743,13 @@ async function handleTwEntertainmentNewsSearch(request, response, url) {
         newsCount: countTwEntertainmentVisibleItems(newsResults),
         relatedNewsCount: countTwEntertainmentVisibleItems(relatedNewsResults),
         socialCount: countTwEntertainmentVisibleItems(socialResults),
-        excludedCount: newsFilter.excludedCount + socialFilter.excludedCount + classifiedNews.excluded.length + recentNewsFilter.excludedCount + recentRelatedNewsFilter.excludedCount + recentSocialFilter.excludedCount,
+        excludedCount: newsFilter.excludedCount + socialFilter.excludedCount + excludedClassifiedCount + recentNewsFilter.excludedCount + recentRelatedNewsFilter.excludedCount + recentSocialFilter.excludedCount,
         usedQueries: rawNewsSearchMeta.queries || [keyword],
         usedSources: rawNewsSearchMeta.sourceNames || twEntertainmentNewsSources.map((source) => source.name),
         failedQueryCount: (rawNewsSearchMeta.failedQueryCount || 0) + settledFailures.length,
         partialFailure: settledFailures.length > 0 || (rawNewsSearchMeta.failedQueryCount || 0) > 0,
+        fallbackMessages,
+        autoExpandRange,
         categoryCounts,
         focusPoints: fallbackTwEntertainmentAiNotes(keyword, newsResults, socialResults)[0].items,
         savedCount,
