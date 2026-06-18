@@ -3310,6 +3310,12 @@ async function fetchTwEntertainmentSocialResults(keyword, range) {
   return dedupeTwEntertainmentResults(results, "postUrl").slice(0, 40);
 }
 
+function filterTwEntertainmentSocialPlatforms(items, platforms = []) {
+  if (!Array.isArray(platforms) || !platforms.length) return items;
+  const allowed = new Set(platforms.map((item) => String(item).trim()).filter(Boolean));
+  return items.filter((item) => allowed.has(item.platform));
+}
+
 function fallbackTwEntertainmentAiNotes(keyword, newsResults, socialResults) {
   const firstNews = newsResults[0]?.title || "新聞來源";
   const firstSocial = socialResults[0]?.platform || "社群來源";
@@ -3492,6 +3498,11 @@ async function handleTwEntertainmentNewsSearch(request, response, url) {
   const sort = String(url.searchParams.get("sort") || "latest");
   const depth = String(url.searchParams.get("depth") || "standard");
   const includeSocial = String(url.searchParams.get("includeSocial") || "true") !== "false";
+  const onlySocial = String(url.searchParams.get("onlySocial") || "false") === "true";
+  const socialPlatforms = String(url.searchParams.get("socialPlatforms") || "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
   const includeAi = String(url.searchParams.get("includeAi") || "true") !== "false";
   const trackedKeywords = parseTrackedKeywords(url.searchParams.get("trackedKeywords") || "");
 
@@ -3501,11 +3512,49 @@ async function handleTwEntertainmentNewsSearch(request, response, url) {
   }
 
   try {
-    console.log("[TW_ENTERTAINMENT_SEARCH_START]", { keyword, range, sort, depth, trackedKeywordCount: trackedKeywords.length });
+    console.log("[TW_ENTERTAINMENT_SEARCH_START]", { keyword, range, sort, depth, onlySocial, socialPlatforms, trackedKeywordCount: trackedKeywords.length });
+    if (onlySocial) {
+      const rawSocialResults = includeSocial ? filterTwEntertainmentSocialPlatforms(await fetchTwEntertainmentSocialResults(keyword, range), socialPlatforms) : [];
+      const socialFilter = stripLowRelatedResults(rawSocialResults);
+      const socialResults = dedupeTwEntertainmentResults(sortTwEntertainmentItems(socialFilter.filtered, sort), "postUrl").slice(0, 40);
+      sendJson(response, 200, {
+        summary: {
+          keyword,
+          trackedKeywords: [],
+          trackedKeywordCount: 0,
+          range,
+          sort,
+          depth,
+          searchedAt: new Date().toISOString(),
+          rawCount: rawSocialResults.length,
+          dedupedCount: socialResults.length,
+          newsCount: 0,
+          relatedNewsCount: 0,
+          socialCount: countTwEntertainmentVisibleItems(socialResults),
+          excludedCount: socialFilter.excludedCount,
+          usedQueries: [keyword],
+          usedSources: socialPlatforms.length ? socialPlatforms : twEntertainmentSocialSources.map((source) => source.platform),
+          failedQueryCount: 0,
+          partialFailure: false,
+          categoryCounts: {},
+          focusPoints: [],
+          savedCount: await saveTwEntertainmentItems(socialResults).catch(() => 0),
+          aiFailed: false,
+        },
+        newsResults: [],
+        relatedNewsResults: [],
+        socialResults,
+        aiNotes: [],
+        limitations: [
+          "討論來源目前提供公開搜尋入口，不直接冒充封閉平台貼文爬取。",
+        ],
+      });
+      return;
+    }
     const settledSearches = await Promise.allSettled([
       fetchTwEntertainmentNewsResults(keyword, range, { depth }),
       fetchTwEntertainmentTrackedNewsResults(keyword, range, trackedKeywords),
-      includeSocial ? fetchTwEntertainmentSocialResults(keyword, range) : Promise.resolve([]),
+      includeSocial ? fetchTwEntertainmentSocialResults(keyword, range).then((items) => filterTwEntertainmentSocialPlatforms(items, socialPlatforms)) : Promise.resolve([]),
     ]);
     const rawNewsResults = settledSearches[0].status === "fulfilled" ? settledSearches[0].value : [];
     const rawTrackedNewsResults = settledSearches[1].status === "fulfilled" ? settledSearches[1].value : [];

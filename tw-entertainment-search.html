@@ -176,6 +176,29 @@
         font-weight: 900;
       }
 
+      .source-options {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 6px;
+      }
+
+      .check-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        min-height: 34px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: #fff;
+        padding: 6px 10px;
+        font-size: 13px;
+        font-weight: 800;
+        cursor: pointer;
+      }
+
+      .check-pill input { margin: 0; }
+
       .filter-grid {
         display: grid;
         grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -389,6 +412,10 @@
               <button id="addTrackedKeywordButton" class="secondary-button" type="button">新增追蹤</button>
             </div>
             <div id="trackedKeywordList" class="tracker-list"></div>
+            <label class="check-pill" style="margin-top:10px;">
+              <input id="includeTrackedKeywords" type="checkbox" />
+              包含追蹤關鍵字
+            </label>
           </div>
 
           <div class="filter-grid">
@@ -418,13 +445,15 @@
                 <option value="title">作品名稱</option>
               </select>
             </label>
-            <label class="field">
-              <span>討論來源</span>
-              <select id="socialSelect" class="select">
-                <option value="yes" selected>包含 Dcard / Threads / Facebook / Instagram 搜尋入口</option>
-                <option value="no">只看新聞與官方來源</option>
-              </select>
-            </label>
+            <div class="field">
+              <span>搜尋來源</span>
+              <div class="source-options">
+                <label class="check-pill"><input id="newsSourceToggle" type="checkbox" checked disabled />新聞與官方來源</label>
+                <label class="check-pill"><input class="social-source-toggle" type="checkbox" value="Dcard" />Dcard</label>
+                <label class="check-pill"><input class="social-source-toggle" type="checkbox" value="Threads" />Threads</label>
+                <label class="check-pill"><input class="social-source-toggle" type="checkbox" value="Facebook" />Facebook</label>
+              </div>
+            </div>
           </div>
 
           <div id="searchStatus" class="notice">正式 API 版：用後端搜尋台灣影視新聞、官方來源與公開討論入口；封閉平台只提供搜尋入口，不用假資料冒充貼文。</div>
@@ -489,7 +518,8 @@
       const depthSelect = document.getElementById("depthSelect");
       const rangeSelect = document.getElementById("rangeSelect");
       const sortSelect = document.getElementById("sortSelect");
-      const socialSelect = document.getElementById("socialSelect");
+      const includeTrackedKeywords = document.getElementById("includeTrackedKeywords");
+      const socialSourceToggles = [...document.querySelectorAll(".social-source-toggle")];
       const statusBox = document.getElementById("searchStatus");
       const toast = document.getElementById("toast");
       const copyDigestButton = document.getElementById("copyDigestButton");
@@ -502,6 +532,10 @@
       let trackedKeywords = loadTrackedKeywords();
       let lastSearchPayload = null;
       let manualKeywordEdited = false;
+
+      function selectedSocialPlatforms() {
+        return socialSourceToggles.filter((item) => item.checked).map((item) => item.value);
+      }
 
       function escapeHtml(value) {
         return String(value ?? "")
@@ -724,34 +758,46 @@
         searchButton.textContent = "搜尋中...";
         searchButton.disabled = true;
         const selectedOptions = quickButtons.filter((item) => item.classList.contains("selected")).map((item) => item.dataset.query);
-        const controller = new AbortController();
-        const timeoutId = window.setTimeout(() => controller.abort(), 20000);
+        const platforms = selectedSocialPlatforms();
+        const useTrackedKeywords = includeTrackedKeywords.checked;
         console.log("[TW_SEARCH_UI_START]", {
           keyword,
           selectedOptions,
+          includeTrackedKeywords: useTrackedKeywords,
+          socialPlatforms: platforms,
           depth: depthSelect.value,
           range: rangeSelect.value,
           sort: sortSelect.value,
         });
+
+        async function fetchWithUiTimeout(params, timeoutMs, label) {
+          const controller = new AbortController();
+          const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
+          try {
+            console.log("[TW_SEARCH_UI_QUERY]", { label, params: params.toString() });
+            const response = await fetch(`/api/tw-entertainment-news/search?${params.toString()}`, { signal: controller.signal });
+            const payload = await response.json().catch(() => ({}));
+            if (!response.ok) throw new Error(payload.error || "搜尋失敗，請稍後再試。");
+            return payload;
+          } finally {
+            window.clearTimeout(timeoutId);
+          }
+        }
+
         showStatus("正在產生搜尋關鍵字...");
         try {
-          const params = new URLSearchParams({
+          const newsParams = new URLSearchParams({
             q: keyword,
             depth: depthSelect.value,
             range: rangeSelect.value,
             sort: sortSelect.value,
-            includeSocial: socialSelect.value === "yes" ? "true" : "false",
+            includeSocial: "false",
             includeAi: "false",
-            trackedKeywords: manualKeywordEdited ? "" : trackedKeywords.join(","),
+            trackedKeywords: useTrackedKeywords ? trackedKeywords.join(",") : "",
           });
-          console.log("[TW_SEARCH_UI_QUERY]", params.toString());
-          showStatus("正在搜尋新聞來源與社群入口，最多等待 20 秒。");
-          const response = await fetch(`/api/tw-entertainment-news/search?${params.toString()}`, { signal: controller.signal });
+          showStatus("正在搜尋新聞與官方來源...");
+          const payload = await fetchWithUiTimeout(newsParams, 18000, "news");
           showStatus("正在整理搜尋結果...");
-          const payload = await response.json().catch(() => ({}));
-          if (!response.ok) {
-            throw new Error(payload.error || "搜尋失敗，請稍後再試。");
-          }
           lastSearchPayload = payload;
           console.log("[TW_SEARCH_UI_RESULT]", {
             rawCount: payload.summary?.rawCount,
@@ -766,25 +812,54 @@
           renderSummary(payload.summary);
           renderNews(payload.newsResults);
           renderRelatedNews(payload.relatedNewsResults || []);
-          renderSocial(payload.socialResults);
+          renderSocial([]);
           const limitationText = (payload.limitations || []).join(" ");
+          const hasNewsResult = (payload.summary?.newsCount || 0) + (payload.summary?.relatedNewsCount || 0) > 0;
+          if (platforms.length) {
+            showStatus("已取得新聞結果，正在補充討論來源...");
+            try {
+              const socialParams = new URLSearchParams({
+                q: keyword,
+                depth: "quick",
+                range: rangeSelect.value,
+                sort: sortSelect.value,
+                includeSocial: "true",
+                onlySocial: "true",
+                includeAi: "false",
+                socialPlatforms: platforms.join(","),
+              });
+              const socialPayload = await fetchWithUiTimeout(socialParams, 8000, "social");
+              payload.socialResults = socialPayload.socialResults || [];
+              payload.summary.socialCount = socialPayload.summary?.socialCount || 0;
+              payload.summary.partialFailure = Boolean(payload.summary.partialFailure || socialPayload.summary?.partialFailure);
+              lastSearchPayload = payload;
+              renderSummary(payload.summary);
+              renderSocial(payload.socialResults);
+            } catch (socialError) {
+              console.warn("[TW_SEARCH_UI_SOCIAL_FAILED]", socialError);
+              payload.summary.partialFailure = true;
+              lastSearchPayload = payload;
+              renderSummary(payload.summary);
+              showStatus("討論來源部分逾時，已先顯示新聞與官方來源結果。", "warning");
+              return;
+            }
+          }
           const hasAnyResult = (payload.summary?.newsCount || 0) + (payload.summary?.relatedNewsCount || 0) + (payload.summary?.socialCount || 0) > 0;
           if (!hasAnyResult) {
-            showStatus("本次搜尋沒有找到符合條件的結果，請放寬時間範圍或減少搜尋條件。", "warning");
+            showStatus("本次搜尋沒有取得結果，請減少搜尋條件或放寬時間範圍。", "warning");
           } else if (payload.summary?.partialFailure) {
-            showStatus(`部分來源搜尋失敗，已顯示可取得結果。${limitationText}`, "warning");
+            showStatus(`部分來源搜尋逾時，已先顯示目前取得的結果。建議關閉討論來源，或改用快速搜尋。${limitationText}`, "warning");
           } else {
             showStatus(payload.summary?.aiFailed ? `搜尋完成，但 AI 整理使用保守備援。${limitationText}` : `搜尋完成。${limitationText}`, payload.summary?.aiFailed ? "warning" : "success");
           }
         } catch (error) {
           console.error("[TW_ENTERTAINMENT_SEARCH_UI_FAILED]", error);
           if (error.name === "AbortError") {
-            showStatus("部分搜尋逾時，請改用快速搜尋或減少搜尋條件後再試。", "warning");
+            showStatus("部分來源搜尋逾時，已先顯示目前取得的結果。建議關閉討論來源，或改用快速搜尋。", "warning");
           } else {
             showStatus(error.message.includes("登入") ? "請先回主系統登入後，再使用搜尋 API。" : error.message, "error");
           }
         } finally {
-          window.clearTimeout(timeoutId);
           console.log("[TW_SEARCH_UI_FINISH]", { keyword, loadingClosed: true });
           searchButton.textContent = "搜尋";
           searchButton.disabled = false;
