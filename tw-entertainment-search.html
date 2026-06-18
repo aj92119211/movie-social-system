@@ -723,7 +723,17 @@
         keywordInput.value = keyword;
         searchButton.textContent = "搜尋中...";
         searchButton.disabled = true;
-        showStatus("正在搜尋新聞來源與社群入口，請稍等。");
+        const selectedOptions = quickButtons.filter((item) => item.classList.contains("selected")).map((item) => item.dataset.query);
+        const controller = new AbortController();
+        const timeoutId = window.setTimeout(() => controller.abort(), 20000);
+        console.log("[TW_SEARCH_UI_START]", {
+          keyword,
+          selectedOptions,
+          depth: depthSelect.value,
+          range: rangeSelect.value,
+          sort: sortSelect.value,
+        });
+        showStatus("正在產生搜尋關鍵字...");
         try {
           const params = new URLSearchParams({
             q: keyword,
@@ -734,22 +744,48 @@
             includeAi: "false",
             trackedKeywords: manualKeywordEdited ? "" : trackedKeywords.join(","),
           });
-          const response = await fetch(`/api/tw-entertainment-news/search?${params.toString()}`);
+          console.log("[TW_SEARCH_UI_QUERY]", params.toString());
+          showStatus("正在搜尋新聞來源與社群入口，最多等待 20 秒。");
+          const response = await fetch(`/api/tw-entertainment-news/search?${params.toString()}`, { signal: controller.signal });
+          showStatus("正在整理搜尋結果...");
           const payload = await response.json().catch(() => ({}));
           if (!response.ok) {
             throw new Error(payload.error || "搜尋失敗，請稍後再試。");
           }
           lastSearchPayload = payload;
+          console.log("[TW_SEARCH_UI_RESULT]", {
+            rawCount: payload.summary?.rawCount,
+            dedupedCount: payload.summary?.dedupedCount,
+            newsCount: payload.summary?.newsCount,
+            relatedNewsCount: payload.summary?.relatedNewsCount,
+            socialCount: payload.summary?.socialCount,
+            excludedCount: payload.summary?.excludedCount,
+            failedQueryCount: payload.summary?.failedQueryCount,
+          });
+          showStatus("正在去除重複結果並分類...");
           renderSummary(payload.summary);
           renderNews(payload.newsResults);
           renderRelatedNews(payload.relatedNewsResults || []);
           renderSocial(payload.socialResults);
           const limitationText = (payload.limitations || []).join(" ");
-          showStatus(payload.summary?.aiFailed ? `搜尋完成，但 AI 整理使用保守備援。${limitationText}` : `搜尋完成。${limitationText}`, payload.summary?.aiFailed ? "warning" : "success");
+          const hasAnyResult = (payload.summary?.newsCount || 0) + (payload.summary?.relatedNewsCount || 0) + (payload.summary?.socialCount || 0) > 0;
+          if (!hasAnyResult) {
+            showStatus("本次搜尋沒有找到符合條件的結果，請放寬時間範圍或減少搜尋條件。", "warning");
+          } else if (payload.summary?.partialFailure) {
+            showStatus(`部分來源搜尋失敗，已顯示可取得結果。${limitationText}`, "warning");
+          } else {
+            showStatus(payload.summary?.aiFailed ? `搜尋完成，但 AI 整理使用保守備援。${limitationText}` : `搜尋完成。${limitationText}`, payload.summary?.aiFailed ? "warning" : "success");
+          }
         } catch (error) {
           console.error("[TW_ENTERTAINMENT_SEARCH_UI_FAILED]", error);
-          showStatus(error.message.includes("登入") ? "請先回主系統登入後，再使用搜尋 API。" : error.message, "error");
+          if (error.name === "AbortError") {
+            showStatus("部分搜尋逾時，請改用快速搜尋或減少搜尋條件後再試。", "warning");
+          } else {
+            showStatus(error.message.includes("登入") ? "請先回主系統登入後，再使用搜尋 API。" : error.message, "error");
+          }
         } finally {
+          window.clearTimeout(timeoutId);
+          console.log("[TW_SEARCH_UI_FINISH]", { keyword, loadingClosed: true });
           searchButton.textContent = "搜尋";
           searchButton.disabled = false;
         }

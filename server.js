@@ -2273,9 +2273,9 @@ const twEntertainmentTrackedPriorityDomains = [
 ];
 
 const twEntertainmentSearchDepthConfig = {
-  quick: { label: "快速搜尋", queryLimit: 6, generalLimit: 18, sourceLimit: 2, sourceTaskLimit: 24, resultLimit: 45 },
-  standard: { label: "標準搜尋", queryLimit: 14, generalLimit: 24, sourceLimit: 3, sourceTaskLimit: 64, resultLimit: 85 },
-  deep: { label: "深度搜尋", queryLimit: 24, generalLimit: 32, sourceLimit: 4, sourceTaskLimit: 128, resultLimit: 130 },
+  quick: { label: "快速搜尋", queryLimit: 5, generalLimit: 18, sourceLimit: 2, sourceTaskLimit: 20, resultLimit: 45, timeoutMs: 3500, concurrency: 14 },
+  standard: { label: "標準搜尋", queryLimit: 10, generalLimit: 24, sourceLimit: 3, sourceTaskLimit: 48, resultLimit: 85, timeoutMs: 3500, concurrency: 18 },
+  deep: { label: "深度搜尋", queryLimit: 20, generalLimit: 32, sourceLimit: 4, sourceTaskLimit: 72, resultLimit: 130, timeoutMs: 3000, concurrency: 24 },
 };
 
 const twEntertainmentPrioritySourceDomains = [
@@ -2544,6 +2544,22 @@ function getTwEntertainmentExpandedQueries(keyword, depth) {
   const raw = String(keyword || "").trim();
   const config = getTwEntertainmentDepthConfig(depth);
   const querySet = new Set();
+  const hasFilmTopic = /台灣電影|臺灣電影|國片|台片/.test(raw);
+  const hasDramaTopic = /台劇|臺劇|台灣影集/.test(raw);
+  const hasShootIntent = /開拍|開鏡|開機|殺青/.test(raw);
+  const hasReleaseIntent = /定檔|上映|上架/.test(raw);
+  if (hasFilmTopic && hasShootIntent) {
+    ["台灣電影 開拍", "台灣電影 殺青", "國片 開拍", "國片 殺青", "台灣電影 開鏡", "國片 開鏡"].forEach((query) => querySet.add(query));
+  }
+  if (hasFilmTopic && hasReleaseIntent) {
+    ["台灣電影 定檔", "台灣電影 上映", "國片 定檔", "國片 上映", "台灣電影 院線"].forEach((query) => querySet.add(query));
+  }
+  if (hasDramaTopic && hasShootIntent) {
+    ["台劇 開拍", "台劇 殺青", "台灣影集 開拍", "台灣影集 殺青", "台劇 開鏡"].forEach((query) => querySet.add(query));
+  }
+  if (hasDramaTopic && hasReleaseIntent) {
+    ["台劇 定檔", "台劇 上架", "台劇 首播", "台灣影集 上架"].forEach((query) => querySet.add(query));
+  }
   for (const group of twEntertainmentExpandedQueryMap) {
     if (group.test.test(raw)) {
       for (const query of group.queries) querySet.add(query);
@@ -2793,14 +2809,24 @@ function dedupeTwEntertainmentResults(items, urlKey) {
   return results;
 }
 
-async function fetchGoogleNewsRss(query, limit = 5) {
+async function fetchWithTimeout(resource, options = {}, timeoutMs = 8000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(new Error("request timeout")), timeoutMs);
+  try {
+    return await fetch(resource, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function fetchGoogleNewsRss(query, limit = 5, timeoutMs = 5000) {
   const rssUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(query)}&hl=zh-TW&gl=TW&ceid=TW:zh-Hant`;
-  const response = await fetch(rssUrl, {
+  const response = await fetchWithTimeout(rssUrl, {
     headers: {
       "User-Agent": "MovieSocialOps/1.0 (+https://movie-social-system.onrender.com)",
       Accept: "application/rss+xml,text/xml,*/*",
     },
-  });
+  }, timeoutMs);
   if (!response.ok) return [];
   const xml = await response.text();
   const itemBlocks = [...xml.matchAll(/<item>([\s\S]*?)<\/item>/g)].map((match) => match[1]);
@@ -3083,20 +3109,31 @@ function buildGoogleGeneralSearchEntry(keyword) {
 }
 
 async function fetchTwEntertainmentNewsBatch(keyword, range, sources, sourceLimit) {
-  const allResults = [];
-  for (const source of sources) {
+  const tasks = sources.map((source) => async () => {
     const searchKeyword = /今日影劇/.test(String(keyword || ""))
       ? "(台灣電影 OR 台劇 OR 影集 OR OTT OR 影視產業 OR 票房 OR 影展)"
       : keyword;
     const sourceQuery = `${searchKeyword} site:${source.domain} ${rangeQuery(range)}`.trim();
     try {
-      const rows = await fetchGoogleNewsRss(sourceQuery, sourceLimit);
-      allResults.push(...rows.filter((row) => isNewsDateWithinRange(row.publishedDate, range)).filter((row) => shouldKeepTwEntertainmentNewsItem(row, source, keyword)).map((row) => normalizeTwNewsItem(row, source, keyword)));
+      console.log("[TW_NEWS_QUERY_START]", sourceQuery);
+      const rows = await fetchGoogleNewsRss(sourceQuery, sourceLimit, 3500);
+      console.log("[TW_NEWS_QUERY_DONE]", { query: sourceQuery, count: rows.length });
+      return rows.filter((row) => isNewsDateWithinRange(row.publishedDate, range)).filter((row) => shouldKeepTwEntertainmentNewsItem(row, source, keyword)).map((row) => normalizeTwNewsItem(row, source, keyword));
     } catch (error) {
       console.warn("[TW_NEWS_SOURCE_SKIPPED]", source.name, error.message);
+      return [];
+    }
+  });
+  const batches = [];
+  const concurrency = 12;
+  for (let index = 0; index < tasks.length; index += concurrency) {
+    const settled = await Promise.allSettled(tasks.slice(index, index + concurrency).map((task) => task()));
+    for (const result of settled) {
+      if (result.status === "fulfilled") batches.push(result.value);
+      else console.warn("[TW_NEWS_BATCH_TASK_FAILED]", result.reason?.message || result.reason);
     }
   }
-  return allResults;
+  return batches.flat();
 }
 
 async function fetchTwEntertainmentGeneralKeywordResults(keyword, range, limit = 30) {
@@ -3118,9 +3155,20 @@ async function fetchTwEntertainmentExpandedNewsResults(keyword, range, depth = "
   const queries = options.queries || getTwEntertainmentExpandedQueries(keyword, depth);
   const sources = options.sources || getTwEntertainmentPrioritySources();
   const sourceLimit = options.sourceLimit || config.sourceLimit;
+  console.log("[TW_ENTERTAINMENT_QUERY_LIST]", {
+    keyword,
+    depth,
+    queryCount: queries.length,
+    queries,
+    sourceCount: sources.length,
+    sourceTaskLimit: config.sourceTaskLimit,
+  });
   const generalTasks = queries.map((query) => async () => {
     try {
-      const rows = await fetchGoogleNewsRss(`${query} ${rangeQuery(range)}`.trim(), config.generalLimit);
+      const generalQuery = `${query} ${rangeQuery(range)}`.trim();
+      console.log("[TW_NEWS_QUERY_START]", generalQuery);
+      const rows = await fetchGoogleNewsRss(generalQuery, config.generalLimit, config.timeoutMs);
+      console.log("[TW_NEWS_QUERY_DONE]", { query: generalQuery, count: rows.length });
       return rows
         .filter((row) => isNewsDateWithinRange(row.publishedDate, range))
         .filter((row) => shouldKeepTwEntertainmentNewsItem(row, { name: "", domain: "" }, keyword))
@@ -3136,7 +3184,9 @@ async function fetchTwEntertainmentExpandedNewsResults(keyword, range, depth = "
       sourceTasks.push(async () => {
         const sourceQuery = `${query} site:${source.domain} ${rangeQuery(range)}`.trim();
         try {
-          const rows = await fetchGoogleNewsRss(sourceQuery, sourceLimit);
+          console.log("[TW_NEWS_QUERY_START]", sourceQuery);
+          const rows = await fetchGoogleNewsRss(sourceQuery, sourceLimit, config.timeoutMs);
+          console.log("[TW_NEWS_QUERY_DONE]", { query: sourceQuery, count: rows.length });
           return rows
             .filter((row) => isNewsDateWithinRange(row.publishedDate, range))
             .filter((row) => shouldKeepTwEntertainmentNewsItem(row, source, keyword))
@@ -3150,16 +3200,25 @@ async function fetchTwEntertainmentExpandedNewsResults(keyword, range, depth = "
   }
   const runTasks = [...generalTasks, ...sourceTasks.slice(0, config.sourceTaskLimit)];
   const batches = [];
-  const concurrency = 8;
+  const failedQueries = [];
+  const concurrency = config.concurrency;
   for (let index = 0; index < runTasks.length; index += concurrency) {
     const slice = runTasks.slice(index, index + concurrency);
-    batches.push(...(await Promise.all(slice.map((task) => task()))));
+    const settled = await Promise.allSettled(slice.map((task) => task()));
+    for (const result of settled) {
+      if (result.status === "fulfilled") batches.push(result.value);
+      else {
+        failedQueries.push(result.reason?.message || "unknown error");
+        console.warn("[TW_NEWS_SETTLED_TASK_FAILED]", result.reason?.message || result.reason);
+      }
+    }
   }
   return {
     items: batches.flat(),
     queries,
     sourceNames: sources.map((source) => source.name),
     rawCount: batches.flat().length,
+    failedQueryCount: failedQueries.length,
   };
 }
 
@@ -3168,13 +3227,24 @@ async function fetchTwEntertainmentNewsResults(keyword, range, options = {}) {
   const sourceLimit = options.sourceLimit || getTwEntertainmentDepthConfig(depth).sourceLimit;
   const sources = options.sources || twEntertainmentNewsSources;
   const isCustomKeyword = !isBroadTwEntertainmentPreset(keyword);
-  const expanded = isBroadTwEntertainmentPreset(keyword)
-    ? await fetchTwEntertainmentExpandedNewsResults(keyword, range, depth, { sources: getTwEntertainmentPrioritySources(), sourceLimit })
-    : { items: [], queries: [keyword], sourceNames: sources.map((source) => source.name), rawCount: 0 };
+  const expandedPromise = isBroadTwEntertainmentPreset(keyword)
+    ? fetchTwEntertainmentExpandedNewsResults(keyword, range, depth, { sources: getTwEntertainmentPrioritySources(), sourceLimit })
+    : Promise.resolve({ items: [], queries: [keyword], sourceNames: sources.map((source) => source.name), rawCount: 0, failedQueryCount: 0 });
+  const baseBatchPromise = fetchTwEntertainmentNewsBatch(keyword, range, sources, sourceLimit);
+  const generalKeywordPromise = isCustomKeyword ? fetchTwEntertainmentGeneralKeywordResults(keyword, range, 30) : Promise.resolve([]);
+  const [expandedSettled, baseBatchSettled, generalKeywordSettled] = await Promise.allSettled([
+    expandedPromise,
+    baseBatchPromise,
+    generalKeywordPromise,
+  ]);
+  const expanded = expandedSettled.status === "fulfilled" ? expandedSettled.value : { items: [], queries: [keyword], sourceNames: sources.map((source) => source.name), rawCount: 0, failedQueryCount: 1 };
+  if (expandedSettled.status === "rejected") console.warn("[TW_NEWS_EXPANDED_FAILED]", expandedSettled.reason?.message || expandedSettled.reason);
+  if (baseBatchSettled.status === "rejected") console.warn("[TW_NEWS_BASE_BATCH_FAILED]", baseBatchSettled.reason?.message || baseBatchSettled.reason);
+  if (generalKeywordSettled.status === "rejected") console.warn("[TW_NEWS_GENERAL_BATCH_FAILED]", generalKeywordSettled.reason?.message || generalKeywordSettled.reason);
   const allResults = [
     ...expanded.items,
-    ...await fetchTwEntertainmentNewsBatch(keyword, range, sources, sourceLimit),
-    ...(isCustomKeyword ? await fetchTwEntertainmentGeneralKeywordResults(keyword, range, 30) : []),
+    ...(baseBatchSettled.status === "fulfilled" ? baseBatchSettled.value : []),
+    ...(generalKeywordSettled.status === "fulfilled" ? generalKeywordSettled.value : []),
   ];
   const deduped = dedupeTwEntertainmentResults(allResults, "articleUrl");
   if (isCustomKeyword && deduped.length < 10 && range !== "30d" && range !== "year") {
@@ -3218,10 +3288,11 @@ async function fetchTwEntertainmentTrackedNewsResults(keyword, range, trackedKey
   const trackedQueries = buildTrackedSearchQueries(keyword, trackedKeywords);
   if (!trackedQueries.length) return [];
   const prioritySources = twEntertainmentNewsSources.filter((source) => twEntertainmentTrackedPriorityDomains.includes(source.domain));
-  const batches = await Promise.all(trackedQueries.map((query) => fetchTwEntertainmentNewsResults(query, range, {
+  const settled = await Promise.allSettled(trackedQueries.map((query) => fetchTwEntertainmentNewsResults(query, range, {
     sources: prioritySources,
     sourceLimit: 6,
   })));
+  const batches = settled.flatMap((result) => result.status === "fulfilled" ? result.value : []);
   return dedupeTwEntertainmentResults(batches.flat(), "articleUrl").slice(0, 50);
 }
 
@@ -3430,11 +3501,20 @@ async function handleTwEntertainmentNewsSearch(request, response, url) {
   }
 
   try {
-    const [rawNewsResults, rawTrackedNewsResults, rawSocialResults] = await Promise.all([
+    console.log("[TW_ENTERTAINMENT_SEARCH_START]", { keyword, range, sort, depth, trackedKeywordCount: trackedKeywords.length });
+    const settledSearches = await Promise.allSettled([
       fetchTwEntertainmentNewsResults(keyword, range, { depth }),
       fetchTwEntertainmentTrackedNewsResults(keyword, range, trackedKeywords),
       includeSocial ? fetchTwEntertainmentSocialResults(keyword, range) : Promise.resolve([]),
     ]);
+    const rawNewsResults = settledSearches[0].status === "fulfilled" ? settledSearches[0].value : [];
+    const rawTrackedNewsResults = settledSearches[1].status === "fulfilled" ? settledSearches[1].value : [];
+    const rawSocialResults = settledSearches[2].status === "fulfilled" ? settledSearches[2].value : [];
+    const settledFailures = settledSearches
+      .map((result, index) => ({ result, label: ["news", "tracked", "social"][index] }))
+      .filter((item) => item.result.status === "rejected")
+      .map((item) => ({ label: item.label, error: item.result.reason?.message || "unknown error" }));
+    if (settledFailures.length) console.warn("[TW_ENTERTAINMENT_SEARCH_PARTIAL_FAILURE]", settledFailures);
     const newsFilter = stripLowRelatedResults([...rawNewsResults, ...rawTrackedNewsResults]);
     const socialFilter = stripLowRelatedResults(rawSocialResults);
     const rawNewsSearchMeta = rawNewsResults.searchMeta || {};
@@ -3486,6 +3566,8 @@ async function handleTwEntertainmentNewsSearch(request, response, url) {
         excludedCount: newsFilter.excludedCount + socialFilter.excludedCount + classifiedNews.excluded.length + recentNewsFilter.excludedCount + recentRelatedNewsFilter.excludedCount + recentSocialFilter.excludedCount,
         usedQueries: rawNewsSearchMeta.queries || [keyword],
         usedSources: rawNewsSearchMeta.sourceNames || twEntertainmentNewsSources.map((source) => source.name),
+        failedQueryCount: (rawNewsSearchMeta.failedQueryCount || 0) + settledFailures.length,
+        partialFailure: settledFailures.length > 0 || (rawNewsSearchMeta.failedQueryCount || 0) > 0,
         categoryCounts,
         focusPoints: fallbackTwEntertainmentAiNotes(keyword, newsResults, socialResults)[0].items,
         savedCount,
