@@ -2497,13 +2497,18 @@ function stripLowRelatedResults(items) {
     const url = `${item.articleUrl || ""} ${item.postUrl || ""}`;
     const hasUnsafeUrl = twEntertainmentUnsafeSocialUrlPatterns.some((pattern) => pattern.test(url));
     const hasExcludedKeyword = twEntertainmentExcludedKeywords.some((keyword) => text.includes(keyword));
+    const hasHardNoise = twEntertainmentGeneralNoiseSignals.some((signal) => text.includes(signal)) || twEntertainmentDramaNoiseSignals.some((signal) => text.includes(signal));
+    const hasStrongEvent = twEntertainmentStrongEventPattern.test(text);
     if (hasUnsafeUrl) {
+      excludedCount += 1;
+      excluded.push({ ...item, resultClass: "excluded" });
+    } else if (hasHardNoise && !hasStrongEvent) {
       excludedCount += 1;
       excluded.push({ ...item, resultClass: "excluded" });
     } else if (hasExcludedKeyword) {
       related.push({ ...item, resultClass: "related" });
     } else {
-      filtered.push({ ...item, resultClass: "primary" });
+      filtered.push(item);
     }
   }
   return { filtered, related, excluded, excludedCount };
@@ -2556,16 +2561,39 @@ function getTwEntertainmentPrioritySources() {
   return twEntertainmentPrioritySourceDomains.map((domain) => byDomain.get(domain)).filter(Boolean);
 }
 
+const twEntertainmentStrongEventPattern = /開拍|開鏡|開機|殺青|定檔|上映|上架|票房|預告|海報|主視覺|卡司|主演|導演|編劇|製作|發行|海外授權|影展|入圍|得獎|獎項|文策院|文化部|補助|輔導金|OTT|Netflix|Disney|公視|金馬|金鐘|北影|台北電影節|高雄電影節/;
+const twEntertainmentWeakBackgroundPattern = /影評|心得|推薦|懶人包|片單|劇情解析|結局|雷文|背景|專訪|專題|人物|網友|Dcard|PTT/;
+
 function classifyTwEntertainmentItem(item, keyword) {
   const text = `${item.title || ""} ${item.snippet || ""} ${item.sourceName || ""} ${item.rawContent || ""}`;
   const url = `${item.articleUrl || ""} ${item.postUrl || ""}`;
   if (twEntertainmentUnsafeSocialUrlPatterns.some((pattern) => pattern.test(url))) return "excluded";
-  const strongEvent = /開拍|開鏡|開機|殺青|定檔|上映|上架|票房|預告|海報|主視覺|卡司|主演|導演|編劇|製作|發行|海外授權|影展|入圍|得獎|獎項|文策院|文化部|補助|輔導金|OTT|Netflix|Disney|公視|金馬|金鐘|北影|台北電影節|高雄電影節/.test(text);
-  const weakOrBackground = /影評|心得|推薦|懶人包|片單|劇情解析|結局|雷文|背景|專訪|專題|人物|網友|Dcard|PTT/.test(text);
   if (!hasTaiwanEntertainmentContext({ ...item, searchKeyword: keyword }, { name: item.sourceName || "", domain: "" })) return "excluded";
+  const score = scoreTwEntertainmentItem(item, keyword);
+  const strongEvent = twEntertainmentStrongEventPattern.test(text);
+  const weakOrBackground = twEntertainmentWeakBackgroundPattern.test(text);
   if (strongEvent) return "primary";
-  if (weakOrBackground) return "related";
-  return isBroadTwEntertainmentPreset(keyword) ? "related" : "primary";
+  if (weakOrBackground || score < 5) return score >= 2 ? "related" : "excluded";
+  return isBroadTwEntertainmentPreset(keyword) ? (score >= 6 ? "primary" : "related") : (score >= 4 ? "primary" : "related");
+}
+
+function scoreTwEntertainmentItem(item, keyword) {
+  const text = `${item.title || ""} ${item.snippet || ""} ${item.sourceName || ""} ${item.rawContent || ""}`;
+  let score = 0;
+  const strongEvent = twEntertainmentStrongEventPattern.test(text);
+  const weakOrBackground = twEntertainmentWeakBackgroundPattern.test(text);
+  if (strongEvent) score += 5;
+  if (/台灣電影|臺灣電影|國片|台片|台劇|臺劇|台灣影集|影視產業|文策院|文化部|公視|金馬|北影|台北電影節|高雄電影節/.test(text)) score += 3;
+  if (/電影|影集|劇集|OTT|票房|影展|院線|上映|定檔|開拍|殺青/.test(text)) score += 2;
+  if (/台灣電影網|電影神搜|DramaQueen|噓！星聞|ETtoday 星光雲|Yahoo|自由娛樂|三立|文策院|文化部|公視|金馬|台北電影節/.test(text)) score += 1;
+  if (matchesSearchIntent(item, keyword)) score += 2;
+  if (keywordAppearsInText(keyword, text)) score += 1;
+  if (weakOrBackground) score -= 2;
+  if (twEntertainmentExcludedKeywords.some((noise) => text.includes(noise))) score -= strongEvent ? 1 : 4;
+  if (twEntertainmentGeneralNoiseSignals.some((noise) => text.includes(noise))) score -= 5;
+  if (twEntertainmentDramaNoiseSignals.some((noise) => text.includes(noise))) score -= 5;
+  if (twEntertainmentForeignSignals.some((signal) => text.includes(signal)) && !twEntertainmentTaiwanSignals.some((signal) => text.includes(signal))) score -= 4;
+  return score;
 }
 
 function splitTwEntertainmentResultClasses(items, keyword) {
