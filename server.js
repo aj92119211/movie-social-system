@@ -3286,10 +3286,11 @@ async function fetchTwEntertainmentNewsResults(keyword, range, options = {}) {
   const sourceLimit = options.sourceLimit || getTwEntertainmentDepthConfig(depth).sourceLimit;
   const sources = options.sources || twEntertainmentNewsSources;
   const isCustomKeyword = !isBroadTwEntertainmentPreset(keyword);
+  const isBroadPreset = isBroadTwEntertainmentPreset(keyword);
   const expandedPromise = isBroadTwEntertainmentPreset(keyword)
     ? fetchTwEntertainmentExpandedNewsResults(keyword, range, depth, { sources: getTwEntertainmentPrioritySources(), sourceLimit, queries: options.queries })
     : Promise.resolve({ items: [], queries: [keyword], sourceNames: sources.map((source) => source.name), rawCount: 0, failedQueryCount: 0 });
-  const baseBatchPromise = fetchTwEntertainmentNewsBatch(keyword, range, sources, sourceLimit);
+  const baseBatchPromise = isBroadPreset ? Promise.resolve([]) : fetchTwEntertainmentNewsBatch(keyword, range, sources, sourceLimit);
   const generalKeywordPromise = isCustomKeyword ? fetchTwEntertainmentGeneralKeywordResults(keyword, range, 30) : Promise.resolve([]);
   const [expandedSettled, baseBatchSettled, generalKeywordSettled] = await Promise.allSettled([
     expandedPromise,
