@@ -178,7 +178,7 @@
 
       .filter-grid {
         display: grid;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
+        grid-template-columns: repeat(4, minmax(0, 1fr));
         gap: 12px;
         margin-top: 14px;
       }
@@ -393,6 +393,14 @@
 
           <div class="filter-grid">
             <label class="field">
+              <span>搜尋深度</span>
+              <select id="depthSelect" class="select">
+                <option value="quick">快速搜尋：抓 20 筆</option>
+                <option value="standard" selected>標準搜尋：抓 50 筆</option>
+                <option value="deep">深度搜尋：抓 100 筆</option>
+              </select>
+            </label>
+            <label class="field">
               <span>時間範圍</span>
               <select id="rangeSelect" class="select">
                 <option value="today">今天</option>
@@ -448,6 +456,17 @@
         <section class="panel section">
           <div class="section-header">
             <div>
+              <h2>相關報導</h2>
+              <p>延伸閱讀、背景文或較弱相關的內容會集中在這裡，不混入主新聞。</p>
+            </div>
+            <span id="relatedNewsCount" class="tag gray">0 筆</span>
+          </div>
+          <div id="relatedNewsResults" class="result-list"><div class="empty">本次沒有額外相關報導。</div></div>
+        </section>
+
+        <section class="panel section">
+          <div class="section-header">
+            <div>
               <h2>社群與討論入口</h2>
               <p>Dcard 會嘗試搜尋公開結果；Instagram、Facebook、Threads 先提供搜尋入口，方便追討論線索。</p>
             </div>
@@ -464,8 +483,10 @@
     <script>
       const rangeLabels = { today: "今天", "7d": "最近 7 天", "30d": "最近 30 天", year: "今年" };
       const sortLabels = { latest: "最新優先", relevance: "相關度優先", source: "來源分類", title: "作品名稱" };
+      const depthLabels = { quick: "快速搜尋", standard: "標準搜尋", deep: "深度搜尋" };
       const keywordInput = document.getElementById("keywordInput");
       const searchButton = document.getElementById("searchButton");
+      const depthSelect = document.getElementById("depthSelect");
       const rangeSelect = document.getElementById("rangeSelect");
       const sortSelect = document.getElementById("sortSelect");
       const socialSelect = document.getElementById("socialSelect");
@@ -582,30 +603,36 @@
           `追蹤關鍵字：${(summary.trackedKeywords || []).join("、") || "無"}`,
           `時間範圍：${rangeLabels[summary.range] || summary.range || "-"}`,
           `新聞與官方來源：${summary.newsCount || 0} 筆`,
+          `相關報導：${summary.relatedNewsCount || 0} 筆`,
           `社群與討論入口：${summary.socialCount || 0} 筆`,
         ].join("\n");
         return [
           header,
           buildDigestSection("一、產業新聞與官方來源", lastSearchPayload.newsResults || []),
-          buildDigestSection("二、社群與討論入口", lastSearchPayload.socialResults || []),
+          buildDigestSection("二、相關報導", lastSearchPayload.relatedNewsResults || []),
+          buildDigestSection("三、社群與討論入口", lastSearchPayload.socialResults || []),
         ].join("\n\n");
       }
 
       function renderSummary(summary = {}) {
         const range = rangeLabels[summary.range] || rangeLabels[rangeSelect.value];
         const sort = sortLabels[summary.sort] || sortLabels[sortSelect.value];
+        const depth = depthLabels[summary.depth] || depthLabels[depthSelect.value];
         const date = summary.searchedAt ? new Date(summary.searchedAt).toLocaleString("zh-TW") : "-";
-        document.getElementById("summaryDescription").textContent = `搜尋關鍵字：${summary.keyword || "-"}｜時間範圍：${range}｜排序：${sort}｜搜尋日期：${date}`;
+        document.getElementById("summaryDescription").textContent = `搜尋關鍵字：${summary.keyword || "-"}｜搜尋深度：${depth}｜時間範圍：${range}｜排序：${sort}｜搜尋日期：${date}`;
         document.getElementById("summaryGrid").innerHTML = [
-          ["新聞與官方來源", summary.newsCount || 0],
+          ["原始結果", summary.rawCount || 0],
+          ["去重後", summary.dedupedCount || 0],
+          ["主新聞", summary.newsCount || 0],
+          ["相關報導", summary.relatedNewsCount || 0],
           ["討論入口", summary.socialCount || 0],
-          ["追蹤關鍵字", summary.trackedKeywordCount || 0],
-          ["排除低相關", summary.excludedCount || 0],
-          ["已儲存新結果", summary.savedCount || 0],
+          ["排除結果", summary.excludedCount || 0],
         ].map(([label, value]) => `<div class="summary-item"><span>${label}</span><strong>${escapeHtml(value)}</strong></div>`).join("");
         const categoryText = Object.entries(summary.categoryCounts || {}).map(([key, value]) => `${key} ${value}`).join("、");
         const points = [...(summary.focusPoints || [])];
         if (categoryText) points.unshift(`主要分類統計：${categoryText}`);
+        if (Array.isArray(summary.usedQueries) && summary.usedQueries.length) points.push(`使用搜尋關鍵字：${summary.usedQueries.slice(0, 12).join("、")}`);
+        if (Array.isArray(summary.usedSources) && summary.usedSources.length) points.push(`加強來源：${summary.usedSources.slice(0, 12).join("、")}`);
         document.getElementById("searchFocusList").innerHTML = points.length ? points.map((item) => `<li>${escapeHtml(item)}</li>`).join("") : "";
       }
 
@@ -652,6 +679,23 @@
         `).join("") : `<div class="empty">本次未找到相關新聞或官方來源。</div>`;
       }
 
+      function renderRelatedNews(items = []) {
+        document.getElementById("relatedNewsCount").textContent = `${resultTotalCount(items)} 筆`;
+        document.getElementById("relatedNewsResults").innerHTML = items.length ? items.map((item) => `
+          <article class="result-row">
+            <div class="result-top">
+              <div>
+                <h3 class="result-title">${escapeHtml(item.title)}</h3>
+                <div class="meta">來源：${escapeHtml(item.sourceName)}｜日期：${escapeHtml(item.publishedDate || "未提供")}</div>
+              </div>
+              <div class="tags">${tagList([...(item.tags || []), "相關報導"])}</div>
+            </div>
+            ${relatedReportsHtml(item)}
+            ${resultActions(item, "開啟原文")}
+          </article>
+        `).join("") : `<div class="empty">本次沒有額外相關報導。</div>`;
+      }
+
       function renderSocial(items = []) {
         document.getElementById("socialCount").textContent = `${resultTotalCount(items)} 筆`;
         document.getElementById("socialResults").innerHTML = items.length ? items.map((item) => `
@@ -683,6 +727,7 @@
         try {
           const params = new URLSearchParams({
             q: keyword,
+            depth: depthSelect.value,
             range: rangeSelect.value,
             sort: sortSelect.value,
             includeSocial: socialSelect.value === "yes" ? "true" : "false",
@@ -697,6 +742,7 @@
           lastSearchPayload = payload;
           renderSummary(payload.summary);
           renderNews(payload.newsResults);
+          renderRelatedNews(payload.relatedNewsResults || []);
           renderSocial(payload.socialResults);
           const limitationText = (payload.limitations || []).join(" ");
           showStatus(payload.summary?.aiFailed ? `搜尋完成，但 AI 整理使用保守備援。${limitationText}` : `搜尋完成。${limitationText}`, payload.summary?.aiFailed ? "warning" : "success");
