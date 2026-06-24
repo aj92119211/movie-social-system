@@ -2774,6 +2774,88 @@ function normalizeResultTitleKey(title) {
     .trim();
 }
 
+const twEntertainmentEventSignals = [
+  "開拍", "開鏡", "開機", "殺青", "定檔", "上映", "上架", "票房",
+  "入圍", "得獎", "奪獎", "獲獎", "最佳男主角", "最佳女主角",
+  "預告", "海報", "選角", "卡司", "回應", "修正", "下架", "誤標",
+  "中國電影", "台灣電影", "國片", "續訂", "停拍", "復拍", "辭世",
+];
+
+function normalizeTitleForSimilarity(title) {
+  return normalizeResultTitleKey(title)
+    .replace(/快訊|獨家|專訪|直擊|震撼|驚爆|全網|全球|緊急|最新|正式|親曝|親揭|曝光|證實/g, "")
+    .replace(/新聞雲|新聞網|娛樂星聞|星光雲|鏡週刊|中央社|聯合報|自由娛樂/g, "");
+}
+
+function titleBigrams(value) {
+  const text = normalizeTitleForSimilarity(value);
+  const grams = new Set();
+  for (let index = 0; index < text.length - 1; index += 1) {
+    grams.add(text.slice(index, index + 2));
+  }
+  return grams;
+}
+
+function titleDiceSimilarity(left, right) {
+  const leftGrams = titleBigrams(left);
+  const rightGrams = titleBigrams(right);
+  if (!leftGrams.size || !rightGrams.size) return 0;
+  let intersection = 0;
+  for (const gram of leftGrams) {
+    if (rightGrams.has(gram)) intersection += 1;
+  }
+  return (2 * intersection) / (leftGrams.size + rightGrams.size);
+}
+
+function longestCommonTitleChunk(left, right) {
+  const a = normalizeTitleForSimilarity(left);
+  const b = normalizeTitleForSimilarity(right);
+  if (!a || !b) return 0;
+  const shorter = a.length <= b.length ? a : b;
+  const longer = a.length <= b.length ? b : a;
+  for (let size = Math.min(12, shorter.length); size >= 3; size -= 1) {
+    for (let index = 0; index <= shorter.length - size; index += 1) {
+      if (longer.includes(shorter.slice(index, index + size))) return size;
+    }
+  }
+  return 0;
+}
+
+function extractQuotedEntertainmentTitles(title) {
+  return [...String(title || "").matchAll(/[《「『【](.*?)[》」』】]/g)]
+    .map((match) => normalizeResultTitleKey(match[1]))
+    .filter((value) => value.length >= 2);
+}
+
+function extractEntertainmentEventSignals(title) {
+  const normalized = normalizeResultTitleKey(title);
+  return twEntertainmentEventSignals.filter((signal) => normalized.includes(normalizeResultTitleKey(signal)));
+}
+
+function isLikelySameEntertainmentEvent(leftTitle, rightTitle) {
+  const left = normalizeTitleForSimilarity(leftTitle);
+  const right = normalizeTitleForSimilarity(rightTitle);
+  if (!left || !right) return false;
+  if (left === right) return true;
+
+  const shorterLength = Math.min(left.length, right.length);
+  if (shorterLength >= 10 && (left.includes(right) || right.includes(left))) return true;
+
+  const leftQuoted = extractQuotedEntertainmentTitles(leftTitle);
+  const rightQuoted = extractQuotedEntertainmentTitles(rightTitle);
+  const sharesQuotedTitle = leftQuoted.some((title) => rightQuoted.includes(title));
+  const leftSignals = extractEntertainmentEventSignals(leftTitle);
+  const rightSignals = extractEntertainmentEventSignals(rightTitle);
+  const sharedSignals = leftSignals.filter((signal) => rightSignals.includes(signal));
+  const similarity = titleDiceSimilarity(leftTitle, rightTitle);
+  const commonChunk = longestCommonTitleChunk(leftTitle, rightTitle);
+
+  if (sharesQuotedTitle && sharedSignals.length && similarity >= 0.34) return true;
+  if (similarity >= 0.62) return true;
+  if (similarity >= 0.46 && sharedSignals.length && commonChunk >= 4) return true;
+  return sharedSignals.length >= 2 && commonChunk >= 6;
+}
+
 function normalizeEventTitleKey(title) {
   const normalized = normalizeResultTitleKey(title)
     .replace(/20\d{2}/g, "")
@@ -2815,6 +2897,18 @@ function normalizeEventTitleKey(title) {
   }
   if (normalized.includes("taicca") && (normalized.includes("釜山") || normalized.includes("afis"))) {
     return "taicca釜山afis";
+  }
+  if (normalized.includes("曾敬驊") && normalized.includes("ott") && normalized.includes("最佳男主角")) {
+    return "曾敬驊ott最佳男主角";
+  }
+  if (normalized.includes("netflix") && /中國電影|中國片/.test(normalized) && /台片|台灣電影|國片/.test(normalized)) {
+    return "netflix台片誤列中國電影";
+  }
+
+  const quotedTitles = extractQuotedEntertainmentTitles(title);
+  const eventSignals = extractEntertainmentEventSignals(title);
+  if (quotedTitles.length && eventSignals.length) {
+    return `${quotedTitles[0]}:${eventSignals.slice(0, 2).sort().join(":")}`;
   }
   return normalized.slice(0, 18);
 }
@@ -2858,6 +2952,16 @@ function dedupeTwEntertainmentResults(items, urlKey) {
     }
     if (eventKey && eventKey.length >= 8 && byEvent.has(eventKey)) {
       attachRelated(byEvent.get(eventKey), item);
+      continue;
+    }
+    const similarParent = results.find((candidate) => (
+      isLikelySameEntertainmentEvent(
+        candidate.title || candidate.relatedTitle,
+        item.title || item.relatedTitle,
+      )
+    ));
+    if (similarParent) {
+      attachRelated(similarParent, item);
       continue;
     }
     if (url) byUrl.add(url);
@@ -3531,7 +3635,12 @@ function filterRecentlySeenTwEntertainmentItems(items, seenKeys) {
     const url = String(item.articleUrl || item.postUrl || "").trim();
     const title = String(item.title || item.relatedTitle || "").trim();
     const titleKey = normalizeResultTitleKey(title);
-    if ((url && seenKeys.urls.has(url)) || (titleKey && seenKeys.titles.has(titleKey))) {
+    const eventKey = normalizeEventTitleKey(title);
+    if (
+      (url && seenKeys.urls.has(url))
+      || (titleKey && seenKeys.titles.has(titleKey))
+      || (eventKey && eventKey.length >= 8 && seenKeys.events.has(eventKey))
+    ) {
       excludedCount += 1;
       continue;
     }
