@@ -988,6 +988,54 @@ function assetsForSelectedMovie() {
   return movie ? mockData.assets.filter((asset) => asset.movieId === movie.id) : [];
 }
 
+function internationalDistributionAssetId(movieId) {
+  return `international-distribution-${movieId}`;
+}
+
+function ensureInternationalDistributionAsset(movieId) {
+  if (!movieId) return null;
+  const existing = mockData.assets.find((asset) => (
+    asset.movieId === movieId
+    && (asset.isFixedInternationalDistribution || asset.name === "國際發行素材庫")
+  ));
+  if (existing) {
+    if (!existing.isFixedInternationalDistribution) {
+      existing.isFixedInternationalDistribution = true;
+      writeStorage(storageKeys.assets, mockData.assets);
+    }
+    return existing;
+  }
+
+  const fixedAsset = {
+    id: internationalDistributionAssetId(movieId),
+    movieId,
+    name: "國際發行素材庫",
+    assetType: "國際發行素材庫",
+    suitablePlatforms: ["國際發行"],
+    spoilerLevel: "無",
+    reviewStatus: "待審核",
+    linkUrl: "",
+    color: "#315a9b",
+    isFixedInternationalDistribution: true,
+  };
+  mockData.assets.push(fixedAsset);
+  writeStorage(storageKeys.assets, mockData.assets);
+  return fixedAsset;
+}
+
+function resetInternationalDistributionAsset(asset) {
+  Object.assign(asset, {
+    name: "國際發行素材庫",
+    assetType: "國際發行素材庫",
+    suitablePlatforms: ["國際發行"],
+    spoilerLevel: "無",
+    reviewStatus: "待審核",
+    linkUrl: "",
+    color: "#315a9b",
+    isFixedInternationalDistribution: true,
+  });
+}
+
 const requiredAssetChecks = [
   { label: "主視覺", aliases: ["主視覺", "主视觉", "key visual", "kv"] },
   { label: "正式海報", aliases: ["正式海報", "海報", "poster"] },
@@ -1555,6 +1603,7 @@ function projectBoardsPage() {
 
 function assetsPage() {
   const selectedMovie = getSelectedAssetMovie();
+  if (selectedMovie) ensureInternationalDistributionAsset(selectedMovie.id);
   const visibleAssets = assetsForSelectedMovie();
   const completeness = selectedMovie ? assetCompletenessForMovie(selectedMovie.id) : null;
   return `
@@ -1590,7 +1639,7 @@ function assetsPage() {
             <div class="meta-row">
               <button class="secondary-button" type="button" data-action="open-asset-link" data-asset-id="${asset.id}">連結</button>
               <button class="secondary-button" type="button" data-action="edit-asset" data-asset-id="${asset.id}">編輯</button>
-              <button class="secondary-button" type="button" data-action="delete-asset" data-asset-id="${asset.id}">刪除</button>
+              <button class="secondary-button" type="button" data-action="delete-asset" data-asset-id="${asset.id}">${asset.isFixedInternationalDistribution ? "重設" : "刪除"}</button>
             </div>
           </div>
         </article>`).join("") || `<article class="card"><div class="card-body"><h3>這部電影目前沒有素材</h3><p class="muted">請新增專屬素材。</p></div></article>`}
@@ -1606,8 +1655,8 @@ function assetModal() {
       <section class="modal" role="dialog" aria-modal="true">
         <div class="modal-header"><div><h2>${asset ? "編輯素材" : "新增素材"}</h2><p>素材會儲存在目前選取電影的素材庫。</p></div><button class="icon-button modal-close" type="button" data-action="close-asset-modal">×</button></div>
         <form id="assetForm" class="modal-form">
-          <div class="field"><label>素材名稱</label><input class="input" name="name" required value="${escapeHtml(asset?.name || "")}" /></div>
-          <div class="field"><label>素材類型</label><select class="select" name="assetType" required style="width:100%">${["主視覺", "正式海報", "劇照", "預告", "幕後照", "演員照", "短影音", "媒體素材包", "限動"].map((item) => option(item, asset?.assetType || "")).join("")}</select></div>
+          <div class="field"><label>素材名稱</label><input class="input" name="name" required ${asset?.isFixedInternationalDistribution ? "readonly" : ""} value="${escapeHtml(asset?.name || "")}" /></div>
+          <div class="field"><label>素材類型</label><select class="select" name="assetType" required style="width:100%" ${asset?.isFixedInternationalDistribution ? "disabled" : ""}>${["主視覺", "正式海報", "劇照", "預告", "幕後照", "演員照", "短影音", "媒體素材包", "國際發行素材庫", "限動"].map((item) => option(item, asset?.assetType || "")).join("")}</select>${asset?.isFixedInternationalDistribution ? `<input type="hidden" name="assetType" value="國際發行素材庫" />` : ""}</div>
           <div class="field"><label>適合平台</label><textarea name="suitablePlatforms" required>${escapeHtml((asset?.suitablePlatforms || []).join(", "))}</textarea></div>
           <div class="field"><label>劇透等級</label><select class="select" name="spoilerLevel" required style="width:100%">${["無", "低", "中", "高"].map((item) => option(item, asset?.spoilerLevel || "低")).join("")}</select></div>
           <div class="field"><label>審核狀態</label><select class="select" name="reviewStatus" required style="width:100%">${["待審核", "內部審核", "片方審核", "已通過", "修改中"].map((item) => option(item, asset?.reviewStatus || "待審核")).join("")}</select></div>
@@ -3720,8 +3769,14 @@ document.addEventListener("click", async (event) => {
     render();
   }
   if (action === "delete-asset") {
-    if (!window.confirm("確定要刪除這筆素材嗎？")) return;
-    mockData.assets = mockData.assets.filter((asset) => asset.id !== actionElement.dataset.assetId);
+    const targetAsset = mockData.assets.find((asset) => asset.id === actionElement.dataset.assetId);
+    if (targetAsset?.isFixedInternationalDistribution) {
+      if (!window.confirm("這是固定卡片。確定要清除連結與編輯內容並恢復預設值嗎？")) return;
+      resetInternationalDistributionAsset(targetAsset);
+    } else {
+      if (!window.confirm("確定要刪除這筆素材嗎？")) return;
+      mockData.assets = mockData.assets.filter((asset) => asset.id !== actionElement.dataset.assetId);
+    }
     writeStorage(storageKeys.assets, mockData.assets);
     render();
   }
@@ -4314,6 +4369,10 @@ document.addEventListener("submit", async (event) => {
       linkUrl: formData.get("linkUrl") || "",
     };
     const editingAsset = mockData.assets.find((asset) => asset.id === editingAssetId);
+    if (editingAsset?.isFixedInternationalDistribution) {
+      assetData.name = "國際發行素材庫";
+      assetData.assetType = "國際發行素材庫";
+    }
     if (editingAsset) Object.assign(editingAsset, assetData);
     else mockData.assets.push({ id: `ast-${Date.now()}`, movieId: getSelectedAssetMovie()?.id || "", ...assetData, color: colors[mockData.assets.length % colors.length] });
     writeStorage(storageKeys.assets, mockData.assets);
