@@ -344,6 +344,42 @@ function writeLocalStorageOnly(key, value) {
   localStorage.setItem(key, JSON.stringify(value));
 }
 
+function questionContentKey(question) {
+  const content = String(question?.content || "")
+    .normalize("NFKC")
+    .replace(/\s+/g, "")
+    .replace(/[，。！？、；：「」『』（）《》〈〉【】[\],.!?;:'"()\-—_]/g, "")
+    .toLowerCase();
+  return `${String(question?.movieId || "通用").trim()}\u001f${content}`;
+}
+
+function dedupeQuestions(questions) {
+  const unique = new Map();
+  for (const question of questions || []) {
+    if (!question || typeof question !== "object") continue;
+    const key = questionContentKey(question);
+    if (!key.split("\u001f")[1]) continue;
+    const existing = unique.get(key);
+    if (!existing) {
+      unique.set(key, question);
+      continue;
+    }
+    const existingUses = Number(existing.uses || 0);
+    const nextUses = Number(question.uses || 0);
+    const preferNext = nextUses > existingUses
+      || (question.performance === "高" && existing.performance !== "高");
+    if (preferNext) unique.set(key, { ...existing, ...question });
+  }
+  return [...unique.values()];
+}
+
+function normalizeAndPersistQuestions() {
+  const normalized = dedupeQuestions(mockData.questions);
+  if (normalized.length === mockData.questions.length) return;
+  mockData.questions = normalized;
+  writeStorage(storageKeys.questions, mockData.questions);
+}
+
 function syncWorkflowStorage(key, value) {
   return syncWorkflowStorageRequest(key, value).catch(() => {});
 }
@@ -692,11 +728,12 @@ async function loadWorkflowDataFromServer() {
     mockData.assets = applyWorkflowCollection(storageKeys.assets, collections.assets, mockData.assets);
     mockData.schedules = applyWorkflowCollection(storageKeys.schedules, collections.schedules, mockData.schedules);
     mockData.activities = applyWorkflowCollection(storageKeys.activities, collections.activities, mockData.activities);
-    mockData.questions = applyWorkflowCollection(storageKeys.questions, collections.questions, mockData.questions);
+    mockData.questions = dedupeQuestions(applyWorkflowCollection(storageKeys.questions, collections.questions, mockData.questions));
     mockData.socialMetrics = applyWorkflowCollection(storageKeys.metrics, collections.socialMetrics, mockData.socialMetrics);
     savedPostAnalyses = applyWorkflowCollection(storageKeys.postAnalyses, collections.postAnalyses, savedPostAnalyses);
     normalizeAndPersistSchedules();
     normalizeAndPersistActivities();
+    normalizeAndPersistQuestions();
     normalizeAnalyticsWithMovieIds();
     render();
   } catch (error) {
@@ -1811,8 +1848,20 @@ function fallbackQuestionBatch(movie) {
   const platforms = ["IG 限動", "Threads", "Facebook", "Reels"];
   const types = ["開放問答", "投票", "二選一", "留言引導", "測驗"];
   const phases = ["前導期", "預告上線", "上映倒數", "上映中", "口碑擴散"];
+  const contents = [
+    `看完《${title}》這個線索後，你第一個想到的關鍵字是什麼？`,
+    `如果能先知道《${title}》的一個祕密，你會選角色、事件還是結局氛圍？`,
+    `只看這張畫面，你覺得《${title}》下一秒會發生什麼事？`,
+    `你會想揪哪一位朋友一起看《${title}》？`,
+    `如果你是《${title}》裡的角色，遇到這個情況會選擇前進還是離開？`,
+    `用一個表情符號形容你目前對《${title}》的期待。`,
+    `《${title}》最吸引你的是故事、角色、氣氛，還是演員陣容？`,
+    `看完《${title}》預告後，哪一幕最讓你想立刻進戲院？`,
+    `如果《${title}》只能用一句話推薦，你會怎麼說？`,
+    `你最想在《${title}》上映前看到哪一種幕後內容？`,
+  ];
   return Array.from({ length: 10 }, (_, index) => ({
-    content: `看完《${title}》這個線索後，你最想知道哪個角色的下一步？`,
+    content: contents[index],
     movieGenre,
     type: types[index % types.length],
     platform: platforms[index % platforms.length],
@@ -1846,9 +1895,16 @@ function appendQuestionBatch(questions, movie) {
     note: question.note || "AI 生成題目，可再編輯調整。",
     createdAt,
   }));
-  mockData.questions = [...mockData.questions, ...nextQuestions];
+  const existingKeys = new Set(mockData.questions.map(questionContentKey));
+  const uniqueNewQuestions = nextQuestions.filter((question) => {
+    const key = questionContentKey(question);
+    if (existingKeys.has(key)) return false;
+    existingKeys.add(key);
+    return true;
+  });
+  mockData.questions = [...mockData.questions, ...uniqueNewQuestions];
   writeStorage(storageKeys.questions, mockData.questions);
-  return nextQuestions;
+  return uniqueNewQuestions;
 }
 
 async function generateQuestionBatch() {
@@ -4467,6 +4523,14 @@ document.addEventListener("submit", async (event) => {
       note: formData.get("note") || "",
     };
     const editingQuestion = mockData.questions.find((question) => question.id === editingQuestionId);
+    const duplicateQuestion = mockData.questions.find((question) => (
+      question.id !== editingQuestionId
+      && questionContentKey(question) === questionContentKey(questionData)
+    ));
+    if (duplicateQuestion) {
+      window.alert("這個電影專案中已經有相同的題目，未重複新增。");
+      return;
+    }
     if (editingQuestion) Object.assign(editingQuestion, questionData);
     else mockData.questions.push({ id: `q-${Date.now()}`, ...questionData, uses: 0, lastUsed: "", performance: "未測試", createdAt: formatWeekDate(new Date()) });
     writeStorage(storageKeys.questions, mockData.questions);
@@ -4544,7 +4608,8 @@ mockData.movies = readStorage(storageKeys.movies, mockData.movies);
 mockData.assets = readStorage(storageKeys.assets, mockData.assets);
 mockData.schedules = readStorage(storageKeys.schedules, mockData.schedules);
 mockData.activities = readStorage(storageKeys.activities, mockData.activities);
-mockData.questions = readStorage(storageKeys.questions, mockData.questions);
+mockData.questions = dedupeQuestions(readStorage(storageKeys.questions, mockData.questions));
+writeLocalStorageOnly(storageKeys.questions, mockData.questions);
 mockData.socialMetrics = readStorage(storageKeys.metrics, mockData.socialMetrics);
 savedPostAnalyses = readStorage(storageKeys.postAnalyses, savedPostAnalyses);
 mockData.aiStyleExamples = readStorage(storageKeys.styleExamples, mockData.aiStyleExamples);

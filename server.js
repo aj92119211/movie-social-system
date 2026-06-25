@@ -1076,8 +1076,38 @@ function dedupeSchedules(schedules) {
   return [...byId.values()];
 }
 
+function questionContentKey(question) {
+  const content = String(question?.content || "")
+    .normalize("NFKC")
+    .replace(/\s+/g, "")
+    .replace(/[，。！？、；：「」『』（）《》〈〉【】[\],.!?;:'"()\-—_]/g, "")
+    .toLowerCase();
+  return `${String(question?.movieId || "通用").trim()}\u001f${content}`;
+}
+
+function dedupeQuestions(questions) {
+  const unique = new Map();
+  for (const question of questions || []) {
+    if (!question || typeof question !== "object") continue;
+    const key = questionContentKey(question);
+    if (!key.split("\u001f")[1]) continue;
+    const existing = unique.get(key);
+    if (!existing) {
+      unique.set(key, question);
+      continue;
+    }
+    const existingUses = Number(existing.uses || 0);
+    const nextUses = Number(question.uses || 0);
+    const preferNext = nextUses > existingUses
+      || (question.performance === "高" && existing.performance !== "高");
+    if (preferNext) unique.set(key, { ...existing, ...question });
+  }
+  return [...unique.values()];
+}
+
 function normalizeWorkflowCollectionData(kind, data) {
   if (kind === "schedules") return dedupeSchedules(data);
+  if (kind === "questions") return dedupeQuestions(data);
   return data;
 }
 
@@ -1957,7 +1987,7 @@ async function generateQuestionBatch(request, response) {
       body: JSON.stringify({
         model: envValue("OPENAI_MODEL") || "gpt-4.1-mini",
         instructions:
-          "你是影視社群互動題企劃。請使用繁體中文，根據電影資料產生 10 題新的互動問答題。題目要適合小編直接使用、不劇透、角度多元，並提供電影類型、題型、平台、語氣、宣傳階段、CTA、建議素材與備註。只回傳符合 schema 的 JSON。",
+          "你是影視社群互動題企劃。請使用繁體中文，根據電影資料產生 10 題新的互動問答題。10 題的題目內容必須彼此不同，不可只更換平台、題型或語氣後重複同一句題目。題目要適合小編直接使用、不劇透、角度多元，並提供電影類型、題型、平台、語氣、宣傳階段、CTA、建議素材與備註。只回傳符合 schema 的 JSON。",
         input: prompt,
         text: {
           format: {
