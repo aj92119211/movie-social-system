@@ -1,0 +1,66 @@
+name: Film Daily Report Structured Manual
+
+on:
+  workflow_dispatch:
+    inputs:
+      date:
+        description: Report date in YYYY-MM-DD
+        required: true
+        default: "2026-07-01"
+        type: string
+      out_dir:
+        description: Output directory
+        required: true
+        default: "outputs"
+        type: string
+      structured:
+        description: Run with --structured
+        required: true
+        default: true
+        type: boolean
+
+jobs:
+  generate-structured-report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    env:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      OPENAI_MODEL: ${{ secrets.OPENAI_MODEL }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Generate structured report
+        shell: bash
+        run: |
+          cmd=(node scripts/generate-film-daily-report-cloud.mjs --date "${{ inputs.date }}" --out-dir "${{ inputs.out_dir }}")
+          if [[ "${{ inputs.structured }}" == "true" ]]; then
+            cmd+=(--structured)
+          fi
+          printf 'Running:'
+          printf ' %q' "${cmd[@]}"
+          printf '\n'
+          "${cmd[@]}"
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: film-daily-report-structured-${{ inputs.date }}-${{ github.run_id }}
+          if-no-files-found: warn
+          path: |
+            ${{ inputs.out_dir }}/debug_structured_report_*.json
+            ${{ inputs.out_dir }}/film_daily_report_*_structured.txt
+            ${{ inputs.out_dir }}/film_daily_report_*_structured.docx
+            ${{ inputs.out_dir }}/candidate_review_*.json
