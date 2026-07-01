@@ -39,9 +39,11 @@ jobs:
           cache: npm
 
       - name: Install dependencies
+        working-directory: automations/film-daily-report
         run: npm install
 
       - name: Generate structured report
+        working-directory: automations/film-daily-report
         shell: bash
         run: |
           cmd=(node scripts/generate-film-daily-report-cloud.mjs --date "${{ inputs.date }}" --out-dir "${{ inputs.out_dir }}")
@@ -60,7 +62,7 @@ jobs:
           name: film-daily-report-structured-${{ inputs.date }}-${{ github.run_id }}
           if-no-files-found: warn
           path: |
-            ${{ inputs.out_dir }}/debug_structured_report_*.json
-            ${{ inputs.out_dir }}/film_daily_report_*_structured.txt
-            ${{ inputs.out_dir }}/film_daily_report_*_structured.docx
-            ${{ inputs.out_dir }}/candidate_review_*.json
+            automations/film-daily-report/${{ inputs.out_dir }}/debug_structured_report_*.json
+            automations/film-daily-report/${{ inputs.out_dir }}/film_daily_report_*_structured.txt
+            automations/film-daily-report/${{ inputs.out_dir }}/film_daily_report_*_structured.docx
+            automations/film-daily-report/${{ inputs.out_dir }}/candidate_review_*.json
