@@ -1,15 +1,17 @@
 {
-  "name": "film-daily-report-cloud",
+  "name": "film-daily-report-generator",
   "version": "1.0.0",
   "private": true,
   "type": "module",
   "scripts": {
+    "daily": "node scripts/generate-film-daily-report.mjs",
+    "daily:dry-run": "node scripts/generate-film-daily-report.mjs --dry-run",
+    "daily:desktop": "powershell -ExecutionPolicy Bypass -File scripts/run-film-daily-report.ps1",
     "daily:cloud": "node scripts/run-film-report-cloud.mjs",
     "daily:cloud:generate": "node scripts/generate-film-daily-report-cloud.mjs",
     "daily:cloud:email": "node scripts/send-film-report-email.mjs"
   },
   "dependencies": {
-    "adm-zip": "^0.5.16",
-    "nodemailer": "^6.9.15"
+    "adm-zip": "^0.5.16"
   }
 }
