@@ -37,13 +37,12 @@ jobs:
         with:
           node-version: 20
           cache: npm
+          cache-dependency-path: package-lock.json
 
       - name: Install dependencies
-        working-directory: automations/film-daily-report
         run: npm install
 
       - name: Generate structured report
-        working-directory: automations/film-daily-report
         shell: bash
         run: |
           cmd=(node scripts/generate-film-daily-report-cloud.mjs --date "${{ inputs.date }}" --out-dir "${{ inputs.out_dir }}")
@@ -55,6 +54,12 @@ jobs:
           printf '\n'
           "${cmd[@]}"
 
+      - name: Inspect generated outputs
+        shell: bash
+        run: |
+          pwd
+          find outputs -maxdepth 2 -type f | sort
+
       - name: Upload artifacts
         if: always()
         uses: actions/upload-artifact@v4
@@ -62,7 +67,6 @@ jobs:
           name: film-daily-report-structured-${{ inputs.date }}-${{ github.run_id }}
           if-no-files-found: warn
           path: |
-            automations/film-daily-report/${{ inputs.out_dir }}/debug_structured_report_*.json
-            automations/film-daily-report/${{ inputs.out_dir }}/film_daily_report_*_structured.txt
-            automations/film-daily-report/${{ inputs.out_dir }}/film_daily_report_*_structured.docx
-            automations/film-daily-report/${{ inputs.out_dir }}/candidate_review_*.json
+            ${{ inputs.out_dir }}/film_daily_report_*.md
+            ${{ inputs.out_dir }}/film_daily_report_*.docx
+            ${{ inputs.out_dir }}/*.json
