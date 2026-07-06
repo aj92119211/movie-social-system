@@ -3,7 +3,8 @@
     "dev": "vite --host 0.0.0.0",
     "build": "vite build --config vite.config.mjs",
     "preview": "vite preview",
-    "start": "node server.js"
+    "start": "node server.js",
+    "daily:cloud": "npm --prefix automations/film-daily-report install && node automations/film-daily-report/scripts/run-film-report-cloud.mjs"
   },
   "dependencies": {
     "openai": "^6.41.0",
