@@ -2303,9 +2303,9 @@ const twEntertainmentTrackedPriorityDomains = [
 ];
 
 const twEntertainmentSearchDepthConfig = {
-  quick: { label: "快速搜尋", queryLimit: 4, generalLimit: 14, sourceLimit: 2, sourceTaskLimit: 16, resultLimit: 25, timeoutMs: 3500, concurrency: 10 },
-  standard: { label: "標準搜尋", queryLimit: 8, generalLimit: 18, sourceLimit: 2, sourceTaskLimit: 36, resultLimit: 50, timeoutMs: 3500, concurrency: 12 },
-  deep: { label: "深度搜尋", queryLimit: 15, generalLimit: 22, sourceLimit: 3, sourceTaskLimit: 60, resultLimit: 90, timeoutMs: 3500, concurrency: 14 },
+  quick: { label: "快速搜尋", queryLimit: 4, generalLimit: 14, sourceLimit: 2, sourceTaskLimit: 16, resultLimit: 25, timeoutMs: 5000, concurrency: 10 },
+  standard: { label: "標準搜尋", queryLimit: 8, generalLimit: 18, sourceLimit: 2, sourceTaskLimit: 36, resultLimit: 50, timeoutMs: 5000, concurrency: 12 },
+  deep: { label: "深度搜尋", queryLimit: 15, generalLimit: 22, sourceLimit: 3, sourceTaskLimit: 60, resultLimit: 90, timeoutMs: 5000, concurrency: 14 },
 };
 
 const twEntertainmentPrioritySourceDomains = [
@@ -3012,7 +3012,7 @@ async function fetchWithTimeout(resource, options = {}, timeoutMs = 8000) {
   }
 }
 
-async function fetchGoogleNewsRss(query, limit = 5, timeoutMs = 5000) {
+async function fetchGoogleNewsRssOnce(query, limit, timeoutMs) {
   const rssUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(query)}&hl=zh-TW&gl=TW&ceid=TW:zh-Hant`;
   const response = await fetchWithTimeout(rssUrl, {
     headers: {
@@ -3020,7 +3020,7 @@ async function fetchGoogleNewsRss(query, limit = 5, timeoutMs = 5000) {
       Accept: "application/rss+xml,text/xml,*/*",
     },
   }, timeoutMs);
-  if (!response.ok) return [];
+  if (!response.ok) throw new Error(`Google News RSS 回應 ${response.status} ${response.statusText}`);
   const xml = await response.text();
   const itemBlocks = [...xml.matchAll(/<item>([\s\S]*?)<\/item>/g)].map((match) => match[1]);
   return itemBlocks.slice(0, limit).map((item) => {
@@ -3030,6 +3030,22 @@ async function fetchGoogleNewsRss(query, limit = 5, timeoutMs = 5000) {
     const sourceName = decodeBasicHtml(item.match(/<source[^>]*>([\s\S]*?)<\/source>/)?.[1]);
     return { title, link, publishedDate: normalizeNewsDate(pubDate), sourceName };
   }).filter((item) => item.title && item.link);
+}
+
+// Google News RSS intermittently rate-limits or times out requests coming
+// from Render's shared/datacenter IPs, especially under the search page's
+// concurrent query bursts — that's what made result counts swing wildly.
+// One quick retry recovers most of those transient failures without
+// meaningfully slowing down the common case where the first attempt just
+// works. The retry uses a shorter timeout than the first attempt since its
+// job is a fast second chance, not another full wait.
+async function fetchGoogleNewsRss(query, limit = 5, timeoutMs = 5000) {
+  try {
+    return await fetchGoogleNewsRssOnce(query, limit, timeoutMs);
+  } catch (error) {
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    return await fetchGoogleNewsRssOnce(query, limit, Math.min(timeoutMs, 2500));
+  }
 }
 
 function isUsableGoogleWebUrl(value) {
@@ -3309,7 +3325,7 @@ async function fetchTwEntertainmentNewsBatch(keyword, range, sources, sourceLimi
     const sourceQuery = `${searchKeyword} site:${source.domain} ${rangeQuery(range)}`.trim();
     try {
       console.log("[TW_NEWS_QUERY_START]", sourceQuery);
-      const rows = await fetchGoogleNewsRss(sourceQuery, sourceLimit, 3500);
+      const rows = await fetchGoogleNewsRss(sourceQuery, sourceLimit, 5000);
       console.log("[TW_NEWS_QUERY_DONE]", { query: sourceQuery, count: rows.length });
       return rows.filter((row) => isNewsDateWithinRange(row.publishedDate, range)).filter((row) => shouldKeepTwEntertainmentNewsItem(row, source, keyword)).map((row) => normalizeTwNewsItem(row, source, keyword));
     } catch (error) {
