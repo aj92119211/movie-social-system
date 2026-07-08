@@ -113,6 +113,25 @@ async function fetchText(url, timeoutMs = 15000) {
   }
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function fetchTextWithRetry(url, { timeoutMs = 15000, retries = 2, retryDelayMs = 1500 } = {}) {
+  let lastError;
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    try {
+      return await fetchText(url, timeoutMs);
+    } catch (error) {
+      lastError = error;
+      if (attempt < retries) {
+        await sleep(retryDelayMs * (attempt + 1));
+      }
+    }
+  }
+  throw lastError;
+}
+
 function googleNewsRssUrl(query) {
   const params = new URLSearchParams({
     q: `${query} when:7d`,
@@ -142,6 +161,26 @@ function isRelevant(item, relevanceKeywords = []) {
   return relevanceKeywords.some((kw) => haystack.includes(String(kw).toLowerCase()));
 }
 
+function parsePublishedDate(text) {
+  if (!text) return null;
+  const date = new Date(text);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+// Google News RSS's own "when:Nd" filter is unreliable on long, grouped
+// site: OR queries and can silently let years-old articles through, so we
+// re-check the parsed pubDate ourselves instead of trusting it blindly.
+// Undated items are kept (many Taiwan sources omit pubDate) rather than
+// dropped, since we can't tell whether they're stale or just unlabeled.
+function isWithinAgeWindow(item, maxAgeDays) {
+  const date = parsePublishedDate(item.published);
+  if (!date) return true;
+  const ageMs = Date.now() - date.getTime();
+  const maxAgeMs = maxAgeDays * 24 * 60 * 60 * 1000;
+  const futureToleranceMs = 24 * 60 * 60 * 1000;
+  return ageMs <= maxAgeMs && ageMs >= -futureToleranceMs;
+}
+
 function dedupe(items) {
   const seen = new Set();
   const output = [];
@@ -157,6 +196,7 @@ function dedupe(items) {
 export async function collectCandidates(config, maxItems) {
   const items = [];
   const errors = [];
+  const maxAgeDays = config.maxAgeDays || 7;
 
   for (const source of config.sources.filter((s) => s.feed)) {
     try {
@@ -174,20 +214,33 @@ export async function collectCandidates(config, maxItems) {
     searchQueries.push(`(${groupedSites}) ${keyword}`);
   }
 
+  // Sequential with a short gap between requests: firing ~37 rapid Google
+  // News RSS queries back-to-back from the same GitHub Actions IP gets
+  // flagged as automated traffic and rate-limited mid-run, which is why
+  // candidate counts used to swing wildly (a handful vs. 50+) from day to
+  // day. Retrying transient failures keeps a bad request from just being
+  // silently dropped.
   for (const query of searchQueries.slice(0, 40)) {
     try {
-      const xml = await fetchText(googleNewsRssUrl(query));
+      const xml = await fetchTextWithRetry(googleNewsRssUrl(query));
       items.push(...extractRssItems(xml, { name: "Google News RSS", region: "跨區", url: "https://news.google.com/" }));
     } catch (error) {
       errors.push(`Google News RSS 查詢失敗「${query}」：${error.message}`);
     }
+    await sleep(400);
+  }
+
+  const withinWindow = dedupe(items)
+    .filter((item) => !shouldExclude(item, config.excludeKeywords))
+    .filter((item) => isRelevant(item, config.relevanceKeywords));
+  const freshItems = withinWindow.filter((item) => isWithinAgeWindow(item, maxAgeDays));
+  const staleDropped = withinWindow.length - freshItems.length;
+  if (staleDropped > 0) {
+    errors.push(`已過濾 ${staleDropped} 則超過 ${maxAgeDays} 天的候選新聞（依來源標示的發布日期判斷）。`);
   }
 
   return {
-    items: dedupe(items)
-      .filter((item) => !shouldExclude(item, config.excludeKeywords))
-      .filter((item) => isRelevant(item, config.relevanceKeywords))
-      .slice(0, maxItems),
+    items: freshItems.slice(0, maxItems),
     errors
   };
 }
