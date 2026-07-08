@@ -3774,6 +3774,7 @@ async function handleTwEntertainmentNewsSearch(request, response, url) {
     .map((item) => item.trim())
     .filter(Boolean);
   const includeAi = String(url.searchParams.get("includeAi") || "true") !== "false";
+  const excludeRecentlySeen = String(url.searchParams.get("excludeRecentlySeen") || "true") !== "false";
   const trackedKeywords = parseTrackedKeywords(url.searchParams.get("trackedKeywords") || "");
 
   if (!keyword) {
@@ -3782,7 +3783,7 @@ async function handleTwEntertainmentNewsSearch(request, response, url) {
   }
 
   try {
-    console.log("[TW_ENTERTAINMENT_SEARCH_START]", { keyword, range, sort, depth, onlySocial, autoExpandRange, socialPlatforms, trackedKeywordCount: trackedKeywords.length });
+    console.log("[TW_ENTERTAINMENT_SEARCH_START]", { keyword, range, sort, depth, onlySocial, autoExpandRange, excludeRecentlySeen, socialPlatforms, trackedKeywordCount: trackedKeywords.length });
     if (onlySocial) {
       const rawSocialResults = includeSocial ? filterTwEntertainmentSocialPlatforms(await fetchTwEntertainmentSocialResults(keyword, range), socialPlatforms) : [];
       const socialFilter = stripLowRelatedResults(rawSocialResults);
@@ -3900,10 +3901,16 @@ async function handleTwEntertainmentNewsSearch(request, response, url) {
         settledFailures = [{ label: "social", error: socialSettled[0].reason?.message || "unknown error" }];
       }
     }
-    const seenKeys = await fetchRecentTwEntertainmentSeenKeys(3);
-    const recentNewsFilter = filterRecentlySeenTwEntertainmentItems(newsResults, seenKeys);
-    const recentRelatedNewsFilter = filterRecentlySeenTwEntertainmentItems(relatedNewsResults, seenKeys);
-    const recentSocialFilter = filterRecentlySeenTwEntertainmentItems(socialResults, seenKeys);
+    // Opt-out (excludeRecentlySeen=false) exists because this filter has no
+    // notion of "session" — re-running the same search a few hours later,
+    // or searching an overlapping preset the next day, silently hides
+    // anything already saved from a previous search, which reads as "the
+    // tool stopped finding things" rather than "working as designed".
+    const emptySeenFilter = { filtered: null, excludedCount: 0 };
+    const seenKeys = excludeRecentlySeen ? await fetchRecentTwEntertainmentSeenKeys(3) : null;
+    const recentNewsFilter = seenKeys ? filterRecentlySeenTwEntertainmentItems(newsResults, seenKeys) : { ...emptySeenFilter, filtered: newsResults };
+    const recentRelatedNewsFilter = seenKeys ? filterRecentlySeenTwEntertainmentItems(relatedNewsResults, seenKeys) : { ...emptySeenFilter, filtered: relatedNewsResults };
+    const recentSocialFilter = seenKeys ? filterRecentlySeenTwEntertainmentItems(socialResults, seenKeys) : { ...emptySeenFilter, filtered: socialResults };
     newsResults = recentNewsFilter.filtered;
     relatedNewsResults = recentRelatedNewsFilter.filtered;
     socialResults = recentSocialFilter.filtered;
@@ -3935,6 +3942,8 @@ async function handleTwEntertainmentNewsSearch(request, response, url) {
         partialFailure: settledFailures.length > 0 || (rawNewsSearchMeta.failedQueryCount || 0) > 0,
         fallbackMessages,
         autoExpandRange,
+        excludeRecentlySeen,
+        recentlySeenExcludedCount: recentNewsFilter.excludedCount + recentRelatedNewsFilter.excludedCount + recentSocialFilter.excludedCount,
         categoryCounts,
         focusPoints: fallbackTwEntertainmentAiNotes(keyword, newsResults, socialResults)[0].items,
         savedCount,
