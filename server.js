@@ -2332,13 +2332,19 @@ const twEntertainmentPrioritySourceDomains = [
 const twEntertainmentExpandedQueryMap = [
   {
     test: /今日影劇/,
+    // "台灣 影劇 今日" / "台劇 最新消息" / "國片 最新消息" used to be here,
+    // but Google News matches multi-word queries loosely (no phrase
+    // boundary), and the generic "今日" / "最新消息" suffix let unrelated
+    // urgent-news headlines (typhoons, politics, semiconductors) leak in
+    // just for sharing a character or two. Verified replacements against
+    // live results before swapping them in.
     queries: [
-      "台灣 影劇 今日",
+      "台灣 影劇 話題",
       "台灣 娛樂 新聞",
       "台灣 電影 新聞",
       "台灣 戲劇 新聞",
-      "台劇 最新消息",
-      "國片 最新消息",
+      "台劇 話題",
+      "國片 新片",
       "OTT 台劇 最新",
       "影視產業 台灣",
       "電影 定檔 台灣",
