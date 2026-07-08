@@ -402,125 +402,80 @@ export async function callOpenAIStructured({ config, dateInfo, items, errors }) 
   return JSON.parse(cleanJsonText(text));
 }
 
-export function buildReplacementMap(data) {
+// Fields are matched by name against literal {{token}} placeholders baked
+// into templates/film_daily_report_template.docx, not by counting <w:t>
+// nodes — see applyTemplate(). Fixed labels ("來源：", "▶ 值得注意　", …)
+// and always-blank slots live directly in the template and don't need
+// entries here.
+export function buildReplacements(data) {
   const replacements = {};
-  const set = (idx, value = "") => { replacements[String(idx)] = value; };
+  const set = (name, value = "") => { replacements[`{{${name}}}`] = value; };
 
-  set(1, data.reportTitle);
-  set(2, data.dateLine);
+  set("report_title", data.reportTitle);
+  set("date_line", data.dateLine);
 
-  set(7, data.highlights[0].title);
-  set(8, data.highlights[0].body);
-  set(9, "——");
-  set(10, data.highlights[0].action);
-  set(12, data.highlights[1].title);
-  set(13, data.highlights[1].body);
-  set(14, "");
-  set(15, "");
-  set(17, data.highlights[2].title);
-  set(18, data.highlights[2].body);
-  set(19, "");
-  set(20, "");
-  set(21, " ");
-  set(22, data.highlights[2].action);
+  set("highlight_1_title", data.highlights[0].title);
+  set("highlight_1_body", data.highlights[0].body);
+  set("highlight_1_action", data.highlights[0].action);
+  set("highlight_2_title", data.highlights[1].title);
+  set("highlight_2_body", data.highlights[1].body);
+  set("highlight_3_title", data.highlights[2].title);
+  set("highlight_3_body", data.highlights[2].body);
+  set("highlight_3_action", data.highlights[2].action);
 
-  const cardSlots = [
-    [data.taiwanFocus[0], { country: 28, label: 30, title: 31, source: 33, date: 36, summary: 38, why: 40, action: 42 }],
-    [data.taiwanFocus[1], { country: 43, label: 45, title: 46, source: 48, date: 51, summary: 53, why: 57, action: 59 }],
-    [data.taiwanFocus[2], { country: 60, label: 62, title: 63, source: 65, date: 68, summary: 70, why: 72, action: 74 }],
-    [data.internationalFocus[0], { country: 75, label: 77, title: 78, source: 80, date: 83, summary: 85, why: 89, action: 93, clear: [86, 87, 90, 91, 94, 95] }],
-    [data.internationalFocus[1], { country: 96, label: 98, title: 99, source: 101, date: 104, summary: 106, why: 108, action: 112, clear: [109, 110, 113, 114, 115, 116] }],
-    [data.internationalFocus[2], { country: 117, label: 119, title: 120, source: 124, date: 127, summary: 129, why: 133, action: 135, clear: [121, 122, 130, 131] }],
-    [data.seriesFocus[0], { country: 138, label: 140, title: 141, source: 143, date: 146, summary: 148, why: 150, action: 152 }],
-    [data.seriesFocus[1], { country: 153, label: 155, title: 156, source: 160, date: 163, summary: 165, why: 169, action: 171, clear: [157, 158, 166, 167] }],
-    [data.seriesFocus[2], { country: 172, label: 174, title: 175, source: 177, date: 180, summary: 182, why: 186, action: 188, clear: [183, 184] }],
-    [data.ottFilm, { country: 191, label: 193, title: 195, source: 198, date: 201, summary: 203, why: 205, action: 207, clear: [194, 196] }],
-    [data.ottSeries[0], { country: 210, label: 212, title: 213, source: 215, date: 218, summary: 220, why: 224, action: 226, clear: [221, 222] }],
-    [data.ottSeries[1], { country: 227, label: 229, title: 231, source: 238, date: 241, summary: 243, why: 249, action: 251, clear: [232, 233, 234, 235, 236, 244, 245, 246, 247] }],
-    [data.ottSeries[2], { country: 252, label: 254, title: 255, source: 257, date: 260, summary: 262, why: 264, action: 266 }]
+  const cardGroups = [
+    ["taiwan", data.taiwanFocus],
+    ["intl", data.internationalFocus],
+    ["series", data.seriesFocus],
+    ["ott_series", data.ottSeries]
   ];
-
-  for (const [card, slots] of cardSlots) {
-    set(slots.country, card.country);
-    set(slots.label, card.label);
-    set(slots.title, card.title);
-    set(slots.source, card.source);
-    set(slots.date, card.date);
-    set(slots.summary, card.summary);
-    set(slots.why, card.why);
-    set(slots.action, card.action);
-    for (const idx of slots.clear || []) set(idx, "");
+  for (const [prefix, cards] of cardGroups) {
+    cards.forEach((card, idx) => {
+      const p = `${prefix}_${idx + 1}`;
+      set(`${p}_country`, card.country);
+      set(`${p}_label`, card.label);
+      set(`${p}_title`, card.title);
+      set(`${p}_source`, card.source);
+      set(`${p}_date`, card.date);
+      set(`${p}_summary`, card.summary);
+      set(`${p}_why`, card.why);
+      set(`${p}_action`, card.action);
+    });
   }
 
-  set(270, `⚠ ${data.releaseBox.headline}`);
-  set(271, "");
-  set(272, "");
-  set(273, data.releaseBox.body);
+  set("ott_film_country", data.ottFilm.country);
+  set("ott_film_label", data.ottFilm.label);
+  set("ott_film_title", data.ottFilm.title);
+  set("ott_film_source", data.ottFilm.source);
+  set("ott_film_date", data.ottFilm.date);
+  set("ott_film_summary", data.ottFilm.summary);
+  set("ott_film_why", data.ottFilm.why);
+  set("ott_film_action", data.ottFilm.action);
 
-  set(277, data.featured.title);
-  set(278, data.featured.meta);
-  set(280, data.featured.reason);
-  set(282, "");
-  set(283, "");
-  set(284, data.featured.watch);
-  set(285, " ");
-  set(286, " ");
+  set("release_headline", `⚠ ${data.releaseBox.headline}`);
+  set("release_body", data.releaseBox.body);
 
-  set(292, `◆ ${data.watchSections.themes[0].headline}`);
-  set(293, data.watchSections.themes[0].body);
-  set(294, `◆ ${data.watchSections.themes[1].headline}`);
-  set(295, data.watchSections.themes[1].body);
-  set(296, "");
-  set(297, "");
-  set(298, "");
-  set(299, "");
-  set(300, `◆ ${data.watchSections.themes[2].headline}`);
-  set(301, data.watchSections.themes[2].body);
-  set(302, "");
-  set(303, "");
-  set(306, `◆ ${data.watchSections.market[0].headline}`);
-  set(307, data.watchSections.market[0].body);
-  set(308, "");
-  set(309, "");
-  set(310, `◆ ${data.watchSections.market[1].headline}`);
-  set(311, data.watchSections.market[1].body);
-  set(312, "");
-  set(313, "");
-  set(314, `◆ ${data.watchSections.market[2].headline}`);
-  set(315, data.watchSections.market[2].body);
-  set(316, "");
-  set(318, `◆ ${data.watchSections.promotion[0].headline}`);
-  set(319, data.watchSections.promotion[0].body);
-  set(320, "");
-  set(321, "");
-  set(324, `◆ ${data.watchSections.promotion[1].headline}`);
-  set(325, data.watchSections.promotion[1].body);
-  set(326, "");
-  set(327, "");
-  set(330, `◆ ${data.watchSections.promotion[2].headline}`);
-  set(331, data.watchSections.promotion[2].body);
-  set(332, "");
-  set(333, "");
+  set("featured_title", data.featured.title);
+  set("featured_meta", data.featured.meta);
+  set("featured_reason", data.featured.reason);
+  set("featured_watch", data.featured.watch);
 
-  set(338, "機構　");
-  set(339, data.watchSections.observables.institutions);
-  set(340, "");
-  set(341, "");
-  set(342, "");
-  set(343, "");
-  set(344, "");
-  set(345, "");
-  set(346, "題材　");
-  set(347, data.watchSections.observables.genres);
-  set(348, "");
-  set(349, "決策指標　");
-  set(350, data.watchSections.observables.metrics);
-  set(351, "優先動作　");
-  set(352, data.watchSections.observables.actions);
-  set(353, "");
-  set(354, " ");
-  set(355, " ");
-  set(356, " ");
+  const bulletGroups = [
+    ["theme", data.watchSections.themes],
+    ["market", data.watchSections.market],
+    ["promotion", data.watchSections.promotion]
+  ];
+  for (const [prefix, items] of bulletGroups) {
+    items.forEach((item, idx) => {
+      set(`${prefix}_${idx + 1}_headline`, `◆ ${item.headline}`);
+      set(`${prefix}_${idx + 1}_body`, item.body);
+    });
+  }
+
+  set("observables_institutions", data.watchSections.observables.institutions);
+  set("observables_genres", data.watchSections.observables.genres);
+  set("observables_metrics", data.watchSections.observables.metrics);
+  set("observables_actions", data.watchSections.observables.actions);
 
   return replacements;
 }
@@ -552,17 +507,25 @@ export async function applyTemplate({ templatePath = TEMPLATE_PATH, replacements
   if (!documentEntry) throw new Error("模板缺少 word/document.xml。");
   let documentXml = zip.readAsText(documentEntry, "utf8");
 
-  let counter = 0;
-  documentXml = documentXml.replace(/<w:t\b[^>]*>([\s\S]*?)<\/w:t>/g, (match, inner) => {
-    counter += 1;
-    if (!(String(counter) in replacements)) return match;
-    const value = String(replacements[String(counter)] ?? "");
+  // Checked up front, before any replacement happens: if the template is
+  // ever reopened and resaved in Word, a {{token}} can get split across
+  // two <w:t> runs (formatting/spell-check boundaries) or dropped
+  // entirely. Either way it stops appearing as one contiguous substring in
+  // the raw XML, so this catches both failure modes as a hard error
+  // instead of silently shipping a docx with missing/misplaced content.
+  const missingTokens = Object.keys(replacements).filter((token) => !documentXml.includes(token));
+  if (missingTokens.length) {
+    throw new Error(`模板中找不到以下佔位符，模板可能已被重新編輯過而拆散或遺失了文字節點：${missingTokens.join(", ")}`);
+  }
+
+  for (const [token, rawValue] of Object.entries(replacements)) {
+    const value = String(rawValue ?? "");
     const escaped = value
       .replace(/&/g, "&amp;")
       .replace(/</g, "&lt;")
       .replace(/>/g, "&gt;");
-    return match.replace(inner, escaped);
-  });
+    documentXml = documentXml.split(token).join(escaped);
+  }
   zip.updateFile("word/document.xml", Buffer.from(documentXml, "utf8"));
 
   for (const entryName of ["word/styles.xml", "word/document.xml", "word/fontTable.xml", "word/theme/theme1.xml"]) {
@@ -683,32 +646,9 @@ export async function generateCloudReport({ dateArg, outDirArg, configPathArg, m
   const fallbackOut = path.join(ROOT, config.fallbackOutputDirectory || "outputs");
   const outDir = await ensureOutputDir(primaryOut, fallbackOut);
   const markdown = renderMarkdown(data, dateInfo);
-  const replacements = buildReplacementMap(data);
+  const replacements = buildReplacements(data);
   const files = await writeReportFiles({ markdown, replacements, outDir, dateInfo });
   return { config, dateInfo, outDir, markdown, replacements, errors, items, data, ...files };
-}
-
-export async function sendViaResend({ to, from, subject, html, text, attachments = [] }) {
-  const apiKey = process.env.RESEND_API_KEY;
-  if (!apiKey) throw new Error("找不到 RESEND_API_KEY。");
-  const res = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      from,
-      to: Array.isArray(to) ? to : [to],
-      subject,
-      html,
-      text,
-      attachments
-    })
-  });
-  const json = await res.json();
-  if (!res.ok) throw new Error(`Resend API 失敗：${res.status} ${JSON.stringify(json)}`);
-  return json;
 }
 
 export async function sendViaGmail({ to, from, subject, html, text, attachments = [] }) {

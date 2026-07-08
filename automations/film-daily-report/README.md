@@ -5,6 +5,7 @@
 固定規則：
 
 - 使用 `templates/film_daily_report_template.docx` 當唯一版型母版
+- **切勿用 Microsoft Word 開啟並儲存這份模板。** 內容欄位是靠 `{{report_title}}`、`{{taiwan_1_title}}` 這類具名佔位符做文字替換（見 `scripts/film-report-cloud-lib.mjs` 的 `buildReplacements` / `applyTemplate`），Word 重新存檔常會把同一個佔位符拆進兩個文字節點，導致替換失敗。若真的需要調整版面，請直接編輯 `word/document.xml`（模板本質是一個 zip），或找人重新產生模板後比照現有佔位符命名。
 - 全文字體固定 `微軟正黑體`
 - 內容必須帶入台灣影視產業資訊，不可只有國際新聞
 - 每天台灣時間 11:00 由 GitHub Actions 執行
