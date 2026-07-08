@@ -2445,6 +2445,16 @@ const twEntertainmentGeneralNoiseSignals = [
   "模範女警", "警察節", "水蜜桃", "賄選", "地檢署", "好茶宣導", "城市科大", "畢典", "修車職人", "薪資", "天氣預報", "鋒面", "全台轉雨", "暴雨", "梅雨", "端午", "讀者投書", "醫美", "檢法醫界", "便利商店攜手環境部", "乘涼站", "攝影獎", "科技", "電力", "吸金", "檳榔攤", "酒駕", "異世界合成圖", "資安", "微軟", "零信任", "國安情資", "相關新聞報導 第1頁", "雨彈", "淹水", "國民黨", "民進黨", "毒駕", "世足",
 ];
 
+// Content-farm/anniversary retrospective articles about old films: Google's
+// pubDate on these is genuinely within range (freshly (re)published), so
+// date filtering can't catch them — the article is new, the news isn't.
+// Kept separate from twEntertainmentGeneralNoiseSignals because this list
+// must veto even when the headline also matches twEntertainmentStrongEventPattern
+// (e.g. "開拍"/"導演"), which normally short-circuits straight to "primary".
+const twEntertainmentNostalgiaNoiseSignals = [
+  "自曝當年", "當年不敢", "回憶當年", "微解封", "快篩", "疫情期間", "多年前的往事",
+];
+
 function decodeBasicHtml(value) {
   return String(value || "")
     .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
@@ -2542,8 +2552,15 @@ function stripLowRelatedResults(items) {
     const hasUnsafeUrl = twEntertainmentUnsafeSocialUrlPatterns.some((pattern) => pattern.test(url));
     const hasExcludedKeyword = twEntertainmentExcludedKeywords.some((keyword) => text.includes(keyword));
     const hasHardNoise = twEntertainmentGeneralNoiseSignals.some((signal) => text.includes(signal)) || twEntertainmentDramaNoiseSignals.some((signal) => text.includes(signal));
+    const hasNostalgiaNoise = twEntertainmentNostalgiaNoiseSignals.some((signal) => text.includes(signal));
     const hasStrongEvent = twEntertainmentStrongEventPattern.test(text);
     if (hasUnsafeUrl) {
+      excludedCount += 1;
+      excluded.push({ ...item, resultClass: "excluded" });
+    } else if (hasNostalgiaNoise) {
+      // Unlike hasHardNoise, not gated by !hasStrongEvent: a retrospective
+      // piece often also mentions "開拍"/"導演" etc. in passing, which would
+      // otherwise let it slip through as a "strong event".
       excludedCount += 1;
       excluded.push({ ...item, resultClass: "excluded" });
     } else if (hasHardNoise && !hasStrongEvent) {
