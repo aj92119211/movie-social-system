@@ -2302,10 +2302,14 @@ const twEntertainmentTrackedPriorityDomains = [
   "news.ttv.com.tw",
 ];
 
+// concurrency is deliberately moderate, not maxed out: firing too many
+// simultaneous requests at Google News RSS from one IP reads as automated
+// traffic and gets rate-limited mid-search, which is what made result
+// counts swing wildly in the first place.
 const twEntertainmentSearchDepthConfig = {
-  quick: { label: "快速搜尋", queryLimit: 4, generalLimit: 14, sourceLimit: 2, sourceTaskLimit: 16, resultLimit: 25, timeoutMs: 5000, concurrency: 10 },
-  standard: { label: "標準搜尋", queryLimit: 8, generalLimit: 18, sourceLimit: 2, sourceTaskLimit: 36, resultLimit: 50, timeoutMs: 5000, concurrency: 12 },
-  deep: { label: "深度搜尋", queryLimit: 15, generalLimit: 22, sourceLimit: 3, sourceTaskLimit: 60, resultLimit: 90, timeoutMs: 5000, concurrency: 14 },
+  quick: { label: "快速搜尋", queryLimit: 4, generalLimit: 14, sourceLimit: 2, sourceTaskLimit: 16, resultLimit: 25, timeoutMs: 5000, concurrency: 6 },
+  standard: { label: "標準搜尋", queryLimit: 8, generalLimit: 18, sourceLimit: 2, sourceTaskLimit: 36, resultLimit: 50, timeoutMs: 5000, concurrency: 8 },
+  deep: { label: "深度搜尋", queryLimit: 15, generalLimit: 22, sourceLimit: 3, sourceTaskLimit: 60, resultLimit: 90, timeoutMs: 5000, concurrency: 9 },
 };
 
 const twEntertainmentPrioritySourceDomains = [
@@ -3317,7 +3321,7 @@ function buildGoogleGeneralSearchEntry(keyword) {
   };
 }
 
-async function fetchTwEntertainmentNewsBatch(keyword, range, sources, sourceLimit) {
+async function fetchTwEntertainmentNewsBatch(keyword, range, sources, sourceLimit, concurrency = 8) {
   const tasks = sources.map((source) => async () => {
     const searchKeyword = /今日影劇/.test(String(keyword || ""))
       ? "(台灣電影 OR 台劇 OR 影集 OR OTT OR 影視產業 OR 票房 OR 影展)"
@@ -3334,7 +3338,6 @@ async function fetchTwEntertainmentNewsBatch(keyword, range, sources, sourceLimi
     }
   });
   const batches = [];
-  const concurrency = 12;
   for (let index = 0; index < tasks.length; index += concurrency) {
     const settled = await Promise.allSettled(tasks.slice(index, index + concurrency).map((task) => task()));
     for (const result of settled) {
@@ -3440,7 +3443,7 @@ async function fetchTwEntertainmentNewsResults(keyword, range, options = {}) {
   const expandedPromise = isBroadTwEntertainmentPreset(keyword)
     ? fetchTwEntertainmentExpandedNewsResults(keyword, range, depth, { sources: getTwEntertainmentPrioritySources(), sourceLimit, queries: options.queries })
     : Promise.resolve({ items: [], queries: [keyword], sourceNames: sources.map((source) => source.name), rawCount: 0, failedQueryCount: 0 });
-  const baseBatchPromise = isBroadPreset ? Promise.resolve([]) : fetchTwEntertainmentNewsBatch(keyword, range, sources, sourceLimit);
+  const baseBatchPromise = isBroadPreset ? Promise.resolve([]) : fetchTwEntertainmentNewsBatch(keyword, range, sources, sourceLimit, getTwEntertainmentDepthConfig(depth).concurrency);
   const generalKeywordPromise = isCustomKeyword ? fetchTwEntertainmentGeneralKeywordResults(keyword, range, 30) : Promise.resolve([]);
   const [expandedSettled, baseBatchSettled, generalKeywordSettled] = await Promise.allSettled([
     expandedPromise,
@@ -3459,7 +3462,7 @@ async function fetchTwEntertainmentNewsResults(keyword, range, options = {}) {
   const deduped = dedupeTwEntertainmentResults(allResults, "articleUrl");
   if (isCustomKeyword && deduped.length < 10 && range !== "30d" && range !== "year") {
     const expandedResults = [
-      ...await fetchTwEntertainmentNewsBatch(keyword, "30d", sources, sourceLimit),
+      ...await fetchTwEntertainmentNewsBatch(keyword, "30d", sources, sourceLimit, getTwEntertainmentDepthConfig(depth).concurrency),
       ...await fetchTwEntertainmentGeneralKeywordResults(keyword, "30d", 40),
     ];
     const retry = dedupeTwEntertainmentResults([...deduped, ...expandedResults], "articleUrl").slice(0, 50);
