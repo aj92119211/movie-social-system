@@ -2455,6 +2455,15 @@ const twEntertainmentNostalgiaNoiseSignals = [
   "自曝當年", "當年不敢", "回憶當年", "微解封", "快篩", "疫情期間", "多年前的往事",
 ];
 
+// Google News' <source> tag sometimes reads "Yahoo - <unrelated category>"
+// for entertainment content — confirmed case: a casting-drama article
+// tagged "Yahoo - 汽機車" (cars/motorcycles) that, once opened, turned out
+// to be from 2023 despite Google reporting a fresh pubDate. This category
+// mismatch is a symptom of Yahoo re-syndicating an old partner article
+// into a filler slot, which regenerates the timestamp — so date filtering
+// can never catch it, only this source-category check can.
+const twEntertainmentMismatchedSourcePattern = /^Yahoo\s*-\s*(汽機車|3C|地方|理財|美食|旅遊|居家|運動|健康|生活|房產|保險|寵物)/;
+
 function decodeBasicHtml(value) {
   return String(value || "")
     .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
@@ -2553,11 +2562,12 @@ function stripLowRelatedResults(items) {
     const hasExcludedKeyword = twEntertainmentExcludedKeywords.some((keyword) => text.includes(keyword));
     const hasHardNoise = twEntertainmentGeneralNoiseSignals.some((signal) => text.includes(signal)) || twEntertainmentDramaNoiseSignals.some((signal) => text.includes(signal));
     const hasNostalgiaNoise = twEntertainmentNostalgiaNoiseSignals.some((signal) => text.includes(signal));
+    const hasMismatchedSource = twEntertainmentMismatchedSourcePattern.test(item.sourceName || "");
     const hasStrongEvent = twEntertainmentStrongEventPattern.test(text);
     if (hasUnsafeUrl) {
       excludedCount += 1;
       excluded.push({ ...item, resultClass: "excluded" });
-    } else if (hasNostalgiaNoise) {
+    } else if (hasNostalgiaNoise || hasMismatchedSource) {
       // Unlike hasHardNoise, not gated by !hasStrongEvent: a retrospective
       // piece often also mentions "開拍"/"導演" etc. in passing, which would
       // otherwise let it slip through as a "strong event".
