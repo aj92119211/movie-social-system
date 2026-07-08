@@ -2429,6 +2429,10 @@ const twEntertainmentFilmTopicSignals = [
 
 const twEntertainmentGeneralTopicSignals = [
   "影劇", "影視", "娛樂", "電影", "國片", "台片", "臺片", "院線", "上映", "定檔", "預告", "海報", "劇照", "主視覺", "票房", "影展", "金馬", "北影", "台北電影", "金穗", "金鐘", "入圍", "得獎", "文策院", "文化部", "影視局", "補助", "輔導金", "OTT", "Netflix", "Disney", "公視", "台視", "臺視", "華視", "民視", "八點檔", "影集", "劇集", "台劇", "臺劇",
+  // Music/celebrity industry news is also in scope for "今日影劇" (per
+  // product decision) — the film/drama-production-only list above missed
+  // e.g. concert and idol-group headlines that don't mention a show/movie.
+  "演唱會", "巡迴", "售票", "女團", "男團", "歌手", "專輯", "MV", "見面會", "簽唱會", "出道", "金曲", "藝人", "明星",
 ];
 
 const twEntertainmentGeneralNoiseSignals = [
