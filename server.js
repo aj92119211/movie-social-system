@@ -2677,7 +2677,7 @@ function classifyTwEntertainmentItem(item, keyword) {
   const text = `${item.title || ""} ${item.snippet || ""} ${item.sourceName || ""} ${item.rawContent || ""}`;
   const url = `${item.articleUrl || ""} ${item.postUrl || ""}`;
   if (twEntertainmentUnsafeSocialUrlPatterns.some((pattern) => pattern.test(url))) return "excluded";
-  if (!hasTaiwanEntertainmentContext({ ...item, searchKeyword: keyword }, { name: item.sourceName || "", domain: "" })) return "excluded";
+  if (!hasTaiwanEntertainmentContext({ ...item, searchKeyword: keyword }, { name: item.sourceName || "", domain: item.sourceDomain || "" })) return "excluded";
   const score = scoreTwEntertainmentItem(item, keyword);
   const strongEvent = twEntertainmentStrongEventPattern.test(text);
   const weakOrBackground = twEntertainmentWeakBackgroundPattern.test(text);
@@ -2695,7 +2695,7 @@ function scoreTwEntertainmentItem(item, keyword) {
   if (/台灣電影|臺灣電影|國片|台片|台劇|臺劇|台灣影集|影視產業|文策院|文化部|公視|金馬|北影|台北電影節|高雄電影節/.test(text)) score += 3;
   if (/電影|影集|劇集|OTT|票房|影展|院線|上映|定檔|開拍|殺青/.test(text)) score += 2;
   if (/台灣電影網|電影神搜|DramaQueen|噓！星聞|ETtoday 星光雲|Yahoo|自由娛樂|三立|文策院|文化部|公視|金馬|台北電影節/.test(text)) score += 1;
-  if (matchesSearchIntent(item, keyword)) score += 2;
+  if (matchesSearchIntent(item, keyword, item.sourceDomain)) score += 2;
   if (keywordAppearsInText(keyword, text)) score += 1;
   if (weakOrBackground) score -= 2;
   if (twEntertainmentExcludedKeywords.some((noise) => text.includes(noise))) score -= strongEvent ? 1 : 4;
@@ -2735,8 +2735,16 @@ function hasTaiwanEntertainmentContext(raw, source) {
     return keywordAppearsInText(query, text);
   }
 
+  // Priority-source domains are only ever queried via a "site:domain"
+  // scope against a dedicated Taiwan entertainment section (not a
+  // newspaper's general front page), so the domain itself is already the
+  // relevance signal. Re-requiring a keyword match on top of that was
+  // throwing away the vast majority of legitimately fetched results —
+  // e.g. a celebrity-news headline from 自由娛樂 or 電影神搜 that just
+  // doesn't happen to contain a generic word like "電影" or "影集".
   const domain = String(source?.domain || "");
   if (twEntertainmentOfficialDomains.includes(domain)) return true;
+  if (twEntertainmentPrioritySourceDomains.includes(domain)) return true;
 
   if (/今日影劇/.test(query)) {
     return hasGeneralEntertainmentSearchContext(text);
@@ -2766,17 +2774,24 @@ function hasTaiwanEntertainmentContext(raw, source) {
   return false;
 }
 
-function matchesSearchIntent(raw, keyword) {
+function matchesSearchIntent(raw, keyword, domain = "") {
   const text = `${raw?.title || ""} ${raw?.sourceName || ""}`;
   const query = String(keyword || "");
-  if (/今日影劇/.test(query) && !hasGeneralEntertainmentSearchContext(text)) {
-    return false;
-  }
-  if (/台灣電影|臺灣電影|國片|台片/.test(query) && !twEntertainmentFilmTopicSignals.some((signal) => text.includes(signal))) {
-    return false;
-  }
-  if (/台劇|臺劇/.test(query) && !hasTaiwanDramaSearchContext(text)) {
-    return false;
+  // Same reasoning as the domain bypass in hasTaiwanEntertainmentContext:
+  // a priority-source domain was already queried with a site: scope
+  // against a dedicated entertainment section, so it shouldn't also have
+  // to pass a generic keyword-in-title check to count as on-topic.
+  const isTrustedDomain = twEntertainmentOfficialDomains.includes(domain) || twEntertainmentPrioritySourceDomains.includes(domain);
+  if (!isTrustedDomain) {
+    if (/今日影劇/.test(query) && !hasGeneralEntertainmentSearchContext(text)) {
+      return false;
+    }
+    if (/台灣電影|臺灣電影|國片|台片/.test(query) && !twEntertainmentFilmTopicSignals.some((signal) => text.includes(signal))) {
+      return false;
+    }
+    if (/台劇|臺劇/.test(query) && !hasTaiwanDramaSearchContext(text)) {
+      return false;
+    }
   }
   const intentGroups = [
     { query: /開拍|開鏡/, result: /開拍|開鏡|開機|開工|開鏡/ },
@@ -3198,6 +3213,7 @@ function normalizeTwNewsItem(raw, source, keyword) {
     resultType: "news",
     title: cleanTitle,
     sourceName: source.name || raw.sourceName || "新聞來源",
+    sourceDomain: source.domain || "",
     platform: "",
     accountName: "",
     articleUrl: raw.link,
@@ -3233,7 +3249,7 @@ function shouldKeepTwEntertainmentNewsItem(raw, source, keyword = "") {
   if (!hasTaiwanEntertainmentContext({ ...raw, searchKeyword: keyword }, source)) {
     return false;
   }
-  if (!matchesSearchIntent(raw, keyword)) {
+  if (!matchesSearchIntent(raw, keyword, source.domain)) {
     return false;
   }
   return true;
