@@ -2223,7 +2223,6 @@ const twEntertainmentNewsSources = [
   { name: "中央社訊息平台", domain: "cna.com.tw" },
   { name: "鏡報娛樂", domain: "mirrordaily.news" },
   { name: "蕃新聞", domain: "n.yam.com" },
-  { name: "三立新聞網娛樂", domain: "setn.com" },
   { name: "自由娛樂", domain: "ent.ltn.com.tw" },
   { name: "TVBS 娛樂", domain: "news.tvbs.com.tw" },
   { name: "中時新聞網娛樂", domain: "chinatimes.com" },
@@ -2281,7 +2280,6 @@ const twEntertainmentTrustedTaiwanMediaDomains = [
   "cna.com.tw",
   "mirrordaily.news",
   "n.yam.com",
-  "setn.com",
   "ent.ltn.com.tw",
   "news.tvbs.com.tw",
   "chinatimes.com",
@@ -2297,7 +2295,6 @@ const twEntertainmentTrackedPriorityDomains = [
   "cna.com.tw",
   "mirrordaily.news",
   "n.yam.com",
-  "setn.com",
   "news.tvbs.com.tw",
   "news.ttv.com.tw",
 ];
@@ -2318,7 +2315,6 @@ const twEntertainmentPrioritySourceDomains = [
   "tw.news.yahoo.com",
   "movies.yahoo.com.tw",
   "ent.ltn.com.tw",
-  "setn.com",
   "news.agentm.tw",
   "dramaqueen.com.tw",
   "taiwancinema.bamid.gov.tw",
@@ -2464,6 +2460,17 @@ const twEntertainmentNostalgiaNoiseSignals = [
 // can never catch it, only this source-category check can.
 const twEntertainmentMismatchedSourcePattern = /^Yahoo\s*-\s*(汽機車|3C|地方|理財|美食|旅遊|居家|運動|健康|生活|房產|保險|寵物)/;
 
+// SETN (三立新聞網) is the confirmed source behind every stale-content case
+// found this session — old articles resurfacing with a fresh Google News
+// pubDate, both hosted directly and re-syndicated via Yahoo. Verifying real
+// publish dates isn't feasible (Google News' redirect requires a JS-capable
+// browser to resolve, which this deployment doesn't have), so SETN content
+// is excluded outright rather than trusted. Checked against sourceName/
+// sourceDomain so this also catches SETN items surfaced by general
+// (non site:-scoped) queries, not just the removed setn.com priority source.
+const twEntertainmentBlockedSourceDomains = ["setn.com"];
+const twEntertainmentBlockedSourceNamePattern = /三立/;
+
 function decodeBasicHtml(value) {
   return String(value || "")
     .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
@@ -2563,11 +2570,12 @@ function stripLowRelatedResults(items) {
     const hasHardNoise = twEntertainmentGeneralNoiseSignals.some((signal) => text.includes(signal)) || twEntertainmentDramaNoiseSignals.some((signal) => text.includes(signal));
     const hasNostalgiaNoise = twEntertainmentNostalgiaNoiseSignals.some((signal) => text.includes(signal));
     const hasMismatchedSource = twEntertainmentMismatchedSourcePattern.test(item.sourceName || "");
+    const hasBlockedSource = twEntertainmentBlockedSourceDomains.includes(item.sourceDomain || "") || twEntertainmentBlockedSourceNamePattern.test(item.sourceName || "");
     const hasStrongEvent = twEntertainmentStrongEventPattern.test(text);
     if (hasUnsafeUrl) {
       excludedCount += 1;
       excluded.push({ ...item, resultClass: "excluded" });
-    } else if (hasNostalgiaNoise || hasMismatchedSource) {
+    } else if (hasNostalgiaNoise || hasMismatchedSource || hasBlockedSource) {
       // Unlike hasHardNoise, not gated by !hasStrongEvent: a retrospective
       // piece often also mentions "開拍"/"導演" etc. in passing, which would
       // otherwise let it slip through as a "strong event".
