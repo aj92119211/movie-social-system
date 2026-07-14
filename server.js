@@ -231,9 +231,17 @@ function serveStatic(request, response) {
       return;
     }
 
+    // HTML stays no-store so every visit gets the latest markup (this app
+    // deploys straight from git push, not a fingerprinted asset pipeline,
+    // so an HTML page could otherwise reference a script/style version that
+    // no longer exists). CSS/JS/images aren't linked by content hash either,
+    // so a long cache risks serving stale code after a deploy - cap it at
+    // 5 minutes, which still avoids re-downloading them on every reload
+    // within a session without stretching staleness out for hours.
+    const isHtml = path.extname(filePath).toLowerCase() === ".html";
     response.writeHead(200, {
       "Content-Type": getContentType(filePath),
-      "Cache-Control": "no-store",
+      "Cache-Control": isHtml ? "no-store" : "public, max-age=300",
     });
     response.end(content);
   });
