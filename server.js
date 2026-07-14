@@ -3941,7 +3941,22 @@ async function handleTwEntertainmentNewsSearch(request, response, url) {
       return;
     }
     const fallbackMessages = [];
-    let newsPayload = await buildTwEntertainmentNewsPayload({ keyword, range, sort, depth, trackedKeywords });
+    const twEntertainmentRangeLabels = { today: "今天", "7d": "最近 7 天", "30d": "最近 30 天", year: "今年" };
+    // A custom (non-preset) keyword already gets its widest-reach sources -
+    // the quoted exact-phrase Google query and the OpenAI web_search call -
+    // on every single buildTwEntertainmentNewsPayload() invocation, and
+    // neither one gets meaningfully cheaper or more accurate by first trying
+    // a narrow range and only widening on a second round-trip. Each extra
+    // sequential round adds another full OpenAI web_search call (which alone
+    // can take up to ~25s) on top of Render's already slow Google News RSS
+    // access, and stacking 2-3 of those in one request is what was pushing
+    // total latency past Render's own proxy timeout (observed as a 502
+    // after ~17s, not just the frontend's 30s abort). So for custom
+    // keywords, go straight to the widest range autoExpandRange allows
+    // instead of starting narrow and escalating.
+    const isCustomKeyword = !isBroadTwEntertainmentPreset(keyword);
+    const initialSearchRange = (autoExpandRange && isCustomKeyword && range !== "year") ? "year" : range;
+    let newsPayload = await buildTwEntertainmentNewsPayload({ keyword, range: initialSearchRange, sort, depth, trackedKeywords });
     let rawNewsSearchMeta = newsPayload.rawNewsSearchMeta;
     let newsResults = newsPayload.newsResults;
     let relatedNewsResults = newsPayload.relatedNewsResults;
@@ -3950,8 +3965,15 @@ async function handleTwEntertainmentNewsSearch(request, response, url) {
     let rawNewsResults = newsPayload.rawNewsResults;
     let rawTrackedNewsResults = newsPayload.rawTrackedNewsResults;
     let excludedClassifiedCount = newsPayload.excludedClassifiedCount;
+    if (initialSearchRange !== range) {
+      fallbackMessages.push(`${twEntertainmentRangeLabels[range] || range} 的搜尋範圍較窄，已直接放寬至${twEntertainmentRangeLabels[initialSearchRange] || initialSearchRange}搜尋（避免分次查詢逾時）。`);
+    }
 
-    if (countTwEntertainmentVisibleItems([...newsResults, ...relatedNewsResults]) < 5) {
+    // For custom keywords, the keyword-split fallback below is redundant
+    // with the quoted/AI sources already queried above and just adds a
+    // third sequential network round, so only run it for broad presets
+    // (today/台劇/開拍 etc.), which don't get the quoted or OpenAI sources.
+    if (!isCustomKeyword && countTwEntertainmentVisibleItems([...newsResults, ...relatedNewsResults]) < 5) {
       const fallbackQueries = getTwEntertainmentFallbackQueries(keyword, depth);
       console.log("[TW_ENTERTAINMENT_FALLBACK_QUERIES]", { keyword, fallbackQueries });
       const fallbackDirect = await fetchTwEntertainmentExpandedNewsResults(keyword, range, depth, {
@@ -3991,8 +4013,7 @@ async function handleTwEntertainmentNewsSearch(request, response, url) {
     // A prior version chained both steps and pushed the worst case to 4
     // sequential fallback rounds on top of Render's already-slow Google News
     // RSS calls, which blew past the frontend's 30s abort timeout entirely.
-    let effectiveRange = range;
-    const twEntertainmentRangeLabels = { today: "今天", "7d": "最近 7 天", "30d": "最近 30 天", year: "今年" };
+    let effectiveRange = initialSearchRange;
     const applyTwEntertainmentRangeFallback = async (targetRange, message) => {
       const rangeFallback = await buildTwEntertainmentNewsPayload({ keyword, range: targetRange, sort, depth, trackedKeywords: [] });
       const mergedCandidates = dedupeTwEntertainmentResults([...dedupedNewsCandidates, ...rangeFallback.dedupedNewsCandidates], "articleUrl");
