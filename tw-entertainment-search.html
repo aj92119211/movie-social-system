@@ -707,55 +707,52 @@
         `;
       }
 
-      function renderNews(items = []) {
-        document.getElementById("newsCount").textContent = `${resultTotalCount(items)} 筆`;
-        document.getElementById("newsResults").innerHTML = items.length ? items.map((item) => `
+      function renderResultSection(containerId, countId, items = [], options = {}) {
+        const {
+          emptyText,
+          linkLabel = "開啟原文",
+          getTitle = (item) => item.title,
+          getMeta = (item) => `來源：${escapeHtml(item.sourceName)}｜日期：${escapeHtml(item.publishedDate || "未提供")}`,
+          getTags = (item) => item.tags,
+        } = options;
+        document.getElementById(countId).textContent = `${resultTotalCount(items)} 筆`;
+        document.getElementById(containerId).innerHTML = items.length ? items.map((item) => `
           <article class="result-row">
             <div class="result-top">
               <div>
-                <h3 class="result-title">${escapeHtml(item.title)}</h3>
-                <div class="meta">來源：${escapeHtml(item.sourceName)}｜日期：${escapeHtml(item.publishedDate || "未提供")}</div>
+                <h3 class="result-title">${escapeHtml(getTitle(item))}</h3>
+                <div class="meta">${getMeta(item)}</div>
               </div>
-              <div class="tags">${tagList(item.tags)}</div>
+              <div class="tags">${tagList(getTags(item))}</div>
             </div>
             ${relatedReportsHtml(item)}
-            ${resultActions(item, "開啟原文")}
+            ${resultActions(item, linkLabel)}
           </article>
-        `).join("") : `<div class="empty">本次未找到相關新聞或官方來源。</div>`;
+        `).join("") : `<div class="empty">${emptyText}</div>`;
+      }
+
+      function renderNews(items = []) {
+        renderResultSection("newsResults", "newsCount", items, {
+          emptyText: "本次未找到相關新聞或官方來源。",
+          linkLabel: "開啟原文",
+        });
       }
 
       function renderRelatedNews(items = []) {
-        document.getElementById("relatedNewsCount").textContent = `${resultTotalCount(items)} 筆`;
-        document.getElementById("relatedNewsResults").innerHTML = items.length ? items.map((item) => `
-          <article class="result-row">
-            <div class="result-top">
-              <div>
-                <h3 class="result-title">${escapeHtml(item.title)}</h3>
-                <div class="meta">來源：${escapeHtml(item.sourceName)}｜日期：${escapeHtml(item.publishedDate || "未提供")}</div>
-              </div>
-              <div class="tags">${tagList([...(item.tags || []), "相關報導"])}</div>
-            </div>
-            ${relatedReportsHtml(item)}
-            ${resultActions(item, "開啟原文")}
-          </article>
-        `).join("") : `<div class="empty">本次沒有額外相關報導。</div>`;
+        renderResultSection("relatedNewsResults", "relatedNewsCount", items, {
+          emptyText: "本次沒有額外相關報導。",
+          linkLabel: "開啟原文",
+          getTags: (item) => [...(item.tags || []), "相關報導"],
+        });
       }
 
       function renderSocial(items = []) {
-        document.getElementById("socialCount").textContent = `${resultTotalCount(items)} 筆`;
-        document.getElementById("socialResults").innerHTML = items.length ? items.map((item) => `
-          <article class="result-row">
-            <div class="result-top">
-              <div>
-                <h3 class="result-title">${escapeHtml(item.relatedTitle || item.title)}</h3>
-                <div class="meta">平台：${escapeHtml(item.platform)}｜帳號／看板：${escapeHtml(item.accountName || "-")}｜日期：${escapeHtml(item.publishedDate || "未提供")}</div>
-              </div>
-              <div class="tags">${tagList(item.tags)}</div>
-            </div>
-            ${relatedReportsHtml(item)}
-            ${resultActions(item, "開啟貼文")}
-          </article>
-        `).join("") : `<div class="empty">本次未找到相關社群或討論入口。</div>`;
+        renderResultSection("socialResults", "socialCount", items, {
+          emptyText: "本次未找到相關社群或討論入口。",
+          linkLabel: "開啟貼文",
+          getTitle: (item) => item.relatedTitle || item.title,
+          getMeta: (item) => `平台：${escapeHtml(item.platform)}｜帳號／看板：${escapeHtml(item.accountName || "-")}｜日期：${escapeHtml(item.publishedDate || "未提供")}`,
+        });
       }
 
       async function performSearch(query) {
