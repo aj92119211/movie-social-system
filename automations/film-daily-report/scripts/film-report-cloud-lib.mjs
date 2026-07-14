@@ -60,6 +60,10 @@ export function taipeiDateParts(dateArg) {
   };
 }
 
+function reportCutoffDate(dateArg) {
+  return dateArg ? new Date(`${dateArg}T23:59:59+08:00`) : new Date();
+}
+
 function decodeEntities(text = "") {
   const map = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " " };
   return text
@@ -170,15 +174,22 @@ function parsePublishedDate(text) {
 // Google News RSS's own "when:Nd" filter is unreliable on long, grouped
 // site: OR queries and can silently let years-old articles through, so we
 // re-check the parsed pubDate ourselves instead of trusting it blindly.
-// Undated items are kept (many Taiwan sources omit pubDate) rather than
-// dropped, since we can't tell whether they're stale or just unlabeled.
-function isWithinAgeWindow(item, maxAgeDays) {
+// Undated items are dropped by default. RSS providers can refresh old links
+// without a trustworthy article date, and those stale items should not be
+// promoted as today's news.
+function isWithinAgeWindow(item, maxAgeDays, now = new Date(), requirePublishedDate = true) {
   const date = parsePublishedDate(item.published);
-  if (!date) return true;
-  const ageMs = Date.now() - date.getTime();
+  if (!date) return !requirePublishedDate;
+  const ageMs = now.getTime() - date.getTime();
   const maxAgeMs = maxAgeDays * 24 * 60 * 60 * 1000;
   const futureToleranceMs = 24 * 60 * 60 * 1000;
   return ageMs <= maxAgeMs && ageMs >= -futureToleranceMs;
+}
+
+function hasPastYearInTitle(item, reportYear) {
+  const haystack = `${item.title} ${item.snippet}`;
+  const years = [...haystack.matchAll(/\b(20\d{2})\b/g)].map((match) => Number(match[1]));
+  return years.some((year) => year < reportYear);
 }
 
 function dedupe(items) {
@@ -193,10 +204,13 @@ function dedupe(items) {
   return output;
 }
 
-export async function collectCandidates(config, maxItems) {
+export async function collectCandidates(config, maxItems, { dateArg } = {}) {
   const items = [];
   const errors = [];
   const maxAgeDays = config.maxAgeDays || 7;
+  const requirePublishedDate = config.requirePublishedDate !== false;
+  const reportDate = reportCutoffDate(dateArg);
+  const reportYear = reportDate.getFullYear();
 
   for (const source of config.sources.filter((s) => s.feed)) {
     try {
@@ -230,13 +244,19 @@ export async function collectCandidates(config, maxItems) {
     await sleep(400);
   }
 
-  const withinWindow = dedupe(items)
+  const relevantItems = dedupe(items)
     .filter((item) => !shouldExclude(item, config.excludeKeywords))
     .filter((item) => isRelevant(item, config.relevanceKeywords));
-  const freshItems = withinWindow.filter((item) => isWithinAgeWindow(item, maxAgeDays));
-  const staleDropped = withinWindow.length - freshItems.length;
+  const withoutPastYears = relevantItems.filter((item) => !hasPastYearInTitle(item, reportYear));
+  const pastYearDropped = relevantItems.length - withoutPastYears.length;
+  const freshItems = withoutPastYears.filter((item) => isWithinAgeWindow(item, maxAgeDays, reportDate, requirePublishedDate));
+  const staleDropped = withoutPastYears.length - freshItems.length;
+  if (pastYearDropped > 0) {
+    errors.push(`已過濾 ${pastYearDropped} 則標題或摘要含過去年份的候選新聞，避免舊聞被當成 ${reportYear} 年新聞。`);
+  }
   if (staleDropped > 0) {
-    errors.push(`已過濾 ${staleDropped} 則超過 ${maxAgeDays} 天的候選新聞（依來源標示的發布日期判斷）。`);
+    const dateRule = requirePublishedDate ? "無可解析發布日期或" : "";
+    errors.push(`已過濾 ${staleDropped} 則${dateRule}超過 ${maxAgeDays} 天的候選新聞（依來源標示的發布日期判斷）。`);
   }
 
   return {
@@ -255,6 +275,81 @@ function formatCandidateDigest(items) {
     `連結：${item.link}`,
     `摘要線索：${item.snippet || "無"}`
   ].join("\n")).join("\n\n");
+}
+
+function noFreshItemsReport() {
+  const placeholderCard = (country, label) => ({
+    country,
+    label,
+    title: "本日暫無可驗證新發布項目",
+    source: "來源未提供",
+    date: "來源未提供",
+    summary: "候選新聞未通過發布日期與時效性檢查，今日不以舊聞補版面。",
+    why: "避免將 RSS 快取或舊事件誤標為今日新聞。",
+    action: "維持監測；待官方公告或可信發布日期確認後再收錄。"
+  });
+
+  return {
+    report_title: "影劇產業日報摘要",
+    highlight_cards: [1, 2, 3].map((idx) => ({
+      title: idx === 1 ? "本日暫無可驗證新發布項目" : `待觀察項目 ${idx}`,
+      body: idx === 1 ? "候選新聞未通過發布日期與時效性檢查，今日不以舊聞補版面。" : "暫不列入未能確認日期或內容時效的項目。",
+      action: "維持監測來源；待有可驗證新資料再納入。"
+    })),
+    taiwan_focus: [1, 2, 3].map(() => placeholderCard("台灣", "時效查核")),
+    international_focus: [1, 2, 3].map(() => placeholderCard("跨區", "時效查核")),
+    series_focus: [1, 2, 3].map(() => placeholderCard("跨區", "影集")),
+    ott_film: placeholderCard("跨區", "OTT 電影"),
+    ott_series: [1, 2, 3].map(() => placeholderCard("跨區", "OTT 影集")),
+    release_box: {
+      headline: "本日暫無可驗證新發布項目",
+      body: "已完成來源抓取與時效性檢查；未通過查核者不列入日報。"
+    },
+    featured: {
+      title: "近期仍具時效性內容待補",
+      meta: "來源未提供",
+      reason: "今日候選來源未提供可驗證的新事件。",
+      watch: "優先補查官方公告、票房平台與片商發布。"
+    },
+    watch_sections: {
+      themes: [],
+      market: [],
+      promotion: [],
+      observables: {
+        institutions: "TAICCA、文化部影視局、全國電影票房統計資訊",
+        genres: "來源未提供",
+        metrics: "發布日期、官方公告日期、上映或上線日期",
+        actions: "確認日期後再收錄，不以 RSS 更新時間替代事件日期"
+      }
+    }
+  };
+}
+
+function reportCards(raw) {
+  return [
+    ...(Array.isArray(raw.taiwan_focus) ? raw.taiwan_focus : []),
+    ...(Array.isArray(raw.international_focus) ? raw.international_focus : []),
+    ...(Array.isArray(raw.series_focus) ? raw.series_focus : []),
+    raw.ott_film,
+    ...(Array.isArray(raw.ott_series) ? raw.ott_series : [])
+  ].filter(Boolean);
+}
+
+function validateStructuredReport(raw) {
+  const repeated = new Map();
+  for (const card of reportCards(raw)) {
+    for (const field of ["summary", "why", "action"]) {
+      const value = String(card?.[field] || "").replace(/\s+/g, " ").trim();
+      if (value.length < 24 || value === "來源未提供") continue;
+      const key = `${field}:${value}`;
+      repeated.set(key, (repeated.get(key) || 0) + 1);
+    }
+  }
+  const duplicates = [...repeated.entries()].filter(([, count]) => count > 1);
+  if (duplicates.length) {
+    const samples = duplicates.slice(0, 3).map(([key]) => key.replace(/^(summary|why|action):/, "")).join(" / ");
+    throw new Error(`日報分析文字疑似套用模板，發現跨新聞重複句：${samples}`);
+  }
 }
 
 function cleanJsonText(text) {
@@ -355,6 +450,11 @@ export async function callOpenAIStructured({ config, dateInfo, items, errors }) 
     "內容必須是決策用情報，不是娛樂八卦摘要。",
     "台灣產業資訊必須進入主體，至少要有 3 則台灣焦點，優先考慮 TAICCA、TCCF、票房、補助、台灣影集與國片動態。",
     "只可使用提供的候選新聞，不要捏造來源、日期、標題、連結或事件。",
+    "每則新聞卡片都必須對應候選清單中的一則新聞；source、date、title 必須可從候選清單直接追溯。",
+    "summary、why、action 必須引用該則新聞的具體事實（片名、公司、平台、影展、市場、檔期、票房、主創或交易內容至少一項），不可只依分類標籤套用通用句。",
+    "不同新聞不得重複使用同一句 summary、why 或 action；若只能寫出同一句，代表資訊不足，請改寫成『來源未提供足夠資訊』並降低收錄優先度。",
+    "country 必須依新聞事件、作品來源或主要市場判斷；不得只因來源網站、Google News 分組或內文偶然提到某國就標成該國。",
+    "遇到標題或摘要顯示事件日期早於日報時窗（例如過去年份、舊影展、舊特映、舊上映檔期），請不要收錄。",
     "若資訊不足，請寫『來源未提供』或以保守表述處理，不要臆測。",
     "請只輸出 JSON，不要加 Markdown、註解或程式碼區塊。",
     "所有欄位都要填滿。",
@@ -399,7 +499,9 @@ export async function callOpenAIStructured({ config, dateInfo, items, errors }) 
   const json = await res.json();
   if (!res.ok) throw new Error(`OpenAI API 失敗：${res.status} ${JSON.stringify(json)}`);
   const text = json.output_text || json.output?.flatMap((item) => item.content ?? []).map((part) => part.text || "").join("\n") || "";
-  return JSON.parse(cleanJsonText(text));
+  const report = JSON.parse(cleanJsonText(text));
+  validateStructuredReport(report);
+  return report;
 }
 
 // Fields are matched by name against literal {{token}} placeholders baked
@@ -638,8 +740,10 @@ export async function generateCloudReport({ dateArg, outDirArg, configPathArg, m
   const config = JSON.parse(await fs.readFile(configFile, "utf8"));
   const dateInfo = taipeiDateParts(dateArg);
   const maxItems = maxItemsArg || config.maxCandidateItems || 80;
-  const { items, errors } = await collectCandidates(config, maxItems);
-  const raw = await callOpenAIStructured({ config, dateInfo, items, errors });
+  const { items, errors } = await collectCandidates(config, maxItems, { dateArg });
+  const raw = items.length
+    ? await callOpenAIStructured({ config, dateInfo, items, errors })
+    : noFreshItemsReport();
   const data = normalizeStructuredReport(raw, dateInfo, config.reporter || "AJ");
 
   const primaryOut = outDirArg || process.env.CLOUD_REPORT_OUTPUT_DIR || path.join(ROOT, "outputs");
