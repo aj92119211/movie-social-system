@@ -3574,11 +3574,19 @@ async function fetchTwEntertainmentNewsResults(keyword, range, options = {}) {
   const sourceLimit = options.sourceLimit || getTwEntertainmentDepthConfig(depth).sourceLimit;
   const sources = options.sources || twEntertainmentNewsSources;
   const isCustomKeyword = !isBroadTwEntertainmentPreset(keyword);
-  const isBroadPreset = isBroadTwEntertainmentPreset(keyword);
   const expandedPromise = isBroadTwEntertainmentPreset(keyword)
     ? fetchTwEntertainmentExpandedNewsResults(keyword, range, depth, { sources: getTwEntertainmentPrioritySources(), sourceLimit, queries: options.queries })
     : Promise.resolve({ items: [], queries: [keyword], sourceNames: sources.map((source) => source.name), rawCount: 0, failedQueryCount: 0 });
-  const baseBatchPromise = isBroadPreset ? Promise.resolve([]) : fetchTwEntertainmentNewsBatch(keyword, range, sources, sourceLimit, getTwEntertainmentDepthConfig(depth).concurrency);
+  // For custom keywords this used to fire one site:-scoped Google News RSS
+  // request per source (~29 requests). Debug testing showed that load was
+  // starving the OpenAI web_search call in the same Promise.allSettled batch
+  // of enough CPU/network time to blow its own 25s timeout and silently
+  // come back empty, even though it works fine (and finds the real news)
+  // when called alone. It also rarely contributed real matches for custom
+  // keywords anyway, since the unquoted per-domain query suffers the same
+  // fuzzy-match pollution documented on fetchTwEntertainmentGeneralKeywordResults.
+  // Skip it here and rely on the quoted query + OpenAI web_search instead.
+  const baseBatchPromise = isCustomKeyword ? Promise.resolve([]) : fetchTwEntertainmentNewsBatch(keyword, range, sources, sourceLimit, getTwEntertainmentDepthConfig(depth).concurrency);
   const generalKeywordPromise = isCustomKeyword ? fetchTwEntertainmentGeneralKeywordResults(keyword, range, 30) : Promise.resolve([]);
   const openAiWebSearchPromise = isCustomKeyword ? fetchTwEntertainmentNewsViaOpenAiWebSearch(keyword, range, 15) : Promise.resolve([]);
   const [expandedSettled, baseBatchSettled, generalKeywordSettled, openAiWebSearchSettled] = await Promise.allSettled([
