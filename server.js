@@ -3897,8 +3897,17 @@ async function handleTwEntertainmentNewsSearch(request, response, url) {
       fallbackMessages.push("本次搜尋結果不足，系統已嘗試拆分關鍵字與放寬搜尋。");
     }
 
-    if (autoExpandRange && range === "7d" && countTwEntertainmentVisibleItems([...newsResults, ...relatedNewsResults]) < 5) {
-      const rangeFallback = await buildTwEntertainmentNewsPayload({ keyword, range: "30d", sort, depth, trackedKeywords: [] });
+    // Widening only ever reached 30d, even though the UI itself offers a
+    // "今年" option: a title-specific keyword search (e.g. a drama name)
+    // routinely has all its coverage clustered around a single announcement
+    // date, which can fall just outside the 30-day window while still being
+    // well within a year. Chaining a further 30d -> year escalation covers
+    // that case instead of reporting "no results" when a year-old range
+    // would have found the same news the site itself already offers.
+    let effectiveRange = range;
+    const twEntertainmentRangeLabels = { today: "今天", "7d": "最近 7 天", "30d": "最近 30 天", year: "今年" };
+    const applyTwEntertainmentRangeFallback = async (targetRange, message) => {
+      const rangeFallback = await buildTwEntertainmentNewsPayload({ keyword, range: targetRange, sort, depth, trackedKeywords: [] });
       const mergedCandidates = dedupeTwEntertainmentResults([...dedupedNewsCandidates, ...rangeFallback.dedupedNewsCandidates], "articleUrl");
       const classifiedMerged = splitTwEntertainmentResultClasses(sortTwEntertainmentItems(mergedCandidates, sort), keyword);
       newsResults = classifiedMerged.primary;
@@ -3917,7 +3926,17 @@ async function handleTwEntertainmentNewsSearch(request, response, url) {
       rawNewsResults = [...rawNewsResults, ...rangeFallback.rawNewsResults];
       rawTrackedNewsResults = [...rawTrackedNewsResults, ...rangeFallback.rawTrackedNewsResults];
       excludedClassifiedCount += rangeFallback.excludedClassifiedCount;
-      fallbackMessages.push("最近 7 天結果不足，已自動放寬至最近 30 天。");
+      effectiveRange = targetRange;
+      fallbackMessages.push(message);
+    };
+
+    if (autoExpandRange && effectiveRange === "7d" && countTwEntertainmentVisibleItems([...newsResults, ...relatedNewsResults]) < 5) {
+      await applyTwEntertainmentRangeFallback("30d", "最近 7 天結果不足，已自動放寬至最近 30 天。");
+    }
+
+    if (autoExpandRange && effectiveRange !== "year" && countTwEntertainmentVisibleItems([...newsResults, ...relatedNewsResults]) < 5) {
+      const fromLabel = twEntertainmentRangeLabels[effectiveRange] || effectiveRange;
+      await applyTwEntertainmentRangeFallback("year", `${fromLabel}結果不足，已自動放寬至今年範圍搜尋。`);
     }
 
     let socialResults = [];
