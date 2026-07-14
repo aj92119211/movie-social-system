@@ -2303,10 +2303,22 @@ const twEntertainmentTrackedPriorityDomains = [
 // simultaneous requests at Google News RSS from one IP reads as automated
 // traffic and gets rate-limited mid-search, which is what made result
 // counts swing wildly in the first place.
+// concurrency governs how many Google News RSS requests fire per batch in
+// fetchTwEntertainmentNewsBatch (one request per source, ~29 sources) and
+// fetchTwEntertainmentExpandedNewsResults (up to sourceTaskLimit requests).
+// These are plain outbound HTTPS fetches (no meaningful CPU/memory cost), so
+// there's no real ceiling on fan-out width from our side - the low values
+// this used to carry (6-9) meant those requests ran in 4-5 *sequential*
+// batches, and each request can itself take up to timeoutMs + a ~2.5s retry
+// when Google News RSS is slow to respond from Render's IP. Sequential
+// batches multiply that per-request worst case instead of absorbing it, and
+// that's what was blowing past the frontend's 30s abort timeout even on
+// "quick" depth. Raising concurrency close to (or above) the source/task
+// counts collapses most searches to 1-2 batches instead of 4-5.
 const twEntertainmentSearchDepthConfig = {
-  quick: { label: "快速搜尋", queryLimit: 4, generalLimit: 14, sourceLimit: 2, sourceTaskLimit: 16, resultLimit: 25, timeoutMs: 5000, concurrency: 6 },
-  standard: { label: "標準搜尋", queryLimit: 8, generalLimit: 18, sourceLimit: 2, sourceTaskLimit: 36, resultLimit: 50, timeoutMs: 5000, concurrency: 8 },
-  deep: { label: "深度搜尋", queryLimit: 15, generalLimit: 22, sourceLimit: 3, sourceTaskLimit: 60, resultLimit: 90, timeoutMs: 5000, concurrency: 9 },
+  quick: { label: "快速搜尋", queryLimit: 4, generalLimit: 14, sourceLimit: 2, sourceTaskLimit: 16, resultLimit: 25, timeoutMs: 5000, concurrency: 18 },
+  standard: { label: "標準搜尋", queryLimit: 8, generalLimit: 18, sourceLimit: 2, sourceTaskLimit: 36, resultLimit: 50, timeoutMs: 5000, concurrency: 24 },
+  deep: { label: "深度搜尋", queryLimit: 15, generalLimit: 22, sourceLimit: 3, sourceTaskLimit: 60, resultLimit: 90, timeoutMs: 5000, concurrency: 30 },
 };
 
 const twEntertainmentPrioritySourceDomains = [
