@@ -4140,7 +4140,33 @@ async function handleTwEntertainmentNewsSearch(request, response, url) {
 async function handleTwEntertainmentDebugOpenAiWebSearch(request, response, url) {
   const keyword = String(url.searchParams.get("q") || "要是未曾相遇就好了").trim();
   const range = String(url.searchParams.get("range") || "year");
+  const apiKey = envValue("OPENAI_API_KEY");
+  const rangeLabel = { today: "24 小時內", "7d": "最近 7 天", "30d": "最近 30 天", year: "最近一年內" }[range] || "最近 7 天";
+  const instructions = [
+    "你是台灣影劇新聞搜尋助手，必須使用網路搜尋工具實際查詢，不可憑記憶捏造內容。",
+    `只回傳${rangeLabel}內實際發布、且與關鍵字直接相關的新聞或官方公告。`,
+    "title、url、source、date 都必須是你透過搜尋實際找到的真實網頁資訊，不可生成範例或臆測網址。",
+    "找不到符合條件的結果時，回傳空陣列，不要硬湊或使用不相關內容。",
+    "最多回傳 15 筆，依發布時間新到舊排序。",
+    "只輸出 JSON 陣列，不要加 Markdown、註解或程式碼區塊，每筆物件格式：",
+    JSON.stringify({ title: "", url: "", source: "", date: "YYYY-MM-DD", snippet: "" }),
+  ].join("\n");
+  const model = envValue("OPENAI_WEB_SEARCH_MODEL") || envValue("OPENAI_MODEL") || "gpt-4.1-mini";
   const startedAt = Date.now();
+  let rawProbe = null;
+  try {
+    if (apiKey) {
+      const res = await fetchWithTimeout("https://api.openai.com/v1/responses", {
+        method: "POST",
+        headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" },
+        body: JSON.stringify({ model, instructions, input: `搜尋關鍵字：${keyword}`, tools: [{ type: "web_search" }] }),
+      }, 25000);
+      const rawText = await res.text();
+      rawProbe = { httpOk: res.ok, httpStatus: res.status, rawBodyPreview: rawText.slice(0, 4000) };
+    }
+  } catch (error) {
+    rawProbe = { error: error.message, errorName: error.name };
+  }
   try {
     const rawRows = await fetchTwEntertainmentNewsViaOpenAiWebSearch(keyword, range, 15);
     const withinRange = rawRows.filter((row) => isNewsDateWithinRange(row.publishedDate, range));
@@ -4148,7 +4174,9 @@ async function handleTwEntertainmentDebugOpenAiWebSearch(request, response, url)
     sendJson(response, 200, {
       keyword,
       range,
+      model,
       elapsedMs: Date.now() - startedAt,
+      rawProbe,
       rawRowCount: rawRows.length,
       rawRows,
       droppedByDateRange: rawRows.filter((row) => !isNewsDateWithinRange(row.publishedDate, range)),
@@ -4160,7 +4188,9 @@ async function handleTwEntertainmentDebugOpenAiWebSearch(request, response, url)
     sendJson(response, 500, {
       keyword,
       range,
+      model,
       elapsedMs: Date.now() - startedAt,
+      rawProbe,
       error: error.message,
       errorName: error.name,
     });
