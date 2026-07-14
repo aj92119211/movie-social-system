@@ -3507,6 +3507,68 @@ async function fetchTwEntertainmentExpandedNewsResults(keyword, range, depth = "
   };
 }
 
+// Google News RSS access from Render's IP has become unreliable enough that
+// entire searches (all ~29 source domains) can come back with zero usable
+// items even for keywords independently verified to have current coverage -
+// see the investigation notes around handleTwEntertainmentNewsSearch. Since
+// this project already pays for OpenAI API access, route custom (non-preset)
+// keyword searches through OpenAI's hosted web_search tool as an additional
+// source: the search itself runs on OpenAI's infrastructure, not Render's,
+// so it isn't subject to the same IP-level throttling.
+async function fetchTwEntertainmentNewsViaOpenAiWebSearch(keyword, range, limit = 15) {
+  const apiKey = envValue("OPENAI_API_KEY");
+  if (!apiKey) return [];
+  const rangeLabel = { today: "24 小時內", "7d": "最近 7 天", "30d": "最近 30 天", year: "最近一年內" }[range] || "最近 7 天";
+  const instructions = [
+    "你是台灣影劇新聞搜尋助手，必須使用網路搜尋工具實際查詢，不可憑記憶捏造內容。",
+    `只回傳${rangeLabel}內實際發布、且與關鍵字直接相關的新聞或官方公告。`,
+    "title、url、source、date 都必須是你透過搜尋實際找到的真實網頁資訊，不可生成範例或臆測網址。",
+    "找不到符合條件的結果時，回傳空陣列，不要硬湊或使用不相關內容。",
+    `最多回傳 ${limit} 筆，依發布時間新到舊排序。`,
+    "只輸出 JSON 陣列，不要加 Markdown、註解或程式碼區塊，每筆物件格式：",
+    JSON.stringify({ title: "", url: "", source: "", date: "YYYY-MM-DD", snippet: "" }),
+  ].join("\n");
+  try {
+    const res = await fetchWithTimeout("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${apiKey}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        model: envValue("OPENAI_WEB_SEARCH_MODEL") || envValue("OPENAI_MODEL") || "gpt-4.1-mini",
+        instructions,
+        input: `搜尋關鍵字：${keyword}`,
+        tools: [{ type: "web_search" }],
+      }),
+    }, 25000);
+    if (!res.ok) {
+      console.warn("[TW_NEWS_OPENAI_WEB_SEARCH_FAILED]", res.status, await res.text().catch(() => ""));
+      return [];
+    }
+    const json = await res.json();
+    const text = json.output_text || json.output?.flatMap((item) => item.content ?? []).map((part) => part.text || "").join("\n") || "";
+    const cleaned = text.trim().replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```$/i, "").trim();
+    const start = cleaned.indexOf("[");
+    const end = cleaned.lastIndexOf("]");
+    if (start === -1 || end === -1) return [];
+    const items = JSON.parse(cleaned.slice(start, end + 1));
+    if (!Array.isArray(items)) return [];
+    return items
+      .filter((item) => item && item.url && item.title)
+      .slice(0, limit)
+      .map((item) => ({
+        title: decodeBasicHtml(String(item.title)),
+        link: String(item.url).trim(),
+        publishedDate: normalizeNewsDate(item.date),
+        sourceName: decodeBasicHtml(String(item.source || "")) || "OpenAI 網路搜尋",
+      }));
+  } catch (error) {
+    console.warn("[TW_NEWS_OPENAI_WEB_SEARCH_ERROR]", error.message);
+    return [];
+  }
+}
+
 async function fetchTwEntertainmentNewsResults(keyword, range, options = {}) {
   const depth = options.depth || "standard";
   const sourceLimit = options.sourceLimit || getTwEntertainmentDepthConfig(depth).sourceLimit;
@@ -3518,19 +3580,28 @@ async function fetchTwEntertainmentNewsResults(keyword, range, options = {}) {
     : Promise.resolve({ items: [], queries: [keyword], sourceNames: sources.map((source) => source.name), rawCount: 0, failedQueryCount: 0 });
   const baseBatchPromise = isBroadPreset ? Promise.resolve([]) : fetchTwEntertainmentNewsBatch(keyword, range, sources, sourceLimit, getTwEntertainmentDepthConfig(depth).concurrency);
   const generalKeywordPromise = isCustomKeyword ? fetchTwEntertainmentGeneralKeywordResults(keyword, range, 30) : Promise.resolve([]);
-  const [expandedSettled, baseBatchSettled, generalKeywordSettled] = await Promise.allSettled([
+  const openAiWebSearchPromise = isCustomKeyword ? fetchTwEntertainmentNewsViaOpenAiWebSearch(keyword, range, 15) : Promise.resolve([]);
+  const [expandedSettled, baseBatchSettled, generalKeywordSettled, openAiWebSearchSettled] = await Promise.allSettled([
     expandedPromise,
     baseBatchPromise,
     generalKeywordPromise,
+    openAiWebSearchPromise,
   ]);
   const expanded = expandedSettled.status === "fulfilled" ? expandedSettled.value : { items: [], queries: [keyword], sourceNames: sources.map((source) => source.name), rawCount: 0, failedQueryCount: 1 };
   if (expandedSettled.status === "rejected") console.warn("[TW_NEWS_EXPANDED_FAILED]", expandedSettled.reason?.message || expandedSettled.reason);
   if (baseBatchSettled.status === "rejected") console.warn("[TW_NEWS_BASE_BATCH_FAILED]", baseBatchSettled.reason?.message || baseBatchSettled.reason);
   if (generalKeywordSettled.status === "rejected") console.warn("[TW_NEWS_GENERAL_BATCH_FAILED]", generalKeywordSettled.reason?.message || generalKeywordSettled.reason);
+  if (openAiWebSearchSettled.status === "rejected") console.warn("[TW_NEWS_OPENAI_WEB_SEARCH_REJECTED]", openAiWebSearchSettled.reason?.message || openAiWebSearchSettled.reason);
+  const openAiWebSearchRows = openAiWebSearchSettled.status === "fulfilled" ? openAiWebSearchSettled.value : [];
+  const openAiWebSearchItems = openAiWebSearchRows
+    .filter((row) => isNewsDateWithinRange(row.publishedDate, range))
+    .filter((row) => shouldKeepTwEntertainmentNewsItem(row, { name: "", domain: "" }, keyword))
+    .map((row) => normalizeTwNewsItem(row, { name: "", domain: "" }, keyword));
   const allResults = [
     ...expanded.items,
     ...(baseBatchSettled.status === "fulfilled" ? baseBatchSettled.value : []),
     ...(generalKeywordSettled.status === "fulfilled" ? generalKeywordSettled.value : []),
+    ...openAiWebSearchItems,
   ];
   const deduped = dedupeTwEntertainmentResults(allResults, "articleUrl");
   if (isCustomKeyword && deduped.length < 10 && range !== "30d" && range !== "year") {
