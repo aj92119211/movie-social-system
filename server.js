@@ -3523,6 +3523,38 @@ async function fetchTwEntertainmentExpandedNewsResults(keyword, range, depth = "
 // keyword searches through OpenAI's hosted web_search tool as an additional
 // source: the search itself runs on OpenAI's infrastructure, not Render's,
 // so it isn't subject to the same IP-level throttling.
+// Uses the Responses API's structured-output mode (text.format:
+// json_schema, strict:true) instead of just instructing the model to
+// "only output JSON": debug testing showed the model would sometimes
+// ignore that instruction and prefix its answer with prose ("以下是與
+// ...相關的搜尋結果：") when web_search was involved, which our strict
+// JSON.parse correctly rejected - so the same query would silently
+// succeed or return zero items call to call. Structured outputs enforce
+// the shape at the decoding level rather than by asking nicely, so the
+// response is always parseable JSON matching this schema.
+const twEntertainmentOpenAiWebSearchSchema = {
+  type: "object",
+  properties: {
+    items: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          title: { type: "string" },
+          url: { type: "string" },
+          source: { type: "string" },
+          date: { type: "string" },
+          snippet: { type: "string" },
+        },
+        required: ["title", "url", "source", "date", "snippet"],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ["items"],
+  additionalProperties: false,
+};
+
 async function fetchTwEntertainmentNewsViaOpenAiWebSearch(keyword, range, limit = 15) {
   const apiKey = envValue("OPENAI_API_KEY");
   if (!apiKey) return [];
@@ -3531,10 +3563,8 @@ async function fetchTwEntertainmentNewsViaOpenAiWebSearch(keyword, range, limit 
     "你是台灣影劇新聞搜尋助手，必須使用網路搜尋工具實際查詢，不可憑記憶捏造內容。",
     `只回傳${rangeLabel}內實際發布、且與關鍵字直接相關的新聞或官方公告。`,
     "title、url、source、date 都必須是你透過搜尋實際找到的真實網頁資訊，不可生成範例或臆測網址。",
-    "找不到符合條件的結果時，回傳空陣列，不要硬湊或使用不相關內容。",
+    "找不到符合條件的結果時，items 回傳空陣列，不要硬湊或使用不相關內容。",
     `最多回傳 ${limit} 筆，依發布時間新到舊排序。`,
-    "只輸出 JSON 陣列，不要加 Markdown、註解或程式碼區塊，每筆物件格式：",
-    JSON.stringify({ title: "", url: "", source: "", date: "YYYY-MM-DD", snippet: "" }),
   ].join("\n");
   try {
     const res = await fetchWithTimeout("https://api.openai.com/v1/responses", {
@@ -3548,6 +3578,14 @@ async function fetchTwEntertainmentNewsViaOpenAiWebSearch(keyword, range, limit 
         instructions,
         input: `搜尋關鍵字：${keyword}`,
         tools: [{ type: "web_search" }],
+        text: {
+          format: {
+            type: "json_schema",
+            name: "tw_entertainment_news_items",
+            strict: true,
+            schema: twEntertainmentOpenAiWebSearchSchema,
+          },
+        },
       }),
     }, 25000);
     if (!res.ok) {
@@ -3556,12 +3594,9 @@ async function fetchTwEntertainmentNewsViaOpenAiWebSearch(keyword, range, limit 
     }
     const json = await res.json();
     const text = json.output_text || json.output?.flatMap((item) => item.content ?? []).map((part) => part.text || "").join("\n") || "";
-    const cleaned = text.trim().replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```$/i, "").trim();
-    const start = cleaned.indexOf("[");
-    const end = cleaned.lastIndexOf("]");
-    if (start === -1 || end === -1) return [];
-    const items = JSON.parse(cleaned.slice(start, end + 1));
-    if (!Array.isArray(items)) return [];
+    if (!text) return [];
+    const parsed = JSON.parse(text);
+    const items = Array.isArray(parsed?.items) ? parsed.items : [];
     return items
       .filter((item) => item && item.url && item.title)
       .slice(0, limit)
