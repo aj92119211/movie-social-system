@@ -3901,9 +3901,13 @@ async function handleTwEntertainmentNewsSearch(request, response, url) {
     // "今年" option: a title-specific keyword search (e.g. a drama name)
     // routinely has all its coverage clustered around a single announcement
     // date, which can fall just outside the 30-day window while still being
-    // well within a year. Chaining a further 30d -> year escalation covers
-    // that case instead of reporting "no results" when a year-old range
-    // would have found the same news the site itself already offers.
+    // well within a year. "year" is a strict superset of "30d" at the same
+    // per-request cost (same query count, just a different when:Nd value),
+    // so escalating straight to it - instead of chaining 7d -> 30d -> year -
+    // finds the same news without adding a second sequential fallback round.
+    // A prior version chained both steps and pushed the worst case to 4
+    // sequential fallback rounds on top of Render's already-slow Google News
+    // RSS calls, which blew past the frontend's 30s abort timeout entirely.
     let effectiveRange = range;
     const twEntertainmentRangeLabels = { today: "今天", "7d": "最近 7 天", "30d": "最近 30 天", year: "今年" };
     const applyTwEntertainmentRangeFallback = async (targetRange, message) => {
@@ -3929,10 +3933,6 @@ async function handleTwEntertainmentNewsSearch(request, response, url) {
       effectiveRange = targetRange;
       fallbackMessages.push(message);
     };
-
-    if (autoExpandRange && effectiveRange === "7d" && countTwEntertainmentVisibleItems([...newsResults, ...relatedNewsResults]) < 5) {
-      await applyTwEntertainmentRangeFallback("30d", "最近 7 天結果不足，已自動放寬至最近 30 天。");
-    }
 
     if (autoExpandRange && effectiveRange !== "year" && countTwEntertainmentVisibleItems([...newsResults, ...relatedNewsResults]) < 5) {
       const fromLabel = twEntertainmentRangeLabels[effectiveRange] || effectiveRange;
