@@ -321,7 +321,7 @@ async function performSearch(query) {
           includeAi: "false",
           socialPlatforms: platforms.join(","),
         });
-        const socialPayload = await fetchWithUiTimeout(socialParams, 8000, "social");
+        const socialPayload = await fetchWithUiTimeout(socialParams, 20000, "social");
         payload.socialResults = socialPayload.socialResults || [];
         payload.summary.socialCount = socialPayload.summary?.socialCount || 0;
         payload.summary.partialFailure = Boolean(payload.summary.partialFailure || socialPayload.summary?.partialFailure);
