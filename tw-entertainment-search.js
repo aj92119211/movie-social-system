@@ -289,7 +289,7 @@ async function performSearch(query) {
       trackedKeywords: useTrackedKeywords ? trackedKeywords.join(",") : "",
     });
     showStatus("正在搜尋新聞與官方來源...");
-    const payload = await fetchWithUiTimeout(newsParams, 30000, "news");
+    const payload = await fetchWithUiTimeout(newsParams, 60000, "news");
     showStatus("正在整理搜尋結果...");
     lastSearchPayload = payload;
     console.log("[TW_SEARCH_UI_RESULT]", {
