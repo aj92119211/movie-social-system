@@ -192,6 +192,16 @@ function hasPastYearInTitle(item, reportYear) {
   return years.some((year) => year < reportYear);
 }
 
+function isTimeSensitiveEvent(item) {
+  const haystack = `${item.title} ${item.snippet}`;
+  return /開拍|開鏡|殺青|首播|上線|定檔|上映|完結|收官|續訂|取消|宣布/.test(haystack);
+}
+
+function hasExplicitReportYear(item, reportYear) {
+  const haystack = `${item.title} ${item.snippet}`;
+  return haystack.includes(String(reportYear));
+}
+
 function dedupe(items) {
   const seen = new Set();
   const output = [];
@@ -204,13 +214,40 @@ function dedupe(items) {
   return output;
 }
 
-export async function collectCandidates(config, maxItems, { dateArg } = {}) {
-  const items = [];
-  const errors = [];
+export function filterCandidateFreshness(items, config = {}, { dateArg } = {}) {
   const maxAgeDays = config.maxAgeDays || 7;
   const requirePublishedDate = config.requirePublishedDate !== false;
   const reportDate = reportCutoffDate(dateArg);
   const reportYear = reportDate.getFullYear();
+  const errors = [];
+
+  const relevantItems = dedupe(items)
+    .filter((item) => !shouldExclude(item, config.excludeKeywords))
+    .filter((item) => isRelevant(item, config.relevanceKeywords));
+  const withoutPastYears = relevantItems.filter((item) => !hasPastYearInTitle(item, reportYear));
+  const pastYearDropped = relevantItems.length - withoutPastYears.length;
+  const withFreshDates = withoutPastYears.filter((item) => isWithinAgeWindow(item, maxAgeDays, reportDate, requirePublishedDate));
+  const staleDropped = withoutPastYears.length - withFreshDates.length;
+  const freshItems = withFreshDates.filter((item) => !isTimeSensitiveEvent(item) || hasExplicitReportYear(item, reportYear));
+  const unverifiedEventDropped = withFreshDates.length - freshItems.length;
+
+  if (pastYearDropped > 0) {
+    errors.push(`已過濾 ${pastYearDropped} 則標題或摘要含過去年份的候選新聞，避免舊聞被當成 ${reportYear} 年新聞。`);
+  }
+  if (staleDropped > 0) {
+    const dateRule = requirePublishedDate ? "無可解析發布日期或" : "";
+    errors.push(`已過濾 ${staleDropped} 則${dateRule}超過 ${maxAgeDays} 天的候選新聞（依來源標示的發布日期判斷）。`);
+  }
+  if (unverifiedEventDropped > 0) {
+    errors.push(`已過濾 ${unverifiedEventDropped} 則開拍／首播／上線等時效事件，但標題與摘要缺少 ${reportYear} 年明確線索，避免舊事件被來源更新日期誤帶入。`);
+  }
+
+  return { items: freshItems, errors };
+}
+
+export async function collectCandidates(config, maxItems, { dateArg } = {}) {
+  const items = [];
+  const errors = [];
 
   for (const source of config.sources.filter((s) => s.feed)) {
     try {
@@ -244,23 +281,11 @@ export async function collectCandidates(config, maxItems, { dateArg } = {}) {
     await sleep(400);
   }
 
-  const relevantItems = dedupe(items)
-    .filter((item) => !shouldExclude(item, config.excludeKeywords))
-    .filter((item) => isRelevant(item, config.relevanceKeywords));
-  const withoutPastYears = relevantItems.filter((item) => !hasPastYearInTitle(item, reportYear));
-  const pastYearDropped = relevantItems.length - withoutPastYears.length;
-  const freshItems = withoutPastYears.filter((item) => isWithinAgeWindow(item, maxAgeDays, reportDate, requirePublishedDate));
-  const staleDropped = withoutPastYears.length - freshItems.length;
-  if (pastYearDropped > 0) {
-    errors.push(`已過濾 ${pastYearDropped} 則標題或摘要含過去年份的候選新聞，避免舊聞被當成 ${reportYear} 年新聞。`);
-  }
-  if (staleDropped > 0) {
-    const dateRule = requirePublishedDate ? "無可解析發布日期或" : "";
-    errors.push(`已過濾 ${staleDropped} 則${dateRule}超過 ${maxAgeDays} 天的候選新聞（依來源標示的發布日期判斷）。`);
-  }
+  const filtered = filterCandidateFreshness(items, config, { dateArg });
+  errors.push(...filtered.errors);
 
   return {
-    items: freshItems.slice(0, maxItems),
+    items: filtered.items.slice(0, maxItems),
     errors
   };
 }
