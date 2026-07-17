@@ -2,7 +2,8 @@ name: Film Daily Report Cloud
 
 on:
   schedule:
-    - cron: "3,13,23,33,43,53 4-8 * * *"
+    # GitHub cron uses UTC. 01:30 UTC = 09:30 Asia/Taipei.
+    - cron: "30 1 * * *"
   workflow_dispatch:
   repository_dispatch:
     types:
