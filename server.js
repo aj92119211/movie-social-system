@@ -1,4 +1,4 @@
-﻿const http = require("node:http");
+const http = require("node:http");
 const fs = require("node:fs");
 const path = require("node:path");
 const crypto = require("node:crypto");
@@ -2251,6 +2251,8 @@ const twEntertainmentNewsSources = [
   { name: "Netflix 台灣", domain: "about.netflix.com" },
   { name: "MyVideo", domain: "myvideo.net.tw" },
   { name: "friDay 影音", domain: "video.friday.tw" },
+  { name: "CTWANT", domain: "www.ctwant.com" },
+  { name: "經濟日報", domain: "money.udn.com" },
 ];
 
 const twEntertainmentSocialSources = [
@@ -2735,7 +2737,7 @@ function getTwEntertainmentPrioritySources() {
   return twEntertainmentPrioritySourceDomains.map((domain) => byDomain.get(domain)).filter(Boolean);
 }
 
-const twEntertainmentStrongEventPattern = /開拍|開鏡|開機|殺青|定檔|上映|上架|票房|預告|海報|主視覺|卡司|主演|導演|編劇|製作|發行|海外授權|影展|入圍|得獎|獎項|文策院|文化部|補助|輔導金|OTT|Netflix|Disney|公視|金馬|金鐘|北影|台北電影節|高雄電影節/;
+const twEntertainmentStrongEventPattern = /開拍|開鏡|開機|殺青|定檔|上映|上架|票房|預告|海報|主視覺|卡司|主演|導演|編劇|製作|發行|海外授權|影展|入圍|得獎|獎項|文策院|文化部|補助|輔導金|OTT|Netflix|Disney|公視|金馬|金鐘|北影|台北電影節|高雄電影節|徵件|徵選|徵稿|徵案/;
 const twEntertainmentWeakBackgroundPattern = /影評|心得|推薦|懶人包|片單|劇情解析|結局|雷文|背景|專訪|專題|人物|網友|Dcard|PTT/;
 
 function classifyTwEntertainmentItem(item, keyword) {
@@ -4328,4 +4330,3 @@ const server = http.createServer((request, response) => {
 server.listen(port, host, () => {
   console.log(`Movie Social Ops running at http://${host === "0.0.0.0" ? "127.0.0.1" : host}:${port}/`);
 });
-
