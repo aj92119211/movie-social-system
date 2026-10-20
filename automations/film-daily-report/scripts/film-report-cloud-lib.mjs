@@ -402,23 +402,24 @@ export async function callOpenAIStructured({ config, dateInfo, items, errors }) 
   const instructions = [
     "你是台灣影視公司的產業日報總編，讀者是電影宣傳、發行與企劃同事。",
     "請使用台灣繁體中文與台灣用語，禁止簡體字。日文、韓文、英文新聞請翻成自然的中文標題與摘要，片名用台灣通行譯名，沒有譯名就保留原文。",
-    `日報分成五個市場：${marketNames.join("、")}。每個市場各挑 ${perMarket} 則，優先順序：票房數字 > 定檔／上映／上線 > 開拍、選角、併購、發行權交易 > 影展與獎項 > 政策與補助。`,
-    "每個市場內的題材要分散：同一部作品最多 1 則，避免整區被同一部片或同一家公司佔滿。",
-    "市場以事件發生地或作品主要市場判斷：例如日本片在台灣上映的票房算台灣、好萊塢片在韓國的票房算韓國。若候選新聞實際屬於別的市場，可以放到正確的市場。",
+    `日報分成五個市場：${marketNames.join("、")}。每個市場依重要性排序列出 ${perMarket + 2} 則（最後兩則是備選，系統會自動取前 ${perMarket} 則有效的），優先順序：票房數字 > 定檔／上映／上線 > 開拍、選角、併購、發行權交易 > 影展與獎項 > 政策與補助。`,
+    "同一部作品或同一事件，在整份日報（五個市場加起來）只能出現 1 次；不同媒體報導同一件事也算同一則。每則卡片的 work 欄位填主要作品名或主角公司名，用來檢查重複。",
+    "市場歸屬規則：作品的製作、選角、續集、平台續訂消息，歸作品原產國（例如韓片續集一律放韓國，不可放台灣）；在某地上映的票房或宣傳活動，歸上映地（例如日本片在台灣的票房放台灣、好萊塢片在韓國的票房放韓國）。台灣區只放台灣本地產業、國片國劇，或發生在台灣市場的事。",
+    "中國區只放中國大陸的電影、陸劇、平台與政策新聞；Netflix、YouTube 等國際平台的新聞不算中國，除非事件發生在中國市場。",
     "只能使用候選清單中的新聞，每則卡片必須填入該則新聞的 ref（例如 N12）。不要自己編造新聞。",
     `若某市場可用的新聞不到 ${perMarket} 則，就只放實際有的數量，絕對不要用空白、『待補充』或『來源未提供』湊數。`,
-    "排除八卦、私生活、影評心得、片單懶人包、與影視產業無關的新聞（跨業新聞也排除）。",
+    "排除八卦、私生活、影評心得、片單懶人包、與影視產業無關的新聞；一般科技、AI、就業、股市新聞也排除，除非主角是影視公司或影視作品。",
     "summary：用一到兩句寫清楚發生什麼事，必須包含具體片名、公司、數字或日期。",
     "why：一到兩句，從台灣電影宣傳／發行的角度寫這件事值得注意的地方。每則都要針對該新聞寫，不得套用通用句，不同新聞不可出現相同句子。",
     "不要寫『公司參考』、『管理提示』或行動建議清單。",
     "highlights：從全部新聞中挑最重要的 3 則做今日重點，title 為一句標題、body 為兩到三句說明。",
-    "upcoming：列出新聞中提到、日期在今天之後的上映、上線、頒獎或影展節點，最多 8 個，date 用 M/D 格式，沒有就給空陣列。",
-    "insights：2 到 3 則跨市場觀察，每則要引用今天新聞中的具體事實。",
+    "upcoming：只列五個市場內、新聞明確寫出日期且在今天之後的上映、上線、頒獎或影展節點，最多 8 個，date 用 M/D 格式；日期不明確或已改期未定的不要列；沒有就給空陣列。",
+    "insights：2 到 3 則跨市場觀察，每則要引用今天新聞中的具體事實（寫片名，不要寫 N12 這類編號）。",
     "只輸出 JSON，不要加 Markdown 或註解。",
     "JSON 格式：",
     JSON.stringify({
       highlights: [{ title: "", body: "" }],
-      markets: marketNames.map((name) => ({ name, items: [{ ref: "N1", label: "票房", title: "", summary: "", why: "" }] })),
+      markets: marketNames.map((name) => ({ name, items: [{ ref: "N1", work: "", label: "票房", title: "", summary: "", why: "" }] })),
       upcoming: [{ date: "10/24", event: "" }],
       insights: [{ title: "", body: "" }]
     }),
@@ -461,6 +462,8 @@ export function normalizeReport(raw, { items, config, dateInfo }) {
   const perMarket = config.itemsPerMarket || 8;
   const usedRefs = new Set();
   const usedSentences = new Set();
+  const usedWorks = new Set();
+  const workKey = (text) => String(text || "").replace(/[\s《》〈〉「」『』:：·・]/g, "").toLowerCase();
   const marketNames = (config.markets || []).map((m) => m.name);
   const rawMarkets = Array.isArray(raw?.markets) ? raw.markets : [];
 
@@ -476,6 +479,10 @@ export function normalizeReport(raw, { items, config, dateInfo }) {
       if (!title || !summary || !why) continue;
       if (/待補充|來源未提供|未提供標題/.test(`${title}${summary}${why}`)) continue;
       if (usedSentences.has(why) || usedSentences.has(summary)) continue; // templated text
+      // Same film / company already covered elsewhere in today's report.
+      const work = workKey(card.work) || workKey(title.match(/《([^》]+)》/)?.[1]);
+      if (work && usedWorks.has(work)) continue;
+      if (work) usedWorks.add(work);
       usedRefs.add(candidate.ref);
       usedSentences.add(why);
       usedSentences.add(summary);
@@ -494,16 +501,26 @@ export function normalizeReport(raw, { items, config, dateInfo }) {
     return { name, cards };
   });
 
+  const stripRefs = (text) => String(text || "").replace(/[（(]\s*N\d+\s*[)）]/g, "").replace(/\bN\d+\b/g, "");
+  const reportMonth = Number(dateInfo.ymdDash.slice(5, 7));
+  const sortKey = (date) => {
+    const [m, d] = String(date).split("/").map(Number);
+    if (!m || !d) return 9999;
+    return (m < reportMonth ? m + 12 : m) * 100 + d; // next year's months sort after this year's
+  };
   const clean = (list, max, fields) => (Array.isArray(list) ? list : [])
     .filter((item) => fields.every((f) => String(item?.[f] || "").trim() && !/待補充/.test(item[f])))
     .slice(0, max);
 
   return {
     dateInfo,
-    highlights: clean(raw?.highlights, 3, ["title", "body"]).map((h) => ({ title: truncate(h.title, 70), body: truncate(h.body, 260) })),
+    highlights: clean(raw?.highlights, 3, ["title", "body"]).map((h) => ({ title: truncate(stripRefs(h.title), 70), body: truncate(stripRefs(h.body), 260) })),
     markets,
-    upcoming: clean(raw?.upcoming, 8, ["date", "event"]).map((u) => ({ date: truncate(u.date, 12), event: truncate(u.event, 80) })),
-    insights: clean(raw?.insights, 3, ["title", "body"]).map((x) => ({ title: truncate(x.title, 40), body: truncate(x.body, 260) }))
+    upcoming: clean(raw?.upcoming, 8, ["date", "event"])
+      .filter((u) => /^\d{1,2}\/\d{1,2}/.test(String(u.date).trim()) && !/未定|未明|改檔|延期/.test(u.event))
+      .map((u) => ({ date: truncate(u.date, 12), event: truncate(stripRefs(u.event), 80) }))
+      .sort((a, b) => sortKey(a.date) - sortKey(b.date)),
+    insights: clean(raw?.insights, 3, ["title", "body"]).map((x) => ({ title: truncate(stripRefs(x.title), 40), body: truncate(stripRefs(x.body), 260) }))
   };
 }
 
@@ -530,7 +547,6 @@ export function renderMarkdown(data, reporter = "AJ") {
       lines.push(`   來源：${card.source}｜日期：${card.date}`);
       lines.push(`   摘要：${card.summary}`);
       lines.push(`   觀察：${card.why}`);
-      lines.push(`   連結：${card.link}`);
     });
     lines.push("");
   }
