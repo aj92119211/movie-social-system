@@ -1,11 +1,9 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import AdmZip from "adm-zip";
 import nodemailer from "nodemailer";
 
 export const ROOT = path.resolve(new URL("..", import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1"));
 export const CONFIG_PATH = path.join(ROOT, "config", "film-daily-sources.json");
-export const TEMPLATE_PATH = path.join(ROOT, "templates", "film_daily_report_template.docx");
 
 export function parseArgs(argv) {
   const args = {};
@@ -245,137 +243,141 @@ export function filterCandidateFreshness(items, config = {}, { dateArg } = {}) {
   return { items: freshItems, errors };
 }
 
-export async function collectCandidates(config, maxItems, { dateArg } = {}) {
-  const items = [];
-  const errors = [];
+// ---------------------------------------------------------------------------
+// Five-market collection (台灣／中國／日本／韓國／美國)
+// ---------------------------------------------------------------------------
 
+export const HISTORY_PATH = path.join(ROOT, "state", "seen-news.json");
+
+function newsKey(text = "") {
+  return String(text).replace(/[?#].*$/, "").toLowerCase().trim();
+}
+
+function titleKey(text = "") {
+  return String(text)
+    .replace(/\s[-|｜–—]\s[^-|｜–—]+$/, "") // drop trailing " - Source name"
+    .replace(/[\s「」『』《》〈〉【】\[\]()（）"'“”‘’!！?？,，.。:：、|｜]/g, "")
+    .toLowerCase()
+    .slice(0, 40);
+}
+
+export async function loadHistory(historyPath = HISTORY_PATH) {
+  try {
+    return JSON.parse(await fs.readFile(historyPath, "utf8"));
+  } catch {
+    return { days: {} };
+  }
+}
+
+function historySets(history) {
+  const links = new Set();
+  const titles = new Set();
+  for (const entries of Object.values(history.days || {})) {
+    for (const entry of entries) {
+      if (entry.link) links.add(newsKey(entry.link));
+      if (entry.title) titles.add(titleKey(entry.title));
+    }
+  }
+  return { links, titles };
+}
+
+export async function saveHistory(history, dateKey, cards, keepDays = 14, historyPath = HISTORY_PATH) {
+  const days = { ...(history.days || {}) };
+  days[dateKey] = cards.map((card) => ({ link: card.link, title: card.originalTitle || card.title }));
+  const kept = Object.keys(days).sort().slice(-keepDays);
+  const output = { days: Object.fromEntries(kept.map((key) => [key, days[key]])) };
+  await fs.mkdir(path.dirname(historyPath), { recursive: true });
+  await fs.writeFile(historyPath, JSON.stringify(output, null, 2) + "\n", "utf8");
+}
+
+function marketGoogleNewsUrl(query, locale) {
+  const params = new URLSearchParams({
+    q: `${query} when:3d`,
+    hl: locale?.hl || "zh-TW",
+    gl: locale?.gl || "TW",
+    ceid: locale?.ceid || "TW:zh-Hant"
+  });
+  return `https://news.google.com/rss/search?${params.toString()}`;
+}
+
+export async function collectCandidates(config, _maxItems, { dateArg, history } = {}) {
+  const errors = [];
+  const markets = config.markets || [];
+  const perMarket = config.maxCandidatesPerMarket || 25;
+  const seen = historySets(history || { days: {} });
+  const byMarket = Object.fromEntries(markets.map((m) => [m.name, []]));
+
+  // Direct RSS feeds (Deadline / Variety / THR / Soompi …): their market is
+  // the configured source region.
   for (const source of config.sources.filter((s) => s.feed)) {
     try {
       const xml = await fetchText(source.feed);
-      items.push(...extractRssItems(xml, source));
+      const items = extractRssItems(xml, source).map((item) => ({ ...item, market: source.region }));
+      if (byMarket[source.region]) byMarket[source.region].push(...items);
     } catch (error) {
       errors.push(`${source.name} feed 抓取失敗：${error.message}`);
     }
   }
 
-  const domains = config.sources.map((s) => sourceDomain(s.url)).filter(Boolean);
-  const searchQueries = [...config.searchKeywords];
-  for (const keyword of config.searchKeywords.slice(0, 12)) {
-    const groupedSites = domains.slice(0, 16).map((d) => `site:${d}`).join(" OR ");
-    searchQueries.push(`(${groupedSites}) ${keyword}`);
-  }
-
-  // Sequential with a short gap between requests: firing ~37 rapid Google
-  // News RSS queries back-to-back from the same GitHub Actions IP gets
-  // flagged as automated traffic and rate-limited mid-run, which is why
-  // candidate counts used to swing wildly (a handful vs. 50+) from day to
-  // day. Retrying transient failures keeps a bad request from just being
-  // silently dropped.
-  for (const query of searchQueries.slice(0, 40)) {
-    try {
-      const xml = await fetchTextWithRetry(googleNewsRssUrl(query));
-      items.push(...extractRssItems(xml, { name: "Google News RSS", region: "跨區", url: "https://news.google.com/" }));
-    } catch (error) {
-      errors.push(`Google News RSS 查詢失敗「${query}」：${error.message}`);
-    }
-    await sleep(400);
-  }
-
-  const filtered = filterCandidateFreshness(items, config, { dateArg });
-  errors.push(...filtered.errors);
-
-  return {
-    items: filtered.items.slice(0, maxItems),
-    errors
-  };
-}
-
-function formatCandidateDigest(items) {
-  return items.map((item, idx) => [
-    `#${idx + 1}`,
-    `標題：${item.title}`,
-    `來源：${item.sourceName}`,
-    `地區線索：${item.sourceRegion}`,
-    `日期：${item.published || "來源未提供"}`,
-    `連結：${item.link}`,
-    `摘要線索：${item.snippet || "無"}`
-  ].join("\n")).join("\n\n");
-}
-
-function noFreshItemsReport() {
-  const placeholderCard = (country, label) => ({
-    country,
-    label,
-    title: "本日暫無可驗證新發布項目",
-    source: "來源未提供",
-    date: "來源未提供",
-    summary: "候選新聞未通過發布日期與時效性檢查，今日不以舊聞補版面。",
-    why: "避免將 RSS 快取或舊事件誤標為今日新聞。",
-    action: "維持監測；待官方公告或可信發布日期確認後再收錄。"
-  });
-
-  return {
-    report_title: "影劇產業日報摘要",
-    highlight_cards: [1, 2, 3].map((idx) => ({
-      title: idx === 1 ? "本日暫無可驗證新發布項目" : `待觀察項目 ${idx}`,
-      body: idx === 1 ? "候選新聞未通過發布日期與時效性檢查，今日不以舊聞補版面。" : "暫不列入未能確認日期或內容時效的項目。",
-      action: "維持監測來源；待有可驗證新資料再納入。"
-    })),
-    taiwan_focus: [1, 2, 3].map(() => placeholderCard("台灣", "時效查核")),
-    international_focus: [1, 2, 3].map(() => placeholderCard("跨區", "時效查核")),
-    series_focus: [1, 2, 3].map(() => placeholderCard("跨區", "影集")),
-    ott_film: placeholderCard("跨區", "OTT 電影"),
-    ott_series: [1, 2, 3].map(() => placeholderCard("跨區", "OTT 影集")),
-    release_box: {
-      headline: "本日暫無可驗證新發布項目",
-      body: "已完成來源抓取與時效性檢查；未通過查核者不列入日報。"
-    },
-    featured: {
-      title: "近期仍具時效性內容待補",
-      meta: "來源未提供",
-      reason: "今日候選來源未提供可驗證的新事件。",
-      watch: "優先補查官方公告、票房平台與片商發布。"
-    },
-    watch_sections: {
-      themes: [],
-      market: [],
-      promotion: [],
-      observables: {
-        institutions: "TAICCA、文化部影視局、全國電影票房統計資訊",
-        genres: "來源未提供",
-        metrics: "發布日期、官方公告日期、上映或上線日期",
-        actions: "確認日期後再收錄，不以 RSS 更新時間替代事件日期"
+  // Market-specific Google News queries, each in that market's own language
+  // edition, so Japan / Korea / China are actually searched every day.
+  for (const market of markets) {
+    for (const keyword of market.keywords || []) {
+      try {
+        const xml = await fetchTextWithRetry(marketGoogleNewsUrl(keyword, market.locale));
+        const items = extractRssItems(xml, { name: "Google News", region: market.name, url: "https://news.google.com/" })
+          .map((item) => {
+            // Google News titles end with " - 媒體名稱"; keep the real outlet as the source.
+            const outlet = item.title.match(/\s-\s([^-]+)$/)?.[1]?.trim();
+            return { ...item, sourceName: outlet || item.sourceName, market: market.name };
+          });
+        byMarket[market.name].push(...items);
+      } catch (error) {
+        errors.push(`${market.name} 搜尋失敗「${keyword}」：${error.message}`);
       }
-    }
-  };
-}
-
-function reportCards(raw) {
-  return [
-    ...(Array.isArray(raw.taiwan_focus) ? raw.taiwan_focus : []),
-    ...(Array.isArray(raw.international_focus) ? raw.international_focus : []),
-    ...(Array.isArray(raw.series_focus) ? raw.series_focus : []),
-    raw.ott_film,
-    ...(Array.isArray(raw.ott_series) ? raw.ott_series : [])
-  ].filter(Boolean);
-}
-
-function validateStructuredReport(raw) {
-  const repeated = new Map();
-  for (const card of reportCards(raw)) {
-    for (const field of ["summary", "why", "action"]) {
-      const value = String(card?.[field] || "").replace(/\s+/g, " ").trim();
-      if (value.length < 24 || value === "來源未提供") continue;
-      const key = `${field}:${value}`;
-      repeated.set(key, (repeated.get(key) || 0) + 1);
+      await sleep(400);
     }
   }
-  const duplicates = [...repeated.entries()].filter(([, count]) => count > 1);
-  if (duplicates.length) {
-    const samples = duplicates.slice(0, 3).map(([key]) => key.replace(/^(summary|why|action):/, "")).join(" / ");
-    throw new Error(`日報分析文字疑似套用模板，發現跨新聞重複句：${samples}`);
+
+  const items = [];
+  let repeatedDropped = 0;
+  const counts = {};
+  for (const market of markets) {
+    const fresh = filterCandidateFreshness(byMarket[market.name], config, { dateArg });
+    errors.push(...fresh.errors.map((message) => `［${market.name}］${message}`));
+    const notSeen = fresh.items.filter((item) => {
+      const repeated = seen.links.has(newsKey(item.link)) || seen.titles.has(titleKey(item.title));
+      if (repeated) repeatedDropped += 1;
+      return !repeated;
+    });
+    const picked = notSeen.slice(0, perMarket);
+    counts[market.name] = picked.length;
+    items.push(...picked);
   }
+  if (repeatedDropped) errors.push(`已排除 ${repeatedDropped} 則近 ${config.historyDays || 14} 天日報已收錄過的新聞。`);
+
+  // Stable reference ids handed to the model, so every card can be traced
+  // back to a real candidate (title / source / date / link come from here,
+  // never from the model).
+  items.forEach((item, idx) => { item.ref = `N${idx + 1}`; });
+  return { items, errors, counts };
 }
+
+function formatCandidateDigest(items, markets) {
+  return markets.map((market) => {
+    const list = items.filter((item) => item.market === market.name);
+    const body = list.map((item) => [
+      `[${item.ref}] ${item.title}`,
+      `  來源：${item.sourceName}｜日期：${item.published || "未提供"}`,
+      `  摘要線索：${truncate(item.snippet || "無", 220)}`
+    ].join("\n")).join("\n");
+    return `=== ${market.name}（${list.length} 則候選）===\n${body || "（無候選）"}`;
+  }).join("\n\n");
+}
+
+// ---------------------------------------------------------------------------
+// OpenAI
+// ---------------------------------------------------------------------------
 
 function cleanJsonText(text) {
   const trimmed = text.trim().replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```$/i, "").trim();
@@ -390,281 +392,272 @@ function truncate(text, max) {
   return value.length > max ? `${value.slice(0, max - 1).trim()}…` : value;
 }
 
-function normalizeCard(card = {}, defaults = {}) {
-  return {
-    country: truncate(card.country || defaults.country || "未定", 10),
-    label: truncate(card.label || defaults.label || "產業焦點", 20),
-    title: truncate(card.title || defaults.title || "未提供標題", 60),
-    source: truncate(card.source || defaults.source || "來源未提供", 50),
-    date: truncate(card.date || defaults.date || "來源未提供", 20),
-    summary: truncate(card.summary || defaults.summary || "來源未提供", 140),
-    why: truncate(card.why || defaults.why || "來源未提供", 170),
-    action: truncate(card.action || defaults.action || "來源未提供", 170)
-  };
-}
-
-function fillCards(items, count, defaults) {
-  const list = Array.isArray(items) ? items.slice(0, count) : [];
-  while (list.length < count) list.push({});
-  return list.map((card) => normalizeCard(card, defaults));
-}
-
-function normalizeBulletGroup(items, fallbackPrefix) {
-  const list = Array.isArray(items) ? items : [];
-  while (list.length < 3) list.push({ headline: `${fallbackPrefix}${list.length + 1}`, body: "待補充。" });
-  return list.slice(0, 3).map((item, idx) => ({
-    headline: truncate(item.headline || `${fallbackPrefix}${idx + 1}`, 28),
-    body: truncate(item.body || "待補充。", 90)
-  }));
-}
-
-export function normalizeStructuredReport(raw, dateInfo, reporter) {
-  const data = raw || {};
-  return {
-    reportTitle: truncate(data.report_title || data.reportTitle || "影劇產業日報摘要", 20),
-    dateLine: `${dateInfo.ymdSlash.replace(/\//g, " / ")}　（${dateInfo.weekday}）　　整理：${reporter}`,
-    highlights: (Array.isArray(data.highlight_cards) ? data.highlight_cards : []).slice(0, 3).map((item, idx) => ({
-      title: truncate(item?.title || `重點 ${idx + 1}`, 50),
-      body: truncate(item?.body || "待補充。", 120),
-      action: truncate(item?.action || "待補充。", 100)
-    })).concat(Array.from({ length: Math.max(0, 3 - (data.highlight_cards?.length || 0)) }, (_, idx) => ({
-      title: `重點 ${idx + 1}`,
-      body: "待補充。",
-      action: "待補充。"
-    }))).slice(0, 3),
-    taiwanFocus: fillCards(data.taiwan_focus, 3, { country: "台灣" }),
-    internationalFocus: fillCards(data.international_focus, 3, { country: "美國" }),
-    seriesFocus: fillCards(data.series_focus, 3, { country: "美國", label: "影集" }),
-    ottFilm: normalizeCard(data.ott_film, { country: "跨區", label: "OTT 電影" }),
-    ottSeries: fillCards(data.ott_series, 3, { country: "跨區", label: "OTT 影集" }),
-    releaseBox: {
-      headline: truncate(data.release_box?.headline || "今日台灣端可公開驗證的即時上新有限", 40),
-      body: truncate(data.release_box?.body || "建議同步對照本週票房與提案／補助節點，不必被娛樂零訊號牽著走。", 90)
-    },
-    featured: {
-      title: truncate(data.featured?.title || "2026 TCCF PITCHING", 50),
-      meta: truncate(data.featured?.meta || "提案市場　台灣", 30),
-      reason: truncate(data.featured?.reason || "台灣內容對接國際買家與合製夥伴的核心節點。", 140),
-      watch: truncate(data.featured?.watch || "觀察報名進度、國際案比例與成熟商務提案。", 100)
-    },
-    watchSections: {
-      themes: normalizeBulletGroup(data.watch_sections?.themes, "題材趨勢"),
-      market: normalizeBulletGroup(data.watch_sections?.market, "市場風向"),
-      promotion: normalizeBulletGroup(data.watch_sections?.promotion, "宣傳操作"),
-      observables: {
-        institutions: truncate(data.watch_sections?.observables?.institutions || "TAICCA、全國電影票房統計資訊、TCCF PITCHING", 100),
-        genres: truncate(data.watch_sections?.observables?.genres || "文化科技內容、可國際合製的影集／電影案", 100),
-        metrics: truncate(data.watch_sections?.observables?.metrics || "票房平台、提案節點、補助名單", 100),
-        actions: truncate(data.watch_sections?.observables?.actions || "確定主提案案、完成商務包與對外敘事", 100)
-      }
-    }
-  };
-}
-
 export async function callOpenAIStructured({ config, dateInfo, items, errors }) {
   const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) {
-    throw new Error("找不到 OPENAI_API_KEY。請在雲端環境變數中設定。");
-  }
+  if (!apiKey) throw new Error("找不到 OPENAI_API_KEY。請在雲端環境變數中設定。");
 
   const model = process.env.OPENAI_MODEL || config.defaultModel || "gpt-5.2";
+  const perMarket = config.itemsPerMarket || 8;
+  const marketNames = (config.markets || []).map((m) => m.name);
   const instructions = [
-    "你是影劇產業日報的總編與策略分析師。",
-    "請使用繁體中文，禁止輸出簡體中文。",
-    "受眾是影視公司老闆、主管、製片、發行與行銷團隊。",
-    "內容必須是決策用情報，不是娛樂八卦摘要。",
-    "台灣產業資訊必須進入主體，至少要有 3 則台灣焦點，優先考慮 TAICCA、TCCF、票房、補助、台灣影集與國片動態。",
-    "只可使用提供的候選新聞，不要捏造來源、日期、標題、連結或事件。",
-    "每則新聞卡片都必須對應候選清單中的一則新聞；source、date、title 必須可從候選清單直接追溯。",
-    "summary、why、action 必須引用該則新聞的具體事實（片名、公司、平台、影展、市場、檔期、票房、主創或交易內容至少一項），不可只依分類標籤套用通用句。",
-    "不同新聞不得重複使用同一句 summary、why 或 action；若只能寫出同一句，代表資訊不足，請改寫成『來源未提供足夠資訊』並降低收錄優先度。",
-    "country 必須依新聞事件、作品來源或主要市場判斷；不得只因來源網站、Google News 分組或內文偶然提到某國就標成該國。",
-    "遇到標題或摘要顯示事件日期早於日報時窗（例如過去年份、舊影展、舊特映、舊上映檔期），請不要收錄。",
-    "若資訊不足，請寫『來源未提供』或以保守表述處理，不要臆測。",
-    "請只輸出 JSON，不要加 Markdown、註解或程式碼區塊。",
-    "所有欄位都要填滿。",
-    "標題請控制精準、可上版；摘要與公司參考請偏具體，避免空泛形容。",
-    "JSON schema:",
+    "你是台灣影視公司的產業日報總編，讀者是電影宣傳、發行與企劃同事。",
+    "請使用台灣繁體中文與台灣用語，禁止簡體字。日文、韓文、英文新聞請翻成自然的中文標題與摘要，片名用台灣通行譯名，沒有譯名就保留原文。",
+    `日報分成五個市場：${marketNames.join("、")}。每個市場各挑 ${perMarket} 則，優先順序：票房數字 > 定檔／上映／上線 > 開拍、選角、併購、發行權交易 > 影展與獎項 > 政策與補助。`,
+    "每個市場內的題材要分散：同一部作品最多 1 則，避免整區被同一部片或同一家公司佔滿。",
+    "市場以事件發生地或作品主要市場判斷：例如日本片在台灣上映的票房算台灣、好萊塢片在韓國的票房算韓國。若候選新聞實際屬於別的市場，可以放到正確的市場。",
+    "只能使用候選清單中的新聞，每則卡片必須填入該則新聞的 ref（例如 N12）。不要自己編造新聞。",
+    `若某市場可用的新聞不到 ${perMarket} 則，就只放實際有的數量，絕對不要用空白、『待補充』或『來源未提供』湊數。`,
+    "排除八卦、私生活、影評心得、片單懶人包、與影視產業無關的新聞（跨業新聞也排除）。",
+    "summary：用一到兩句寫清楚發生什麼事，必須包含具體片名、公司、數字或日期。",
+    "why：一到兩句，從台灣電影宣傳／發行的角度寫這件事值得注意的地方。每則都要針對該新聞寫，不得套用通用句，不同新聞不可出現相同句子。",
+    "不要寫『公司參考』、『管理提示』或行動建議清單。",
+    "highlights：從全部新聞中挑最重要的 3 則做今日重點，title 為一句標題、body 為兩到三句說明。",
+    "upcoming：列出新聞中提到、日期在今天之後的上映、上線、頒獎或影展節點，最多 8 個，date 用 M/D 格式，沒有就給空陣列。",
+    "insights：2 到 3 則跨市場觀察，每則要引用今天新聞中的具體事實。",
+    "只輸出 JSON，不要加 Markdown 或註解。",
+    "JSON 格式：",
     JSON.stringify({
-      report_title: "影劇產業日報摘要",
-      highlight_cards: [{ title: "", body: "", action: "" }],
-      taiwan_focus: [{ country: "台灣", label: "", title: "", source: "", date: "", summary: "", why: "", action: "" }],
-      international_focus: [{ country: "", label: "", title: "", source: "", date: "", summary: "", why: "", action: "" }],
-      series_focus: [{ country: "", label: "", title: "", source: "", date: "", summary: "", why: "", action: "" }],
-      ott_film: { country: "", label: "", title: "", source: "", date: "", summary: "", why: "", action: "" },
-      ott_series: [{ country: "", label: "", title: "", source: "", date: "", summary: "", why: "", action: "" }],
-      release_box: { headline: "", body: "" },
-      featured: { title: "", meta: "", reason: "", watch: "" },
-      watch_sections: {
-        themes: [{ headline: "", body: "" }],
-        market: [{ headline: "", body: "" }],
-        promotion: [{ headline: "", body: "" }],
-        observables: { institutions: "", genres: "", metrics: "", actions: "" }
-      }
-    })
+      highlights: [{ title: "", body: "" }],
+      markets: marketNames.map((name) => ({ name, items: [{ ref: "N1", label: "票房", title: "", summary: "", why: "" }] })),
+      upcoming: [{ date: "10/24", event: "" }],
+      insights: [{ title: "", body: "" }]
+    }),
+    "label 請用 2～4 字分類，例如：票房、上映、上線、開拍、選角、併購、發行、影展、獎項、政策、平台。"
   ].join("\n");
 
   const input = [
-    `請產出 ${dateInfo.ymdSlash}（${dateInfo.weekday}）的影劇產業日報資料。`,
-    "版型限制：必須適合固定 DOCX 模板，每個欄位請精煉，避免過長。",
-    "候選新聞如下：",
-    formatCandidateDigest(items),
-    errors.length ? `抓取警告：\n${errors.join("\n")}` : ""
+    `今天是 ${dateInfo.ymdSlash}（${dateInfo.weekday}），請產出今天的影視產業日報。`,
+    "候選新聞如下（已依市場分組，並排除近兩週已報導過的新聞）：",
+    formatCandidateDigest(items, config.markets || []),
+    errors.length ? `抓取備註：\n${errors.slice(0, 20).join("\n")}` : ""
   ].join("\n\n");
 
   const res = await fetch("https://api.openai.com/v1/responses", {
     method: "POST",
-    headers: {
-      authorization: `Bearer ${apiKey}`,
-      "content-type": "application/json"
-    },
+    headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" },
     body: JSON.stringify({ model, instructions, input })
   });
-
   const json = await res.json();
   if (!res.ok) throw new Error(`OpenAI API 失敗：${res.status} ${JSON.stringify(json)}`);
   const text = json.output_text || json.output?.flatMap((item) => item.content ?? []).map((part) => part.text || "").join("\n") || "";
-  const report = JSON.parse(cleanJsonText(text));
-  validateStructuredReport(report);
-  return report;
+  return JSON.parse(cleanJsonText(text));
 }
 
-// Fields are matched by name against literal {{token}} placeholders baked
-// into templates/film_daily_report_template.docx, not by counting <w:t>
-// nodes — see applyTemplate(). Fixed labels ("來源：", "▶ 值得注意　", …)
-// and always-blank slots live directly in the template and don't need
-// entries here.
-export function buildReplacements(data) {
-  const replacements = {};
-  const set = (name, value = "") => { replacements[`{{${name}}}`] = value; };
+// ---------------------------------------------------------------------------
+// Normalise: attach real source / date / link from the candidate list, drop
+// anything that cannot be traced, de-duplicate, and never pad with blanks.
+// ---------------------------------------------------------------------------
 
-  set("report_title", data.reportTitle);
-  set("date_line", data.dateLine);
+function formatTaipeiDate(text) {
+  const date = text ? new Date(text) : null;
+  if (!date || Number.isNaN(date.getTime())) return "";
+  const parts = new Intl.DateTimeFormat("zh-TW", { timeZone: "Asia/Taipei", month: "numeric", day: "numeric" }).formatToParts(date);
+  const pick = (type) => parts.find((p) => p.type === type)?.value;
+  return `${pick("month")}/${pick("day")}`;
+}
 
-  set("highlight_1_title", data.highlights[0].title);
-  set("highlight_1_body", data.highlights[0].body);
-  set("highlight_1_action", data.highlights[0].action);
-  set("highlight_2_title", data.highlights[1].title);
-  set("highlight_2_body", data.highlights[1].body);
-  set("highlight_3_title", data.highlights[2].title);
-  set("highlight_3_body", data.highlights[2].body);
-  set("highlight_3_action", data.highlights[2].action);
+export function normalizeReport(raw, { items, config, dateInfo }) {
+  const byRef = new Map(items.map((item) => [item.ref, item]));
+  const perMarket = config.itemsPerMarket || 8;
+  const usedRefs = new Set();
+  const usedSentences = new Set();
+  const marketNames = (config.markets || []).map((m) => m.name);
+  const rawMarkets = Array.isArray(raw?.markets) ? raw.markets : [];
 
-  const cardGroups = [
-    ["taiwan", data.taiwanFocus],
-    ["intl", data.internationalFocus],
-    ["series", data.seriesFocus],
-    ["ott_series", data.ottSeries]
+  const markets = marketNames.map((name) => {
+    const rawItems = rawMarkets.find((m) => m?.name === name)?.items || [];
+    const cards = [];
+    for (const card of rawItems) {
+      const candidate = byRef.get(String(card?.ref || "").trim());
+      if (!candidate || usedRefs.has(candidate.ref)) continue;
+      const title = truncate(card.title, 70);
+      const summary = truncate(card.summary, 200);
+      const why = truncate(card.why, 200);
+      if (!title || !summary || !why) continue;
+      if (/待補充|來源未提供|未提供標題/.test(`${title}${summary}${why}`)) continue;
+      if (usedSentences.has(why) || usedSentences.has(summary)) continue; // templated text
+      usedRefs.add(candidate.ref);
+      usedSentences.add(why);
+      usedSentences.add(summary);
+      cards.push({
+        label: truncate(card.label || "產業", 6),
+        title,
+        summary,
+        why,
+        source: truncate(candidate.sourceName, 30),
+        date: formatTaipeiDate(candidate.published) || "日期未標示",
+        link: candidate.link,
+        originalTitle: candidate.title
+      });
+      if (cards.length >= perMarket) break;
+    }
+    return { name, cards };
+  });
+
+  const clean = (list, max, fields) => (Array.isArray(list) ? list : [])
+    .filter((item) => fields.every((f) => String(item?.[f] || "").trim() && !/待補充/.test(item[f])))
+    .slice(0, max);
+
+  return {
+    dateInfo,
+    highlights: clean(raw?.highlights, 3, ["title", "body"]).map((h) => ({ title: truncate(h.title, 70), body: truncate(h.body, 260) })),
+    markets,
+    upcoming: clean(raw?.upcoming, 8, ["date", "event"]).map((u) => ({ date: truncate(u.date, 12), event: truncate(u.event, 80) })),
+    insights: clean(raw?.insights, 3, ["title", "body"]).map((x) => ({ title: truncate(x.title, 40), body: truncate(x.body, 260) }))
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Output: plain text (email body + .md) and black-gold Word document
+// ---------------------------------------------------------------------------
+
+export function renderMarkdown(data, reporter = "AJ") {
+  const { dateInfo } = data;
+  const lines = [];
+  lines.push("影視產業日報");
+  lines.push(`${dateInfo.ymdSlash}（${dateInfo.weekday}） 整理：${reporter}`);
+  lines.push("");
+  if (data.highlights.length) {
+    lines.push("一 今日重點", "");
+    data.highlights.forEach((h, idx) => lines.push(`${String(idx + 1).padStart(2, "0")} ${h.title}`, `   ${h.body}`, ""));
+  }
+  lines.push("二 五大市場動態", "");
+  for (const market of data.markets) {
+    lines.push(`【${market.name}】${market.cards.length} 則`);
+    if (!market.cards.length) lines.push("  本日沒有通過時效查核的新聞。");
+    market.cards.forEach((card, idx) => {
+      lines.push(`${idx + 1}. [${card.label}] ${card.title}`);
+      lines.push(`   來源：${card.source}｜日期：${card.date}`);
+      lines.push(`   摘要：${card.summary}`);
+      lines.push(`   觀察：${card.why}`);
+      lines.push(`   連結：${card.link}`);
+    });
+    lines.push("");
+  }
+  if (data.upcoming.length) {
+    lines.push("三 接下來要看", "");
+    data.upcoming.forEach((u) => lines.push(`- ${u.date}　${u.event}`));
+    lines.push("");
+  }
+  if (data.insights.length) {
+    lines.push("四 本期觀察", "");
+    data.insights.forEach((x) => lines.push(`◆ ${x.title}`, `  ${x.body}`, ""));
+  }
+  return lines.join("\n");
+}
+
+const FONT = "Microsoft JhengHei";
+const GOLD = "C9A227";
+const BLACK = "111111";
+const GREY = "666666";
+const TEXT = "222222";
+const CONTENT_WIDTH = 9638; // A4 minus 2cm margins, in DXA
+
+export async function buildDocx(data, outputDocx, reporter = "AJ") {
+  const {
+    Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell, WidthType,
+    ShadingType, BorderStyle, AlignmentType, Footer, PageNumber, ExternalHyperlink
+  } = await import("docx");
+
+  const run = (text, o = {}) => new TextRun({ text, font: FONT, size: o.size || 21, bold: o.bold, italics: o.italics, color: o.color || TEXT });
+  const none = { style: BorderStyle.NONE, size: 0, color: "FFFFFF" };
+  const noBorders = { top: none, bottom: none, left: none, right: none };
+  const band = (children, pad = 200) => new Table({
+    width: { size: CONTENT_WIDTH, type: WidthType.DXA },
+    columnWidths: [CONTENT_WIDTH],
+    rows: [new TableRow({ children: [new TableCell({
+      width: { size: CONTENT_WIDTH, type: WidthType.DXA },
+      shading: { type: ShadingType.CLEAR, fill: BLACK, color: "auto" },
+      borders: noBorders,
+      margins: { top: pad, bottom: pad, left: 300, right: 300 },
+      children
+    })] })]
+  });
+  const sectionHead = (num, title) => [
+    new Paragraph({ spacing: { before: 360 }, children: [] }),
+    band([new Paragraph({ children: [run(`${num}  `, { bold: true, color: GOLD, size: 26 }), run(title, { bold: true, color: "FFFFFF", size: 26 })] })], 100),
+    new Paragraph({ spacing: { after: 120 }, children: [] })
   ];
-  for (const [prefix, cards] of cardGroups) {
-    cards.forEach((card, idx) => {
-      const p = `${prefix}_${idx + 1}`;
-      set(`${p}_country`, card.country);
-      set(`${p}_label`, card.label);
-      set(`${p}_title`, card.title);
-      set(`${p}_source`, card.source);
-      set(`${p}_date`, card.date);
-      set(`${p}_summary`, card.summary);
-      set(`${p}_why`, card.why);
-      set(`${p}_action`, card.action);
+
+  const out = [];
+  out.push(band([
+    new Paragraph({ children: [run("影視產業日報", { bold: true, color: GOLD, size: 44 })] }),
+    new Paragraph({ spacing: { before: 80 }, children: [
+      run(`${data.dateInfo.ymdSlash.replace(/\//g, " / ")}（${data.dateInfo.weekday}）`, { color: "FFFFFF", size: 22 }),
+      run(`    整理：${reporter}`, { color: GOLD, size: 22 })
+    ] })
+  ], 280));
+
+  let section = 0;
+  const nums = ["一", "二", "三", "四"];
+  if (data.highlights.length) {
+    out.push(...sectionHead(nums[section++], "今日重點"));
+    data.highlights.forEach((h, idx) => {
+      out.push(new Paragraph({ spacing: { before: 120, after: 60 }, children: [run(`${String(idx + 1).padStart(2, "0")}  `, { bold: true, color: GOLD, size: 24 }), run(h.title, { bold: true, size: 23 })] }));
+      out.push(new Paragraph({ indent: { left: 480 }, spacing: { after: 120, line: 320 }, children: [run(h.body)] }));
     });
   }
 
-  set("ott_film_country", data.ottFilm.country);
-  set("ott_film_label", data.ottFilm.label);
-  set("ott_film_title", data.ottFilm.title);
-  set("ott_film_source", data.ottFilm.source);
-  set("ott_film_date", data.ottFilm.date);
-  set("ott_film_summary", data.ottFilm.summary);
-  set("ott_film_why", data.ottFilm.why);
-  set("ott_film_action", data.ottFilm.action);
-
-  set("release_headline", `⚠ ${data.releaseBox.headline}`);
-  set("release_body", data.releaseBox.body);
-
-  set("featured_title", data.featured.title);
-  set("featured_meta", data.featured.meta);
-  set("featured_reason", data.featured.reason);
-  set("featured_watch", data.featured.watch);
-
-  const bulletGroups = [
-    ["theme", data.watchSections.themes],
-    ["market", data.watchSections.market],
-    ["promotion", data.watchSections.promotion]
-  ];
-  for (const [prefix, items] of bulletGroups) {
-    items.forEach((item, idx) => {
-      set(`${prefix}_${idx + 1}_headline`, `◆ ${item.headline}`);
-      set(`${prefix}_${idx + 1}_body`, item.body);
+  out.push(...sectionHead(nums[section++], "五大市場動態"));
+  for (const market of data.markets) {
+    out.push(new Paragraph({ spacing: { before: 240, after: 40 }, children: [run("▍", { color: GOLD, size: 26, bold: true }), run(market.name, { bold: true, size: 26, color: BLACK }), run(`　${market.cards.length} 則`, { color: GREY, size: 18 })] }));
+    out.push(new Paragraph({ border: { bottom: { style: BorderStyle.SINGLE, size: 8, color: GOLD, space: 1 } }, spacing: { after: 160 }, children: [] }));
+    if (!market.cards.length) {
+      out.push(new Paragraph({ indent: { left: 360 }, children: [run("本日沒有通過時效查核的新聞。", { color: GREY, size: 20 })] }));
+    }
+    market.cards.forEach((card, idx) => {
+      out.push(new Paragraph({ keepNext: true, spacing: { before: 100, after: 40 }, children: [run(`${idx + 1}. `, { bold: true, color: GOLD }), run(`【${card.label}】`, { bold: true, color: GOLD }), run(card.title, { bold: true, size: 22 })] }));
+      out.push(new Paragraph({ keepNext: true, indent: { left: 360 }, spacing: { after: 40 }, children: [
+        run(`來源：${card.source}｜日期：${card.date}｜`, { color: GREY, size: 18 }),
+        new ExternalHyperlink({ link: card.link, children: [new TextRun({ text: "原文連結", font: FONT, size: 18, color: GOLD, underline: {} })] })
+      ] }));
+      out.push(new Paragraph({ keepNext: true, indent: { left: 360 }, spacing: { after: 40, line: 310 }, children: [run("摘要　", { bold: true, size: 20 }), run(card.summary, { size: 20 })] }));
+      out.push(new Paragraph({ indent: { left: 360 }, spacing: { after: 140, line: 310 }, children: [run("觀察　", { bold: true, color: GOLD, size: 20 }), run(card.why, { size: 20 })] }));
     });
   }
 
-  set("observables_institutions", data.watchSections.observables.institutions);
-  set("observables_genres", data.watchSections.observables.genres);
-  set("observables_metrics", data.watchSections.observables.metrics);
-  set("observables_actions", data.watchSections.observables.actions);
-
-  return replacements;
-}
-
-function forceFont(xmlText, fontName) {
-  return xmlText
-    .replace(/新細明體/g, fontName)
-    .replace(/PMingLiU/g, "Microsoft JhengHei")
-    .replace(/Microsoft JhengHei/g, fontName)
-    .replace(/Aptos Display/g, fontName)
-    .replace(/Aptos/g, fontName)
-    .replace(/Times New Roman/g, fontName)
-    .replace(/Arial/g, fontName)
-    .replace(/w:asciiTheme="[^"]+"/g, `w:ascii="${fontName}"`)
-    .replace(/w:hAnsiTheme="[^"]+"/g, `w:hAnsi="${fontName}"`)
-    .replace(/w:eastAsiaTheme="[^"]+"/g, `w:eastAsia="${fontName}"`)
-    .replace(/w:cstheme="[^"]+"/g, `w:cs="${fontName}"`)
-    .replace(/<a:latin typeface="[^"]*"/g, `<a:latin typeface="${fontName}"`)
-    .replace(/<a:ea typeface="[^"]*"/g, `<a:ea typeface="${fontName}"`)
-    .replace(/<a:cs typeface="[^"]*"/g, `<a:cs typeface="${fontName}"`)
-    .replace(/script="Hant" typeface="[^"]*"/g, `script="Hant" typeface="${fontName}"`)
-    .replace(/script="Bopo" typeface="[^"]*"/g, `script="Bopo" typeface="${fontName}"`);
-}
-
-export async function applyTemplate({ templatePath = TEMPLATE_PATH, replacements, outputDocx, fontName = "微軟正黑體" }) {
-  const buffer = await fs.readFile(templatePath);
-  const zip = new AdmZip(buffer);
-  const documentEntry = zip.getEntry("word/document.xml");
-  if (!documentEntry) throw new Error("模板缺少 word/document.xml。");
-  let documentXml = zip.readAsText(documentEntry, "utf8");
-
-  // Checked up front, before any replacement happens: if the template is
-  // ever reopened and resaved in Word, a {{token}} can get split across
-  // two <w:t> runs (formatting/spell-check boundaries) or dropped
-  // entirely. Either way it stops appearing as one contiguous substring in
-  // the raw XML, so this catches both failure modes as a hard error
-  // instead of silently shipping a docx with missing/misplaced content.
-  const missingTokens = Object.keys(replacements).filter((token) => !documentXml.includes(token));
-  if (missingTokens.length) {
-    throw new Error(`模板中找不到以下佔位符，模板可能已被重新編輯過而拆散或遺失了文字節點：${missingTokens.join(", ")}`);
+  if (data.upcoming.length) {
+    out.push(...sectionHead(nums[section++], "接下來要看"));
+    const c1 = 2000;
+    const c2 = CONTENT_WIDTH - c1;
+    const cellBorders = { top: none, left: none, right: none, bottom: { style: BorderStyle.SINGLE, size: 4, color: "DDDDDD" } };
+    const cell = (width, child) => new TableCell({ width: { size: width, type: WidthType.DXA }, borders: cellBorders, margins: { top: 80, bottom: 80, left: 120, right: 120 }, children: [child] });
+    out.push(new Table({
+      width: { size: CONTENT_WIDTH, type: WidthType.DXA },
+      columnWidths: [c1, c2],
+      rows: data.upcoming.map((u) => new TableRow({ children: [
+        cell(c1, new Paragraph({ children: [run(u.date, { bold: true, color: GOLD })] })),
+        cell(c2, new Paragraph({ children: [run(u.event, { size: 20 })] }))
+      ] }))
+    }));
   }
 
-  for (const [token, rawValue] of Object.entries(replacements)) {
-    const value = String(rawValue ?? "");
-    const escaped = value
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;");
-    documentXml = documentXml.split(token).join(escaped);
-  }
-  zip.updateFile("word/document.xml", Buffer.from(documentXml, "utf8"));
-
-  for (const entryName of ["word/styles.xml", "word/document.xml", "word/fontTable.xml", "word/theme/theme1.xml"]) {
-    const entry = zip.getEntry(entryName);
-    if (!entry) continue;
-    const updated = forceFont(zip.readAsText(entry, "utf8"), fontName);
-    zip.updateFile(entryName, Buffer.from(updated, "utf8"));
+  if (data.insights.length) {
+    out.push(...sectionHead(nums[section++], "本期觀察"));
+    data.insights.forEach((x) => {
+      out.push(new Paragraph({ spacing: { before: 120, after: 40 }, children: [run("◆ ", { color: GOLD, bold: true }), run(x.title, { bold: true, size: 22 })] }));
+      out.push(new Paragraph({ indent: { left: 360 }, spacing: { after: 120, line: 320 }, children: [run(x.body)] }));
+    });
   }
 
+  const doc = new Document({
+    styles: { default: { document: { run: { font: FONT, size: 21 } } } },
+    sections: [{
+      properties: { page: { size: { width: 11906, height: 16838 }, margin: { top: 1134, bottom: 1134, left: 1134, right: 1134 } } },
+      footers: { default: new Footer({ children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [
+        run(`影視產業日報｜${data.dateInfo.ymdSlash}　整理：${reporter}　　`, { size: 16, color: GREY }),
+        new TextRun({ children: [PageNumber.CURRENT], font: FONT, size: 16, color: GOLD })
+      ] })] }) },
+      children: out
+    }]
+  });
   await fs.mkdir(path.dirname(outputDocx), { recursive: true });
-  zip.writeZip(outputDocx);
+  await fs.writeFile(outputDocx, await Packer.toBuffer(doc));
 }
+
+// ---------------------------------------------------------------------------
+// Orchestration
+// ---------------------------------------------------------------------------
 
 export async function ensureOutputDir(primary, fallback) {
   try {
@@ -677,107 +670,37 @@ export async function ensureOutputDir(primary, fallback) {
   }
 }
 
-export function renderMarkdown(data, dateInfo) {
-  const lines = [];
-  const pushCard = (card) => {
-    lines.push(`- [${card.country}｜${card.label}] ${card.title}`);
-    lines.push(`  來源：${card.source}`);
-    lines.push(`  日期：${card.date}`);
-    lines.push(`  摘要：${card.summary}`);
-    lines.push(`  值得注意：${card.why}`);
-    lines.push(`  公司參考：${card.action}`);
-    lines.push("");
-  };
-
-  lines.push(data.reportTitle);
-  lines.push(`${dateInfo.ymdSlash}（${dateInfo.weekday}） 整理：AJ`);
-  lines.push("");
-  lines.push("一 今日重點");
-  lines.push("");
-  data.highlights.forEach((item, idx) => {
-    lines.push(`${idx + 1}. ${item.title}`);
-    lines.push(`   ${item.body}`);
-    lines.push(`   管理提示：${item.action}`);
-    lines.push("");
-  });
-
-  lines.push("二 新聞摘要");
-  lines.push("");
-  lines.push("台灣焦點");
-  lines.push("");
-  data.taiwanFocus.forEach(pushCard);
-  lines.push("國際電影與市場");
-  lines.push("");
-  data.internationalFocus.forEach(pushCard);
-  lines.push("影集焦點");
-  lines.push("");
-  data.seriesFocus.forEach(pushCard);
-  lines.push("OTT 電影");
-  lines.push("");
-  pushCard(data.ottFilm);
-  lines.push("OTT 影集");
-  lines.push("");
-  data.ottSeries.forEach(pushCard);
-
-  lines.push("三 新上映／新上線");
-  lines.push("");
-  lines.push(`${data.releaseBox.headline}：${data.releaseBox.body}`);
-  lines.push("");
-  lines.push("四 備受期待");
-  lines.push("");
-  lines.push(`${data.featured.title}`);
-  lines.push(`期待原因：${data.featured.reason}`);
-  lines.push(`可持續觀察：${data.featured.watch}`);
-  lines.push("");
-  lines.push("五 值得關注");
-  lines.push("");
-  lines.push("題材趨勢");
-  data.watchSections.themes.forEach((item) => lines.push(`- ${item.headline}：${item.body}`));
-  lines.push("");
-  lines.push("市場風向");
-  data.watchSections.market.forEach((item) => lines.push(`- ${item.headline}：${item.body}`));
-  lines.push("");
-  lines.push("可借鏡的宣傳操作");
-  data.watchSections.promotion.forEach((item) => lines.push(`- ${item.headline}：${item.body}`));
-  lines.push("");
-  lines.push("可觀察對象");
-  lines.push(`- 機構：${data.watchSections.observables.institutions}`);
-  lines.push(`- 題材：${data.watchSections.observables.genres}`);
-  lines.push(`- 決策指標：${data.watchSections.observables.metrics}`);
-  lines.push(`- 優先動作：${data.watchSections.observables.actions}`);
-  lines.push("");
-
-  return lines.join("\n");
-}
-
-export async function writeReportFiles({ markdown, docxSourceTemplate = TEMPLATE_PATH, replacements, outDir, dateInfo }) {
-  const stem = `film_daily_report_${dateInfo.ymdDash}`;
-  const mdPath = path.join(outDir, `${stem}.md`);
-  const docxPath = path.join(outDir, `${stem}.docx`);
-  await fs.writeFile(mdPath, markdown.trimEnd() + "\n", "utf8");
-  await applyTemplate({ templatePath: docxSourceTemplate, replacements, outputDocx: docxPath, fontName: "微軟正黑體" });
-  return { mdPath, docxPath };
-}
-
-export async function generateCloudReport({ dateArg, outDirArg, configPathArg, maxItemsArg }) {
+export async function generateCloudReport({ dateArg, outDirArg, configPathArg, aiReport }) {
   await loadProjectEnv();
   const configFile = configPathArg ? path.resolve(configPathArg) : CONFIG_PATH;
   const config = JSON.parse(await fs.readFile(configFile, "utf8"));
+  const reporter = config.reporter || "AJ";
   const dateInfo = taipeiDateParts(dateArg);
-  const maxItems = maxItemsArg || config.maxCandidateItems || 80;
-  const { items, errors } = await collectCandidates(config, maxItems, { dateArg });
+  const history = await loadHistory();
+
+  const { items, errors, counts } = await collectCandidates(config, 0, { dateArg, history });
+  console.log(`候選新聞：${Object.entries(counts).map(([k, v]) => `${k} ${v}`).join("、")}`);
+  if (errors.length) console.log(errors.join("\n"));
+
   const raw = items.length
-    ? await callOpenAIStructured({ config, dateInfo, items, errors })
-    : noFreshItemsReport();
-  const data = normalizeStructuredReport(raw, dateInfo, config.reporter || "AJ");
+    ? (aiReport ? await aiReport({ config, dateInfo, items, errors }) : await callOpenAIStructured({ config, dateInfo, items, errors }))
+    : {};
+  const data = normalizeReport(raw, { items, config, dateInfo });
+  console.log(`收錄：${data.markets.map((m) => `${m.name} ${m.cards.length}`).join("、")}`);
 
   const primaryOut = outDirArg || process.env.CLOUD_REPORT_OUTPUT_DIR || path.join(ROOT, "outputs");
-  const fallbackOut = path.join(ROOT, config.fallbackOutputDirectory || "outputs");
-  const outDir = await ensureOutputDir(primaryOut, fallbackOut);
-  const markdown = renderMarkdown(data, dateInfo);
-  const replacements = buildReplacements(data);
-  const files = await writeReportFiles({ markdown, replacements, outDir, dateInfo });
-  return { config, dateInfo, outDir, markdown, replacements, errors, items, data, ...files };
+  const outDir = await ensureOutputDir(primaryOut, path.join(ROOT, config.fallbackOutputDirectory || "outputs"));
+  const stem = `film_daily_report_${dateInfo.ymdDash}`;
+  const mdPath = path.join(outDir, `${stem}.md`);
+  const docxPath = path.join(outDir, `${stem}.docx`);
+  const markdown = renderMarkdown(data, reporter);
+  await fs.writeFile(mdPath, markdown.trimEnd() + "\n", "utf8");
+  await buildDocx(data, docxPath, reporter);
+
+  // Remember what went out today so the next days never repeat it.
+  await saveHistory(history, dateInfo.ymdDash, data.markets.flatMap((m) => m.cards), config.historyDays || 14);
+
+  return { config, dateInfo, outDir, markdown, errors, items, data, mdPath, docxPath };
 }
 
 export async function sendViaGmail({ to, from, subject, html, text, attachments = [] }) {
@@ -785,20 +708,13 @@ export async function sendViaGmail({ to, from, subject, html, text, attachments 
   const pass = process.env.GMAIL_APP_PASSWORD;
   if (!user || !pass) throw new Error("找不到 GMAIL_USER 或 GMAIL_APP_PASSWORD。");
 
-  const transporter = nodemailer.createTransport({
-    service: "gmail",
-    auth: { user, pass }
-  });
-
+  const transporter = nodemailer.createTransport({ service: "gmail", auth: { user, pass } });
   return transporter.sendMail({
     from: from || user,
     to: Array.isArray(to) ? to.join(", ") : to,
     subject,
     text,
     html,
-    attachments: attachments.map((item) => ({
-      filename: item.filename,
-      content: Buffer.from(item.content, "base64")
-    }))
+    attachments: attachments.map((item) => ({ filename: item.filename, content: Buffer.from(item.content, "base64") }))
   });
 }
