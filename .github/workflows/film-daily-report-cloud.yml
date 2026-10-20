@@ -19,7 +19,7 @@ jobs:
     timeout-minutes: 20
     permissions:
       actions: read
-      contents: read
+      contents: write
     env:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       OPENAI_MODEL: ${{ secrets.OPENAI_MODEL }}
@@ -96,6 +96,21 @@ jobs:
       - name: Generate report and send email
         if: steps.gate.outputs.should_run == 'true'
         run: npm run daily:cloud
+
+      # 記錄今天已寄出的新聞，之後的日報就不會重複收錄；
+      # 每天一次的紀錄也讓 repo 保持活動，排程不會因 60 天無活動被停用。
+      - name: Save sent-news history
+        if: steps.gate.outputs.should_run == 'true' && success()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
+          git add automations/film-daily-report/state/seen-news.json
+          if git diff --cached --quiet; then
+            echo "No history change."
+          else
+            git commit -m "chore: update daily report history"
+            git push || echo "History push failed; report was still sent."
+          fi
 
       - name: Upload generated files
         if: steps.gate.outputs.should_run == 'true' && always()
