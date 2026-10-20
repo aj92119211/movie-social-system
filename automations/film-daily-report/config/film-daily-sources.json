@@ -8,8 +8,19 @@
   "maxAgeDays": 3,
   "requirePublishedDate": true,
   "defaultModel": "gpt-5.2",
-  "regions": ["台灣", "美國", "日本", "韓國"],
-  "contentTypes": ["電影", "影集", "OTT電影", "OTT影集"],
+  "regions": [
+    "台灣",
+    "中國",
+    "日本",
+    "韓國",
+    "美國"
+  ],
+  "contentTypes": [
+    "電影",
+    "影集",
+    "OTT電影",
+    "OTT影集"
+  ],
   "excludeKeywords": [
     "影評",
     "心得",
@@ -79,69 +90,355 @@
     "renewed",
     "cancelled",
     "adaptation",
-    "franchise"
-  ],
-  "searchKeywords": [
-    "台灣電影 開拍",
-    "台灣電影 殺青",
-    "國片 開鏡",
-    "國片 定檔",
-    "電影 定檔 台灣",
-    "台灣電影 票房",
-    "台劇 開拍",
-    "台劇 殺青",
-    "影集 開拍 台灣",
-    "公視 影集 開拍",
-    "Netflix 台劇 開拍",
-    "文策院 影集",
-    "韓劇 選角",
-    "韓劇 開拍",
-    "韓國電影 開拍",
-    "韓國電影 選角",
-    "Netflix 韓劇",
-    "日本電影 真人化",
-    "日本漫畫 改編 電影",
-    "日劇 選角",
-    "Netflix original film",
-    "Netflix original series",
-    "Deadline casting film",
-    "Variety film industry",
-    "Hollywood Reporter movie news"
+    "franchise",
+    "陸劇",
+    "陸片",
+    "內地",
+    "大陸",
+    "金雞",
+    "撤檔",
+    "映画",
+    "興行",
+    "公開",
+    "ドラマ",
+    "配信",
+    "実写",
+    "アニメ",
+    "영화",
+    "드라마",
+    "개봉",
+    "박스오피스",
+    "캐스팅",
+    "넷플릭스",
+    "공개"
   ],
   "sources": [
-    { "region": "台灣", "name": "鏡週刊／鏡報娛樂", "url": "https://www.mirrormedia.mg/section/entertainment", "use": "台灣娛樂與影視新聞" },
-    { "region": "台灣", "name": "ETtoday 星光雲", "url": "https://star.ettoday.net/", "use": "台灣娛樂與影視新聞" },
-    { "region": "台灣", "name": "電影神搜", "url": "https://news.agentm.tw/category/%e9%9b%bb%e5%bd%b1%e6%83%85%e5%a0%b1/", "use": "電影情報、上映、產業觀察" },
-    { "region": "台灣", "name": "台灣電影網", "url": "https://taiwancinema.bamid.gov.tw/", "use": "國片、影展、官方電影資料" },
-    { "region": "台灣", "name": "TAVIS", "url": "https://tavis.tw/", "use": "影視產業資料、台劇與製作資訊" },
-    { "region": "台灣", "name": "文策院", "url": "https://taicca.tw/", "use": "產業政策、國際市場、內容投資" },
-    { "region": "台灣", "name": "文化部影視及流行音樂產業局", "url": "https://www.bamid.gov.tw/", "use": "補助、公告、政策" },
-    { "region": "台灣", "name": "開眼電影網", "url": "https://www.atmovies.com.tw/", "use": "上映日期、院線片資訊" },
-    { "region": "台灣", "name": "全國電影票房統計資訊", "url": "https://boxofficetw.tfai.org.tw/", "use": "台灣票房與院線表現" },
-    { "region": "台灣", "name": "Yahoo 娛樂", "url": "https://tw.news.yahoo.com/entertainment/", "use": "台灣影視新聞" },
-    { "region": "台灣", "name": "聯合報噓！星聞", "url": "https://stars.udn.com/", "use": "台灣娛樂與影視新聞" },
-    { "region": "台灣", "name": "DramaQueen 電視迷", "url": "https://www.dramaqueen.com.tw/", "use": "影集、OTT影集、平台消息" },
-    { "region": "美國", "name": "Deadline", "url": "https://deadline.com/", "feed": "https://deadline.com/feed/", "use": "片廠、選角、製作、發行、OTT策略" },
-    { "region": "美國", "name": "ComicBook", "url": "https://comicbook.com/", "use": "IP、超級英雄、串流片單" },
-    { "region": "美國", "name": "Variety Film", "url": "https://variety.com/v/film/", "feed": "https://variety.com/feed/", "use": "電影產業、票房、片廠策略" },
-    { "region": "美國", "name": "Hollywood Reporter", "url": "https://www.hollywoodreporter.com/c/movies/movie-news/", "feed": "https://www.hollywoodreporter.com/feed/", "use": "電影、影集、製作與片廠新聞" },
-    { "region": "韓國", "name": "Yonhap", "url": "https://www.yna.co.kr/entertainment/index?site=navi_entertainment_depth01", "use": "韓國電影、影集、產業新聞" },
-    { "region": "韓國", "name": "Daum 娛樂", "url": "https://entertain.daum.net/news", "use": "韓國影視新聞" },
-    { "region": "韓國", "name": "SBS 연예뉴스", "url": "https://ent.sbs.co.kr/news/menulist.do?code_category=SS02&plink=GNB&cooper=SBSENTERNEWS", "use": "韓國影視新聞" },
-    { "region": "韓國", "name": "Naver Movie", "url": "https://m.entertain.naver.com/movie", "use": "韓國電影資訊" },
-    { "region": "韓國", "name": "Joynews24", "url": "https://www.joynews24.com/", "use": "韓國娛樂產業新聞" },
-    { "region": "韓國", "name": "Soompi", "url": "https://www.soompi.com/", "feed": "https://www.soompi.com/feed", "use": "韓劇、選角、OTT韓劇" },
-    { "region": "日本", "name": "日刊體育 Cinema", "url": "https://www.nikkansports.com/entertainment/cinema/", "use": "日本電影新聞" },
-    { "region": "日本", "name": "ORICON Drama/Movie", "url": "https://www.oricon.co.jp/dramamovie/", "use": "日劇、電影、動畫改編" },
-    { "region": "日本", "name": "Yahoo Japan 映画", "url": "https://news.yahoo.co.jp/media/eiga?page=2", "use": "日本電影新聞" },
-    { "region": "日本", "name": "Japan Today Entertainment", "url": "https://japantoday.com/category/entertainment", "use": "日本與國際娛樂新聞" },
-    { "region": "日本", "name": "CinemaCafe", "url": "https://www.cinemacafe.net/category/cinema/japanese/2024/11/", "use": "日本電影與影集新聞" },
-    { "region": "日本", "name": "映画ナタリー", "url": "https://natalie.mu/eiga", "use": "日本電影、日劇、漫畫改編" },
-    { "region": "跨區", "name": "Netflix Tudum", "url": "https://www.netflix.com/tudum/", "use": "Netflix電影與影集" },
-    { "region": "跨區", "name": "About Netflix Newsroom", "url": "https://about.netflix.com/en/newsroom", "use": "Netflix官方策略與上線資訊" },
-    { "region": "跨區", "name": "Disney+ Press Center", "url": "https://press.disneyplus.com/", "use": "Disney+片單、原創影集、平台消息" },
-    { "region": "跨區", "name": "Apple TV+ Press", "url": "https://www.apple.com/tv-pr/", "use": "Apple TV+原創影集與電影" },
-    { "region": "跨區", "name": "Prime Video News", "url": "https://www.aboutamazon.com/news/entertainment", "use": "Prime Video、Amazon MGM影視消息" },
-    { "region": "跨區", "name": "Hulu Press", "url": "https://press.hulu.com/", "use": "Hulu原創與上線資訊" }
+    {
+      "region": "台灣",
+      "name": "鏡週刊／鏡報娛樂",
+      "url": "https://www.mirrormedia.mg/section/entertainment",
+      "use": "台灣娛樂與影視新聞"
+    },
+    {
+      "region": "台灣",
+      "name": "ETtoday 星光雲",
+      "url": "https://star.ettoday.net/",
+      "use": "台灣娛樂與影視新聞"
+    },
+    {
+      "region": "台灣",
+      "name": "電影神搜",
+      "url": "https://news.agentm.tw/category/%e9%9b%bb%e5%bd%b1%e6%83%85%e5%a0%b1/",
+      "use": "電影情報、上映、產業觀察"
+    },
+    {
+      "region": "台灣",
+      "name": "台灣電影網",
+      "url": "https://taiwancinema.bamid.gov.tw/",
+      "use": "國片、影展、官方電影資料"
+    },
+    {
+      "region": "台灣",
+      "name": "TAVIS",
+      "url": "https://tavis.tw/",
+      "use": "影視產業資料、台劇與製作資訊"
+    },
+    {
+      "region": "台灣",
+      "name": "文策院",
+      "url": "https://taicca.tw/",
+      "use": "產業政策、國際市場、內容投資"
+    },
+    {
+      "region": "台灣",
+      "name": "文化部影視及流行音樂產業局",
+      "url": "https://www.bamid.gov.tw/",
+      "use": "補助、公告、政策"
+    },
+    {
+      "region": "台灣",
+      "name": "開眼電影網",
+      "url": "https://www.atmovies.com.tw/",
+      "use": "上映日期、院線片資訊"
+    },
+    {
+      "region": "台灣",
+      "name": "全國電影票房統計資訊",
+      "url": "https://boxofficetw.tfai.org.tw/",
+      "use": "台灣票房與院線表現"
+    },
+    {
+      "region": "台灣",
+      "name": "Yahoo 娛樂",
+      "url": "https://tw.news.yahoo.com/entertainment/",
+      "use": "台灣影視新聞"
+    },
+    {
+      "region": "台灣",
+      "name": "聯合報噓！星聞",
+      "url": "https://stars.udn.com/",
+      "use": "台灣娛樂與影視新聞"
+    },
+    {
+      "region": "台灣",
+      "name": "DramaQueen 電視迷",
+      "url": "https://www.dramaqueen.com.tw/",
+      "use": "影集、OTT影集、平台消息"
+    },
+    {
+      "region": "美國",
+      "name": "Deadline",
+      "url": "https://deadline.com/",
+      "feed": "https://deadline.com/feed/",
+      "use": "片廠、選角、製作、發行、OTT策略"
+    },
+    {
+      "region": "美國",
+      "name": "ComicBook",
+      "url": "https://comicbook.com/",
+      "use": "IP、超級英雄、串流片單"
+    },
+    {
+      "region": "美國",
+      "name": "Variety Film",
+      "url": "https://variety.com/v/film/",
+      "feed": "https://variety.com/feed/",
+      "use": "電影產業、票房、片廠策略"
+    },
+    {
+      "region": "美國",
+      "name": "Hollywood Reporter",
+      "url": "https://www.hollywoodreporter.com/c/movies/movie-news/",
+      "feed": "https://www.hollywoodreporter.com/feed/",
+      "use": "電影、影集、製作與片廠新聞"
+    },
+    {
+      "region": "韓國",
+      "name": "Yonhap",
+      "url": "https://www.yna.co.kr/entertainment/index?site=navi_entertainment_depth01",
+      "use": "韓國電影、影集、產業新聞"
+    },
+    {
+      "region": "韓國",
+      "name": "Daum 娛樂",
+      "url": "https://entertain.daum.net/news",
+      "use": "韓國影視新聞"
+    },
+    {
+      "region": "韓國",
+      "name": "SBS 연예뉴스",
+      "url": "https://ent.sbs.co.kr/news/menulist.do?code_category=SS02&plink=GNB&cooper=SBSENTERNEWS",
+      "use": "韓國影視新聞"
+    },
+    {
+      "region": "韓國",
+      "name": "Naver Movie",
+      "url": "https://m.entertain.naver.com/movie",
+      "use": "韓國電影資訊"
+    },
+    {
+      "region": "韓國",
+      "name": "Joynews24",
+      "url": "https://www.joynews24.com/",
+      "use": "韓國娛樂產業新聞"
+    },
+    {
+      "region": "韓國",
+      "name": "Soompi",
+      "url": "https://www.soompi.com/",
+      "feed": "https://www.soompi.com/feed",
+      "use": "韓劇、選角、OTT韓劇"
+    },
+    {
+      "region": "日本",
+      "name": "日刊體育 Cinema",
+      "url": "https://www.nikkansports.com/entertainment/cinema/",
+      "use": "日本電影新聞"
+    },
+    {
+      "region": "日本",
+      "name": "ORICON Drama/Movie",
+      "url": "https://www.oricon.co.jp/dramamovie/",
+      "use": "日劇、電影、動畫改編"
+    },
+    {
+      "region": "日本",
+      "name": "Yahoo Japan 映画",
+      "url": "https://news.yahoo.co.jp/media/eiga?page=2",
+      "use": "日本電影新聞"
+    },
+    {
+      "region": "日本",
+      "name": "Japan Today Entertainment",
+      "url": "https://japantoday.com/category/entertainment",
+      "use": "日本與國際娛樂新聞"
+    },
+    {
+      "region": "日本",
+      "name": "CinemaCafe",
+      "url": "https://www.cinemacafe.net/category/cinema/japanese/2024/11/",
+      "use": "日本電影與影集新聞"
+    },
+    {
+      "region": "日本",
+      "name": "映画ナタリー",
+      "url": "https://natalie.mu/eiga",
+      "use": "日本電影、日劇、漫畫改編"
+    },
+    {
+      "region": "跨區",
+      "name": "Netflix Tudum",
+      "url": "https://www.netflix.com/tudum/",
+      "use": "Netflix電影與影集"
+    },
+    {
+      "region": "跨區",
+      "name": "About Netflix Newsroom",
+      "url": "https://about.netflix.com/en/newsroom",
+      "use": "Netflix官方策略與上線資訊"
+    },
+    {
+      "region": "跨區",
+      "name": "Disney+ Press Center",
+      "url": "https://press.disneyplus.com/",
+      "use": "Disney+片單、原創影集、平台消息"
+    },
+    {
+      "region": "跨區",
+      "name": "Apple TV+ Press",
+      "url": "https://www.apple.com/tv-pr/",
+      "use": "Apple TV+原創影集與電影"
+    },
+    {
+      "region": "跨區",
+      "name": "Prime Video News",
+      "url": "https://www.aboutamazon.com/news/entertainment",
+      "use": "Prime Video、Amazon MGM影視消息"
+    },
+    {
+      "region": "跨區",
+      "name": "Hulu Press",
+      "url": "https://press.hulu.com/",
+      "use": "Hulu原創與上線資訊"
+    },
+    {
+      "region": "中國",
+      "name": "新浪娛樂",
+      "url": "https://ent.sina.com.cn/",
+      "use": "中國電影、陸劇、票房"
+    },
+    {
+      "region": "中國",
+      "name": "1905電影網",
+      "url": "https://www.1905.com/",
+      "use": "中國電影產業、定檔、政策"
+    },
+    {
+      "region": "中國",
+      "name": "貓眼專業版",
+      "url": "https://piaofang.maoyan.com/",
+      "use": "中國票房"
+    },
+    {
+      "region": "中國",
+      "name": "中國電影網",
+      "url": "https://www.chinafilm.com/",
+      "use": "中國電影產業官方資訊"
+    }
+  ],
+  "maxCandidatesPerMarket": 25,
+  "itemsPerMarket": 8,
+  "historyDays": 14,
+  "markets": [
+    {
+      "name": "台灣",
+      "locale": {
+        "hl": "zh-TW",
+        "gl": "TW",
+        "ceid": "TW:zh-Hant"
+      },
+      "keywords": [
+        "台灣電影 票房",
+        "國片 定檔",
+        "國片 開拍 OR 殺青 OR 開鏡",
+        "台劇 開拍 OR 殺青",
+        "文策院 影視",
+        "文化部 影視 補助",
+        "金馬獎 OR 金鐘獎",
+        "台灣 影集 上線 平台"
+      ]
+    },
+    {
+      "name": "中國",
+      "locale": {
+        "hl": "zh-TW",
+        "gl": "TW",
+        "ceid": "TW:zh-Hant"
+      },
+      "keywords": [
+        "中國 電影 票房",
+        "陸片 定檔 OR 撤檔",
+        "大陸 電影 上映",
+        "陸劇 開拍 OR 殺青",
+        "中國 電影 國家電影局",
+        "愛奇藝 OR 騰訊視頻 OR 優酷 影集",
+        "金雞獎 OR 百花獎",
+        "貓眼 OR 燈塔 票房"
+      ]
+    },
+    {
+      "name": "日本",
+      "locale": {
+        "hl": "ja",
+        "gl": "JP",
+        "ceid": "JP:ja"
+      },
+      "keywords": [
+        "映画 興行収入",
+        "映画 公開日 決定",
+        "実写化 決定 映画",
+        "ドラマ 制作決定",
+        "アニメ映画 興収",
+        "映画 配給 発表",
+        "Netflix 日本 配信 決定",
+        "東京国際映画祭"
+      ]
+    },
+    {
+      "name": "韓國",
+      "locale": {
+        "hl": "ko",
+        "gl": "KR",
+        "ceid": "KR:ko"
+      },
+      "keywords": [
+        "영화 박스오피스",
+        "영화 개봉 확정",
+        "영화 크랭크인 OR 크랭크업",
+        "드라마 캐스팅 확정",
+        "넷플릭스 한국 공개",
+        "OTT 오리지널 드라마 공개",
+        "영화진흥위원회",
+        "부산국제영화제"
+      ]
+    },
+    {
+      "name": "美國",
+      "locale": {
+        "hl": "en-US",
+        "gl": "US",
+        "ceid": "US:en"
+      },
+      "keywords": [
+        "box office weekend",
+        "film acquires rights",
+        "greenlit series",
+        "casting film studio",
+        "streaming release date film",
+        "studio merger OR acquisition Hollywood",
+        "film festival award winner",
+        "theatrical release date set"
+      ]
+    }
   ]
 }
