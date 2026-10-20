@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
-      actions: write
+      actions: read
       contents: read
     env:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -104,8 +104,3 @@ jobs:
           name: film-daily-report-${{ github.run_id }}
           path: outputs/
           if-no-files-found: ignore
-
-      # 防止 GitHub 因 repo 60 天沒有活動而自動停用排程
-      - name: Keep scheduled workflow alive
-        if: always()
-        uses: gautamkrishnar/keepalive-workflow@v2
