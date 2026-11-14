@@ -1,107 +1,5 @@
 {
   "days": {
-    "2026-10-31": [
-      {
-        "link": "https://news.google.com/rss/articles/CBMiWEFVX3lxTE41dzJxR05oVkxHNjdxSkRQcXRiSUFYZC1xOVJOcmtvZUt1bUNVc2FrNTBmR3lBX3lTSXBLckFTMDdRc21YVXZpY2tWNTRIY3ZKbzZJcnBMLVk?oc=5",
-        "title": "文策院TCCF盛大登場 跨國合製突破六成 - Taiwan News"
-      },
-      {
-        "link": "https://news.google.com/rss/articles/CBMiXEFVX3lxTE1IeVdjdi1kN19tREhldEVRUUVmeHlKQjFHZ014cGFfb1FURkU4VFpzbmVIaDVZYy1LZ3ExWnlfY0VjY0Z2WWdEVDEtYkpYaWdKZWhnbjN5bHVIR0dY?oc=5",
-        "title": "林志玲合作告吹！文策院董座王時思坦承考量不周「5年10部電影」計畫喊卡| 政治焦點 - 太報 TaiSounds"
-      },
-      {
-        "link": "https://news.google.com/rss/articles/CBMikAFBVV95cUxPbDRPV3dlVGlYR0JwZkxUZV94TTFLNDFURk5MUDU4ZzI4YWk4b0Znc3FQRUZkcEo4Q2tKR1pGVGY4VnFIMExwcFdsNU5mNkpkTXFvUlZlSDlyOW0xMVNKbGVCQ1ZwSGZaNjFyMlJkMUxJRy1zcm5zWnc0UEdJa1loUUxrSE52TEUxNnZGWEwzTDA?oc=5",
-        "title": "《死亡之握：鬼牽手》闖進日本影展六強！成台灣唯一入圍長片與國際強片同場競逐- 娛樂新聞 - PChome Online 新聞"
-      },
-      {
-        "link": "https://news.google.com/rss/articles/CBMiUkFVX3lxTFBmU3JCcDVmcEE2UWlWZFc3ZExUZG1KM1NvdVAyVjFodzBUMUUxTm82S0dySkkxN2NYcXY2OFFTREhUaWhGbk1GSHJpcVJNZTNDS1E?oc=5",
-        "title": "《我幹！》衝擊片名引熱議！黃西田首度擔任電影製作人 攜楊麗音、阿西揭影視圈暗黑內幕 - 蕃新聞"
-      },
-      {
-        "link": "https://news.google.com/rss/articles/CBMiQkFVX3lxTE9GUnJPU2tJeno5UUloZlc3b2hzSVNXZ0VsOTlFZFQ3em5ReTFVY1VRTk9aZUlRVk1wTkxjeTRUVm9EZw?oc=5",
-        "title": "桃園影視補助協拍7部作品勇奪金鐘14獎！展現桃園多元影視場景與協拍實力 - 墨新聞-MORE News"
-      },
-      {
-        "link": "https://news.google.com/rss/articles/CBMiYkFVX3lxTE5lSHVwcEdVd2pObGVQb1Z0OEdIeWxrUlJrR1Y1T0hLcGdiSkZvTGdVdl9WZzhXazdDUldUME0wbW5mY1FYNVZjOGxsMDR3N3UyMU5oMXJFYks0X2hJdGk4RFd3?oc=5",
-        "title": "從電影到音樂劇！《海角七號》造夢者帶觀眾重返恆春 - 新媒體經紀人"
-      },
-      {
-        "link": "https://news.google.com/rss/articles/CBMiekFVX3lxTE16VFNBZWxVd2JwbUlJOEVzbENkOU5xQjU4LUkxa1lKRWVLbjI1NVVjaTQ0eGdFZjNuRE5DWEQ0bkFWaHVlb1JtbXpRZUExWklFMmREa190Y0FDeVhRYlJmRGRmT3RxazhVVFAzNmhXRGZYSE9aTHBEOVJn?oc=5",
-        "title": "大陸首部全 AI 院線片票房失靈 AI 影視下一場淘汰賽比的為何不是算力？ | 大陸政經 | 兩岸 - 經濟日報"
-      },
-      {
-        "link": "https://news.google.com/rss/articles/CBMiZEFVX3lxTE1vRGhySFRrVmYxUnRkaEtQNVZxU2I5OVdqSFAzS0NWUWxIdmNlak96V2ZWMHNZM1JQM1l3VFdJVk1KSEVWbmZpQTQwOUdNN1JSZjVpd0g2NzQ3OWJzUEVGZlR1S2E?oc=5",
-        "title": "討論牆 | 賺這麼多？紅果短劇傳「年收入逾2千億超中國電影總票房」 官方急發聲明這樣說 - LINE TODAY"
-      },
-      {
-        "link": "https://news.google.com/rss/articles/CBMi9gFBVV95cUxOVURuaWh2MlRsdW0yZXZkNmtSWXZJQnFVMS1XX05BSFhDTEZ4ZzJubFkxZE1hcjRLNzZUTEFCOVpRMnoxblMwVlpyRHFFTzZNSjRoZEdsYW5KcFVJMzdTRVpUM2JLZTkxdFZqZXpjMDZlbEotOTJTQlN3dkJfcmJNSkhFaU1PY3dGQ1c5MEh1RjdGdUVsVXF3ZVQ0VG1VZVVNalFDNWc3S2hyU28yMmlwU054T2l0Zl93YWt6bDJ1clA3aHI2NkY1RWRiTmN2eXAtUVhtR0lBTjhZcjNqZHVESTctLXlLdXJNZFU5clJOX2ROZXJwNWc?oc=5",
-        "title": "國產電影加快進軍海外市場 - 巴士的報"
-      },
-      {
-        "link": "https://news.google.com/rss/articles/CBMiW0FVX3lxTFBkZUJlMVJpUmdfS2tLdXczVDhoMnVLUmVFdkRUVjV6eXVDcHBBUVJVbjBHQjZMZEtrQktOOW1jRjk1ZjUtdkczaHg0NUpnM0oxdUtRVk9OZXBrLVU?oc=5",
-        "title": "映画『キングダム』公開19日間で興行収入44.4億円突破の特大ヒット 主演・山﨑賢人「これからもどんどん愛を注いで」 - 山陽新聞"
-      },
-      {
-        "link": "https://news.google.com/rss/articles/CBMiRkFVX3lxTE5TTDVWYTV2TnJSd0ZtcFVNTWV1R0FhNXBSRVhzR1lkbUh1OGZ5aENoLU0zUUFFT19OLWU2VlhYQ1c2aFVyTWc?oc=5",
-        "title": "汝、星のごとく、公開21日間で興収15億円・動員100万人――原作者も舞台のしまなみ海道へ - shiritomo"
-      },
-      {
-        "link": "https://news.google.com/rss/articles/CBMif0FVX3lxTE52OTVxTWkxU1lsMUUwVnNwSGZldlBHYlJhUjhTS0gzQUxIaS1pVTNPcldMbE9tbEY0aWRWT3dLcU01QUc4cVRCbmp1SlpPU0JhUWRLb0N0Y2c2Q1JJTV9zZGtENGdKY3EwWnVNUFdmcVBpdW5PUVJ2UmJrd01faGM?oc=5",
-        "title": "広瀬すず、主演映画が興収10億円突破! 韓国で異例の“7回”舞台あいさつで見せた小顔際立つ肩幅強調コーデ（SmartFLASH） - Yahoo!ニュース"
-      },
-      {
-        "link": "https://news.google.com/rss/articles/CBMif0FVX3lxTE9NcUhNWExjQ0VtallaVll2WFhKeDYzLUFUTDRmRkdwbE53MUt4Vnp3dWhOSU1XVXNlUVRDNXBrRVhCN1NIbHBRUUhabDJ3b0stUXNJdEppYVhMY3BCTWpHQWJpVUdFQUhnSU4wNG1tOVEybExqMlpIcldLT29PVTg?oc=5",
-        "title": "韓国で歴代興収1位を記録した映画『王と生きる男』予告映像＆メインビジュアルが解禁（ぴあ） - Yahoo!ニュース"
-      },
-      {
-        "link": "https://news.google.com/rss/articles/CBMif0FVX3lxTE5kNzFmZHA3end0NXdTZ0x0MFVIMFNOd1QzN2FtcFRraTk1VS1XcU1rcGZzYWg0bDZ5V3J5NUFfNkpQcm96bmI5ZGU3UlpMVnFsVVNSQ0F0dTBkcDhLakxGNjlTMmFwSk1XUlNCbDFsOWZqa1J1VWZuREdOZ0JTTkE?oc=5",
-        "title": "「やはりスベった」との声も…『踊る』最新作の興行収入が大失速！公開後に会議室で起こった“異変”（女性自身） - Yahoo!ニュース"
-      },
-      {
-        "link": "https://www.soompi.com/article/1882460wpp/shin-hyun-been-and-keum-sae-rok-reported-park-ju-hyun-confirmed-to-join-inside-men-prequel",
-        "title": "Shin Hyun Been And Keum Sae Rok Reported + Park Ju Hyun Confirmed To Join “Inside Men” Prequel"
-      },
-      {
-        "link": "https://www.soompi.com/article/1882852wpp/watch-lee-jong-suk-spies-on-shin-min-ah-praising-his-looks-in-the-remarried-empress-preview",
-        "title": "Watch: Lee Jong Suk Spies On Shin Min Ah Praising His Looks In “The Remarried Empress” Preview"
-      },
-      {
-        "link": "https://www.soompi.com/article/1882615wpp/son-suk-ku-and-nagayama-eitas-opposing-detective-styles-complicate-their-partnership-in-the-blue-road",
-        "title": "Son Suk Ku And Nagayama Eita’s Opposing Detective Styles Complicate Their Partnership In “The Blue Road”"
-      },
-      {
-        "link": "https://www.soompi.com/article/1882950wpp/the-boyzs-younghoon-falls-for-wjsns-luda-while-helping-her-win-kim-dong-juns-heart-in-love-and-wifi-in-the-palace",
-        "title": "THE BOYZ’s Younghoon Falls For WJSN’s Luda While Helping Her Win Kim Dong Jun’s Heart In “Love And Wifi In The Palace”"
-      },
-      {
-        "link": "https://www.soompi.com/article/1883093wpp/lee-sang-yi-to-reunite-with-ahn-eun-jin-through-cameo-in-a-love-other-than-yours",
-        "title": "Lee Sang Yi To Reunite With Ahn Eun Jin Through Cameo In “A Love Other Than Yours”"
-      },
-      {
-        "link": "https://www.soompi.com/article/1882975wpp/lee-yi-dam-is-secretly-kang-hoons-comedy-trios-biggest-fan-in-happy-anding",
-        "title": "Lee Yi Dam Is Secretly Kang Hoon’s Comedy Trio’s Biggest Fan In “Happy Anding”"
-      },
-      {
-        "link": "https://deadline.com/2026/10/box-office-you-can-see-everything-clayface-halloween-1237209579/",
-        "title": "‘Clayface’ In Brawl With Elizabeth Holmes & Nathan Fielder At Halloween Box Office: Both Pics Eyeing $10M+ Each"
-      },
-      {
-        "link": "https://variety.com/2026/tv/news/daytime-emmys-2026-winners-list-1236935712/",
-        "title": "‘Kelly Clarkson Show,’ ‘General Hospital,’ ‘Beyond the Gates’ Lead Daytime Emmys 2026 Winners"
-      },
-      {
-        "link": "https://deadline.com/2026/10/angel-studios-values-based-initiative-banning-sex-nudity-f-words-1237210523/",
-        "title": "Angel Studios CCO Lays Out “Values-Based” Initiative Banning Sex, Nudity, F-Words & “Misuse Of God’s Name”: “Hollywood Lives In A Bubble”"
-      },
-      {
-        "link": "https://variety.com/2026/film/awards/georgia-guria-best-film-asia-pacific-screen-awards-1236935931/",
-        "title": "Georgia’s ‘Guria’ Wins Best Film at Asia Pacific Screen Awards as Thailand’s Sompot Chidgasornpongse Takes Director Prize"
-      },
-      {
-        "link": "https://variety.com/2026/film/festivals/keanu-reeves-hidari-ss-rajamouli-1236935934/",
-        "title": "How Keanu Reeves Landed in Stop-Motion Samurai Epic ‘Hidari’ – and Why S.S. Rajamouli Wanted to Know How It Was Made"
-      }
-    ],
     "2026-11-01": [
       {
         "link": "https://news.google.com/rss/articles/CBMiX0FVX3lxTE5VTzhiZXE3V1RvdUJ2YmJGc2xJMnV3SW1GOGRWbVh0S0Jta09wTzB0Y0xMQVUyMlllYUtKVW1MX1hsaE9xNzRHUDRyTksyR3NGSG1nM2dUZkcxN0JFbF9r?oc=5",
@@ -1402,6 +1300,88 @@
       {
         "link": "https://variety.com/2026/music/news/latin-grammys-winners-list-rosalia-1236946768/",
         "title": "Latin Grammys Full Winners List: Rosalía Wins Big With Album and Song of the Year Honors"
+      }
+    ],
+    "2026-11-14": [
+      {
+        "link": "https://news.google.com/rss/articles/CBMiUkFVX3lxTE1iMXZXX05TSVNTS3V4MllHb3owbU5SYmNGTWhxbmNKVnVoQldnOXVEM1MwOXdheFl5cm5qdnFWdkVmelpnN21XeUFjclRUTDlOUHfSAVJBVV95cUxNYjF2V19OU0lTU0t1eDJZR296MG1OUmJjRk1ocW5jSlZ1aEJXZzl1RDNTMDl3YXhZeXJuanZxVnZFZnpaZzdtV3lBY3JUVEw5TlB3?oc=5",
+        "title": "《哥吉拉-0.0》全球票房殺瘋了！日美台三地奪冠 首週狂賣24億 - NOWnews今日新聞"
+      },
+      {
+        "link": "https://news.google.com/rss/articles/CBMi7wJBVV95cUxPZkxYM3VDa3Z4VVNzd285ZGNfRVk1VTZGeWdabldvYVI1WW00eHVfSUs2cTIydGtYUGY0Z081a0RzVTBzcWhzYl9PX3pMaFdJUzRuTEc2ZGRyRmVhSEN0WXVBRTRLWWpMZG9DNXdjWW1wZWxvWXNFTUVoell6bEJ5UDktcmg1Rk1PYTJueDd6N0hwZExFeDk2WkF6RW1RWjlkcm02M3hfRjJ2UC1FQXJwTFUzRkNtQlVhd2k4eDBGR2hYZmY1a2pMajZqVm1uei1DZnVpc2F6UkQwdUc0MG1tUF9oNXVNeUJGMk1rbjR2akJ2R3JWZGJpWW5JN09USnpvTEdTWksxdndXczhEeVJDcDhOYzFFd1BSS213ZE41enZwZG45WXVzejZmelVHbjEwTVg5MVRPOWkwdkxSNTJRYWJ6cS1mdXpPWk9VWlBrLWYtaGljeGdVcXFzeC1OTTN2OEUxaDNRZFUwN3o5eDhV?oc=5",
+        "title": "莊陞漢爭取《陽光女子合唱團》首場社區公播 500人齊聚看電影 - Life 生活網"
+      },
+      {
+        "link": "https://news.google.com/rss/articles/CBMiZEFVX3lxTFByS05tVmZyQ24wVUpubHdGalJLUEJvU1BORWd4SmFlVXNlM3YwWUQ4SG1xYVd4YThRTzA0Nkt6elhYbmx2akdsY0RidVUtdUQ3ZU9tYWpBZlFxQ3htd19Ta3pjWGg?oc=5",
+        "title": "討論牆 | 100億票房奇片《給阿嬤的情書》台灣首映 2026桃園電影節重磅推出「超級場」 - LINE TODAY"
+      },
+      {
+        "link": "https://news.google.com/rss/articles/CBMiW0FVX3lxTFBJTFg1NFJwMXJ5ejJjUXZ2TVUwLTBrZEZKWHhRWEtVTnBfeTNseGlwd2w4ZTgyS2h6d3czNkdRSU1EZFRVZ2E0VnoycXhBY2o0aUV3cnJGQktNLTQ?oc=5",
+        "title": "力挺蔣萬安後 李明依喊話文化部公布「歷年獲補助名單」 - 上報Up Media"
+      },
+      {
+        "link": "https://news.google.com/rss/articles/CBMiywJBVV95cUxOUzctQk50RmsyYi1RazdHeW9NX01BZmJjcS1MZmZtcFljTGdjWWRiUElMVHI0Mk5NNEwzRGZwT29lWHBQVkt6Z3dPVEZaV0I4Q3ZrMHQzNG5tcUIxaHlTT0tFTURfTlktanV2T2J6VTlzREIwd0hVRnBJTi1ZNE52RGh3M21ITE1rbDRGXzF3Y19SMy1qeDdwdnU0NGladWhUajlJRDlqTWJQWm1MaWRjWDc0eWtaVTVjUnFySHBucTZPYmc4VGFKTmFzN3pHMDFUYXRKang1X0NLbXBPcG1UeEFEZHRwRmRCSUkxR2dxQkNWZVgzNW14TzdlcnBZVUNxTHVRRHFBMXozLW9CVzk2UFRIZG94OXJEaV9VR2E5eEpkQlNTVmdsVzgxdE5FVmMtQWM3V1hYZkJjUTFkaU55TktRMERzdUYwbnRN?oc=5",
+        "title": "名導王晶電影「票房僅2.2萬元」 黃安感嘆「陌生的時代」：電影院快完蛋了 - Yahoo新聞"
+      },
+      {
+        "link": "https://news.google.com/rss/articles/CBMinwRBVV95cUxQNnhIOE5OVjZLb3VrM2tnUFVYRGZWZGJvRkNVT1p1UmpYZEVSeWh4QXhVc0RMcURJR1dYaVJPMk1EbmdQWUF2ZzkwUHJwdkhRM0N1Z3FZb0ktb1NJa0ROX2w5VWRYVUM0VXJzN1Y0ektGdmRxZ0FzYWpUUnpxNFdMNmFBLTJTbEY1NDdlNUtBempCYUxWZ3BXYVpNWHVhTVZGaG9PZm55Sm9GNnJSRGVfck9GVjVfek1qdmVoTnozX1RNUGs3TU5xeEZvSHdTbjF5RW5OR0h6VjJ6MmlUZUJidlQ5T1FvdkstQ1RPOVRmOW1kNmF1M3VMbzc2WmJEM2NoMl96Y1ctY2JmSkR3TWN4d2lmT05kdFFnNTR3SnM3MHJSVGdKZEtVU1RlcVdPdnlNclJmOVcxMFRab0xKVFFMUzd4R2dIemdhaVdXT0UtNGVkak9CN3hIUERzaF94cVNZVW9ycFY3R3pWRGhxUjhScGJKQm5VR1o2cUs3dG44T2xibmhQWVpfVTZkdWVPSGsyU3hBQWE3MGRlakMyT1IxcFdOWUF2SFpsNTRRUkJhT1BmU21Qc19uWlZ4ZU55Tzg4UVRiRXNzUUJvOVJBQ0wtY09PTkJUaF80NFBFWi1GSWpnNno1OXJxLVJjZzZRZEpUZFBVUXU0bFlkQlJONk5RLWJfbnJoWHoyaFRpLWtzaVdGZkZIaERvYWxjeVNGdU0?oc=5",
+        "title": "直播《英雄聯盟》世界賽 內地多地戲院凌晨爆滿 業界：電競直播成新創收模式 - 20261114 - 中國 - 明報新聞網"
+      },
+      {
+        "link": "https://news.google.com/rss/articles/CBMilwFBVV95cUxNbEprT29odWJNNE1TTVQyVW1WWVRaaklwYXBnVDNyT2tCQ0g2YkpyRnNSSmYwbVBzWElWV29fNG1oSVZ4cXJzQXdhTDRpRl82Zk42M0VYc0YzWjBFWkV0ZWl4Vm85MkJQWGZXUm5xajRCSFh0Y2RtaWZFWVl5eDRpVm8wWmRwaGVBRjJsQ2hPZE9VV1dDbEJR?oc=5",
+        "title": "中國與葡語國家電影展開幕 - TDM"
+      },
+      {
+        "link": "https://news.google.com/rss/articles/CBMiUEFVX3lxTFBPYXJEN0t3Zkt1N2ZUSnZNWC1GOUZ3Y2RZVWJ0R1NYdmU3WkJmb3JvQ0IyOW1nRUZLY3Q3bXZnNFI4Vlk5aUcwcDlfc0gyOFRR?oc=5",
+        "title": "川口春奈主演の『ママせか』、公開43日間で興収40億円＆動員数280万人を突破 - ENCOUNT"
+      },
+      {
+        "link": "https://news.google.com/rss/articles/CBMif0FVX3lxTFB0NDBXMmVmUHMyZGlNa3B4cGFnSjVqVUpMdEI3SVpRTEdybXk3UWJiSkZNR0FYT0lnNWxBb2xFdzNGam9xMzBmUlJMdV9Nc0xNc0dmY1lhVXJNRFlCUlZsekMwSU1KMHU0SW01YlhNSkt3SVNXeVlRTDlxM1ZOMXc?oc=5",
+        "title": "磯村勇斗＆末澤誠也『mentor』入場者プレゼント第3弾が配布開始 メインキャストは映画賞レースで好発信（シネマトゥデイ） - Yahoo!ニュース"
+      },
+      {
+        "link": "https://news.google.com/rss/articles/CBMiVkFVX3lxTFBsejIxT2xTcU96emExd0xCaHpudktiUWRHNU5yOGZMZGt4Q3lOZXZvdmliQmdzZU1ETFpfeUhLZ0FvLXZ5UUNzUlZvWndqUm9ScG9ZeGx30gFbQVVfeXFMT3hHMDlWeEVub3ZOd19ZUk5FNUE4UG9mTXEyZzh0SHhVeFo4Zy1EN1B1RmVxR0ZULU83VDdxQkRpVjdDOHpGbm1xd1UwX3pGQjhkcWxCdDRaVDN1MA?oc=5",
+        "title": "【映画ランキング】『ちいかわ』首位キープ！『オデュッセイア』2位も興収では上回る、『ルックバック』ら新作4本がランクイン(1/2) - ウォーカープラス"
+      },
+      {
+        "link": "https://news.google.com/rss/articles/CBMia0FVX3lxTE8xUV9BLWFCVndUZ0QteHA0c21WbDdOMXd1V0tXXy1NLWowWkxKZTJBNm9iOWdIRGdldXFmMjNNMnpYUFlpdnlpMEN0azFHa0E1Ny1QYWhmWEZKbjZwdjV3UVU4NU9SRURuN3pv?oc=5",
+        "title": "[박스오피스] ‘폴2 데드포인트‘ 개봉 이틀만에 1위…누적 5만 - 맥스무비"
+      },
+      {
+        "link": "https://news.google.com/rss/articles/CBMigAFBVV95cUxNelJYZkFLSThtWE5VSS1tbTlZT3pyZV9LZ2xXNlAwT24zZzZDdHFmX1AxSFpiS3VlMEswME1ZemtiUWVMcUhGb1FaV2xUcEtyQzQ1MFF4SzRvVldRU0pvbk1TSGtlemZ6NmFXb0JHRjBiaDl3NXFZZmxUckxJUjI3dA?oc=5",
+        "title": "극장가 발길 뚝… 박스오피스 1위도 하루 2만명 못 넘겼다 - 이데일리"
+      },
+      {
+        "link": "https://www.soompi.com/article/1886778wpp/koo-kyo-hwan-and-kim-yun-seoks-fight-for-survival-takes-a-dangerous-turn-in-white-blast",
+        "title": "Koo Kyo Hwan And Kim Yun Seok’s Fight For Survival Takes A Dangerous Turn In “White Blast”"
+      },
+      {
+        "link": "https://www.soompi.com/article/1886869wpp/the-perfect-lie-ratings-climb-to-new-all-time-high-as-doctor-x-heads-into-finale-at-no-1",
+        "title": "“The Perfect Lie” Ratings Climb To New All-Time High As “Doctor X” Heads Into Finale At No. 1"
+      },
+      {
+        "link": "https://deadline.com/2026/11/visionquest-finale-viewership-record-marvel-1237223483/",
+        "title": "‘VisionQuest’ Sticks The Landing With Most-Watched Marvel Finale In 3 Years"
+      },
+      {
+        "link": "https://deadline.com/2026/11/michael-mann-lawsuit-heat-rights-1237223655/",
+        "title": "The ‘Heat’ Is On! Michael Mann & New Regency Clash In Ownership Battle Over Al Pacino & Robert De Niro 1995 Crime Classic"
+      },
+      {
+        "link": "https://deadline.com/2026/11/al-pacino-captiviated-isla-fisher-blake-ritson-1237223529/",
+        "title": "Isla Fisher & Blake Ritson Join Al Pacino In John Paul Getty III Kidnapping Pic ‘Captivated’"
+      },
+      {
+        "link": "https://www.hollywoodreporter.com/business/business-news/trump-federal-film-tax-credit-gaining-momentum-1236755258/",
+        "title": "Trump Says Federal Film Tax Credit Is Gaining Momentum"
+      },
+      {
+        "link": "https://variety.com/2026/film/news/agents-stars-stranded-flight-stoppage-afm-governors-awards-1236947477/",
+        "title": "AFM Dealmakers, Talent Agents and Hollywood Stars Left Stranded by Nationwide Flight Stoppage"
+      },
+      {
+        "link": "https://www.hollywoodreporter.com/movies/movie-news/joel-kinnaman-thriller-the-cell-director-adam-cooper-afm-1236755213/",
+        "title": "Joel Kinnaman to Star in Creature Thriller ‘The Cell’ for ‘Sleeping Dogs’ Director Adam Cooper (Exclusive)"
       }
     ]
   }
